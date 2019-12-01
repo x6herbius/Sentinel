@@ -22,6 +22,7 @@
 #include "Model/Brush.h"
 #include "Model/Layer.h"
 #include "Model/World.h"
+#include "Model/Entity.h"
 
 namespace TrenchBroom {
     namespace IO {
@@ -32,7 +33,10 @@ namespace TrenchBroom {
         MapReader(str) {}
 
         std::unique_ptr<Model::World> WorldReader::read(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status) {
+            ensure(m_deferredDetailBrushes.size() < 1, "Deferred detail brush set was not empty");
+            m_mapFormat = format;
             readEntities(format, worldBounds, status);
+            createDeferredDetailBrushes();
             m_world->rebuildNodeTree();
             m_world->enableNodeTreeUpdates();
             return std::move(m_world);
@@ -80,11 +84,52 @@ namespace TrenchBroom {
         }
 
         void WorldReader::onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& /* status */) {
+            if ( m_deferredDetailBrushes.find(brush) != std::end(m_deferredDetailBrushes)) {
+                return;
+            }
+
             if (parent != nullptr) {
                 parent->addChild(brush);
             } else {
                 m_world->defaultLayer()->addChild(brush);
             }
+        }
+
+        void WorldReader::setExtraAttributes(Model::Node* node, const ExtraAttributes& extraAttributes) {
+            MapReader::setExtraAttributes(node, extraAttributes);
+
+            if ( m_mapFormat != Model::MapFormat::Nightfire ) {
+                return;
+            }
+
+            Model::Brush* brush = dynamic_cast<Model::Brush*>(node);
+
+            if ( !brush ) {
+                return;
+            }
+
+            auto item = extraAttributes.find("BRUSHFLAGS");
+
+            if ( item == std::end(extraAttributes) || item->second.strValue() != "DETAIL" ) {
+                return;
+            }
+
+            m_deferredDetailBrushes.insert(brush);
+        }
+
+        void WorldReader::createDeferredDetailBrushes() {
+            if ( m_mapFormat != Model::MapFormat::Nightfire ) {
+                return;
+            }
+
+            for ( Model::Brush* detailBrush : m_deferredDetailBrushes ) {
+                Model::Entity* ent = m_world->createEntity();
+                ent->addOrUpdateAttribute(Model::AttributeNames::Classname, "func_detail");
+                m_world->defaultLayer()->addChild(ent);
+                ent->addChild(detailBrush);
+            }
+
+            m_deferredDetailBrushes.clear();
         }
     }
 }

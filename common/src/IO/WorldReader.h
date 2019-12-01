@@ -23,6 +23,7 @@
 #include "IO/MapReader.h"
 
 #include <memory>
+#include <set>
 
 namespace TrenchBroom {
     namespace IO {
@@ -30,11 +31,15 @@ namespace TrenchBroom {
 
         class WorldReader : public MapReader {
             std::unique_ptr<Model::World> m_world;
+            std::set<Model::Brush*> m_deferredDetailBrushes;
+            Model::MapFormat m_mapFormat = Model::MapFormat::Unknown;
         public:
             WorldReader(const char* begin, const char* end);
             WorldReader(const String& str);
 
             std::unique_ptr<Model::World> read(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status);
+        protected:
+            virtual void setExtraAttributes(Model::Node* node, const ExtraAttributes& extraAttributes) override;
         private: // implement MapReader interface
             Model::ModelFactory& initialize(Model::MapFormat format) override;
             Model::Node* onWorldspawn(const Model::EntityAttribute::List& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status) override;
@@ -43,6 +48,8 @@ namespace TrenchBroom {
             void onNode(Model::Node* parent, Model::Node* node, ParserStatus& status) override;
             void onUnresolvedNode(const ParentInfo& parentInfo, Model::Node* node, ParserStatus& status) override;
             void onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& status) override;
+
+            void createDeferredDetailBrushes();
         };
     }
 }

@@ -38,6 +38,8 @@ namespace TrenchBroom {
                 return MapFormat::Quake3_Legacy;
             } else if (formatName == "Quake3") {
                 return MapFormat::Quake3;
+            } else if (formatName == "Nightfire") {
+                return MapFormat::Nightfire;
             } else {
                 return MapFormat::Unknown;
             }
@@ -59,6 +61,8 @@ namespace TrenchBroom {
                     return "Quake3 (legacy)";
                 case MapFormat::Quake3:
                     return "Quake3";
+                case MapFormat::Nightfire:
+                    return "Nightfire";
                 case MapFormat::Unknown:
                     return "Unknown";
                 switchDefault()

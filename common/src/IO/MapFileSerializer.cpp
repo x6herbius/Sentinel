@@ -213,6 +213,10 @@ namespace TrenchBroom {
                     return NodeSerializer::Ptr(new ValveFileSerializer(stream));
                 case Model::MapFormat::Hexen2:
                     return NodeSerializer::Ptr(new Hexen2FileSerializer(stream));
+                case Model::MapFormat::Nightfire:
+                    // For now we use the Valve file serialiser. This should be upgraded
+                    // to a specific serialiser later.
+                    return NodeSerializer::Ptr(new ValveFileSerializer(stream));
                 case Model::MapFormat::Unknown:
                     throw FileFormatException("Unknown map file format");
                 switchDefault()
