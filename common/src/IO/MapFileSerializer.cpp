@@ -198,6 +198,48 @@ namespace TrenchBroom {
             }
         };
 
+        class NightfireFileSerializer : public QuakeFileSerializer {
+        public:
+            NightfireFileSerializer(FILE* stream) :
+            QuakeFileSerializer(stream) {}
+        private:
+            size_t doWriteBrushFace(FILE* stream, Model::BrushFace* face) override {
+                writeFacePoints(stream, face);
+                writeNightfireTextureInfo(stream, face);
+                std::fprintf(stream, "\n");
+                return 1;
+            }
+            void writeNightfireTextureInfo(FILE* stream, Model::BrushFace* face) {
+                const String& textureName = face->textureName().empty() ? Model::BrushFace::NoTextureName : face->textureName();
+                const vm::vec3 xAxis = face->textureXAxis();
+                const vm::vec3 yAxis = face->textureYAxis();
+
+                // For now, we just fill in the extra Nightfire data with sensible defaults.
+                // If/when we actually implement things like lightmap scales and materials, we can change this.
+                std::fprintf(stream, " %s [ %.6g %.6g %.6g %.6g ] [ %.6g %.6g %.6g %.6g ] %.6g %.6g %.6g %u wld_lightmap [ 16 0 ]",
+                             textureName.c_str(),
+
+                             xAxis.x(),
+                             xAxis.y(),
+                             xAxis.z(),
+                             static_cast<double>(face->xOffset()),
+
+                             yAxis.x(),
+                             yAxis.y(),
+                             yAxis.z(),
+                             static_cast<double>(face->yOffset()),
+
+                             static_cast<double>(face->rotation()),
+                             static_cast<double>(face->xScale()),
+                             static_cast<double>(face->yScale()),
+
+                             // Slight hack for now: if the texture is a special texture,
+                             // set flag for no lightmaps on the face. This is quite
+                             // crude, and should be fixed in a principled way later.
+                             textureName.rfind("special/", 0) == 0 ? 32 : 0);
+            }
+        };
+
         NodeSerializer::Ptr MapFileSerializer::create(const Model::MapFormat format, FILE* stream) {
             switch (format) {
                 case Model::MapFormat::Standard:
@@ -214,9 +256,7 @@ namespace TrenchBroom {
                 case Model::MapFormat::Hexen2:
                     return NodeSerializer::Ptr(new Hexen2FileSerializer(stream));
                 case Model::MapFormat::Nightfire:
-                    // For now we use the Valve file serialiser. This should be upgraded
-                    // to a specific serialiser later.
-                    return NodeSerializer::Ptr(new ValveFileSerializer(stream));
+                    return NodeSerializer::Ptr(new NightfireFileSerializer(stream));
                 case Model::MapFormat::Unknown:
                     throw FileFormatException("Unknown map file format");
                 switchDefault()
