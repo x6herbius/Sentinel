@@ -56,8 +56,9 @@ namespace TrenchBroom {
             }
         }
 
-        TextureNameTagMatcher::TextureNameTagMatcher(String pattern) :
-        m_pattern(std::move(pattern)) {}
+        TextureNameTagMatcher::TextureNameTagMatcher(String pattern, bool fullPath) :
+        m_pattern(std::move(pattern)),
+        m_matchFullPathOnly(fullPath) {}
 
         std::unique_ptr<TagMatcher> TextureNameTagMatcher::clone() const {
             return std::make_unique<TextureNameTagMatcher>(m_pattern);
@@ -113,9 +114,11 @@ namespace TrenchBroom {
         bool TextureNameTagMatcher::matchesTextureName(const String& textureName) const {
             auto begin = std::begin(textureName);
 
-            const auto pos = textureName.find_last_of('/');
-            if (pos != String::npos) {
-                std::advance(begin, long(pos)+1);
+            if (m_matchFullPathOnly) {
+                const auto pos = textureName.find_last_of('/');
+                if (pos != String::npos) {
+                    std::advance(begin, long(pos)+1);
+                }
             }
 
             return StringUtils::matchesPattern(

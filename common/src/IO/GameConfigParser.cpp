@@ -295,7 +295,13 @@ namespace TrenchBroom {
                     expectMapEntry(entry, "pattern", EL::ValueType::String);
                     auto pattern = entry["pattern"].stringValue();
                     auto attribs = parseTagAttributes(entry["attribs"]);
-                    auto matcher = std::make_unique<Model::TextureNameTagMatcher>(std::move(pattern));
+                    auto matcher = std::make_unique<Model::TextureNameTagMatcher>(std::move(pattern), false);
+                    result.emplace_back(std::move(name), std::move(attribs), std::move(matcher));
+                } else if (match == "texturepath") {
+                    expectMapEntry(entry, "pattern", EL::ValueType::String);
+                    auto pattern = entry["pattern"].stringValue();
+                    auto attribs = parseTagAttributes(entry["attribs"]);
+                    auto matcher = std::make_unique<Model::TextureNameTagMatcher>(std::move(pattern), true);
                     result.emplace_back(std::move(name), std::move(attribs), std::move(matcher));
                 } else if (match == "surfaceparm") {
                     expectMapEntry(entry, "pattern", EL::ValueType::String);
