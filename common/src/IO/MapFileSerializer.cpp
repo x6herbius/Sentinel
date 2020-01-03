@@ -213,7 +213,7 @@ namespace TrenchBroom {
                 return 1;
             }
             void writeNightfireTextureInfo(FILE* stream, Model::BrushFace* face) {
-                const String& textureName = face->textureName().empty() ? Model::BrushFace::NoTextureName : face->textureName();
+                const std::string& textureName = face->textureName().empty() ? Model::BrushFace::NoTextureName : face->textureName();
                 const vm::vec3 xAxis = face->textureXAxis();
                 const vm::vec3 yAxis = face->textureYAxis();
 

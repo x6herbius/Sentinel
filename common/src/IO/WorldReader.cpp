@@ -18,6 +18,7 @@
  */
 
 #include "WorldReader.h"
+#include "Ensure.h"
 
 #include "IO/ParserStatus.h"
 #include "Model/Brush.h"

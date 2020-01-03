@@ -747,13 +747,13 @@ namespace TrenchBroom {
         void StandardMapParser::parseBrushExtraAttribute(ExtraAttributes& attributes, ParserStatus&) {
             auto token = m_tokenizer.nextToken();
             assert(token.type() == QuakeMapToken::String);
-            const String name = token.data();
+            const std::string name = token.data();
 
             const size_t line = token.line();
             const size_t column = token.column();
 
             expect(QuakeMapToken::String, token = m_tokenizer.nextToken());
-            const String value = token.data();
+            const std::string value = token.data();
 
             attributes.insert(std::make_pair(name, ExtraAttribute(ExtraAttribute::Type_String, name, value, line, column)));
         }
