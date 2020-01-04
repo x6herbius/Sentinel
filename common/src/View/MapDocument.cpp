@@ -21,9 +21,6 @@
 
 #include "PreferenceManager.h"
 #include "Preferences.h"
-#include "Polyhedron.h"
-#include "Polyhedron3.h"
-#include "SharedPointer.h"
 #include "Assets/EntityDefinition.h"
 #include "Assets/EntityDefinitionGroup.h"
 #include "Assets/EntityDefinitionManager.h"
@@ -78,6 +75,8 @@
 #include "Model/WorldBoundsIssueGenerator.h"
 #include "Model/PointEntityWithBrushesIssueGenerator.h"
 #include "Model/PointFile.h"
+#include "Model/Polyhedron.h"
+#include "Model/Polyhedron3.h"
 #include "Model/PortalFile.h"
 #include "Model/TagManager.h"
 #include "Model/World.h"
@@ -119,8 +118,10 @@
 
 #include <kdl/collection_utils.h>
 #include <kdl/map_utils.h>
+#include <kdl/memory_utils.h>
 #include <kdl/vector_utils.h>
 
+#include <vecmath/polygon.h>
 #include <vecmath/util.h>
 #include <vecmath/vec.h>
 #include <vecmath/vec_io.h>
@@ -497,7 +498,7 @@ namespace TrenchBroom {
             return hasSelectedBrushFaces() || selectedNodes().hasBrushes();
         }
 
-        const std::vector<Model::AttributableNode*> MapDocument::allSelectedAttributableNodes() const {
+        std::vector<Model::AttributableNode*> MapDocument::allSelectedAttributableNodes() const {
             if (!hasSelection())
                 return std::vector<Model::AttributableNode*>({ m_world.get() });
 
@@ -510,7 +511,7 @@ namespace TrenchBroom {
             return m_selectedNodes;
         }
 
-        const std::vector<Model::BrushFace*> MapDocument::allSelectedBrushFaces() const {
+        std::vector<Model::BrushFace*> MapDocument::allSelectedBrushFaces() const {
             if (hasSelectedBrushFaces())
                 return selectedBrushFaces();
             Model::CollectBrushFacesVisitor visitor;
@@ -1121,7 +1122,7 @@ namespace TrenchBroom {
                 return false;
             }
 
-            Polyhedron3 polyhedron;
+            Model::Polyhedron3 polyhedron;
 
             if (hasSelectedBrushFaces()) {
                 for (const Model::BrushFace* face : selectedBrushFaces()) {
@@ -1291,27 +1292,27 @@ namespace TrenchBroom {
             return true;
         }
 
-        bool MapDocument::setAttribute(const Model::AttributeName& name, const Model::AttributeValue& value) {
+        bool MapDocument::setAttribute(const std::string& name, const std::string& value) {
             const auto result = executeAndStore(ChangeEntityAttributesCommand::set(name, value));
             return result->success();
         }
 
-        bool MapDocument::renameAttribute(const Model::AttributeName& oldName, const Model::AttributeName& newName) {
+        bool MapDocument::renameAttribute(const std::string& oldName, const std::string& newName) {
             const auto result = executeAndStore(ChangeEntityAttributesCommand::rename(oldName, newName));
             return result->success();
         }
 
-        bool MapDocument::removeAttribute(const Model::AttributeName& name) {
+        bool MapDocument::removeAttribute(const std::string& name) {
             const auto result = executeAndStore(ChangeEntityAttributesCommand::remove(name));
             return result->success();
         }
 
-        bool MapDocument::convertEntityColorRange(const Model::AttributeName& name, Assets::ColorRange::Type range) {
+        bool MapDocument::convertEntityColorRange(const std::string& name, Assets::ColorRange::Type range) {
             const auto result = executeAndStore(ConvertEntityColorCommand::convert(name, range));
             return result->success();
         }
 
-        bool MapDocument::updateSpawnflag(const Model::AttributeName& name, const size_t flagIndex, const bool setFlag) {
+        bool MapDocument::updateSpawnflag(const std::string& name, const size_t flagIndex, const bool setFlag) {
             const auto result = executeAndStore(UpdateEntitySpawnflagCommand::update(name, flagIndex, setFlag));
             return result->success();
         }
@@ -2159,7 +2160,7 @@ namespace TrenchBroom {
         }
 
         Transaction::Transaction(std::weak_ptr<MapDocument> document, const std::string& name) :
-        m_document(lock(document).get()),
+        m_document(kdl::mem_lock(document).get()),
         m_cancelled(false) {
             begin(name);
         }

@@ -20,10 +20,8 @@
 #ifndef TrenchBroom_BrushBuilder
 #define TrenchBroom_BrushBuilder
 
-#include "TrenchBroom.h"
-#include "Polyhedron3.h"
-
-#include "Model/Model_Forward.h"
+#include "FloatType.h"
+#include "Model/Polyhedron3.h"
 
 #include <vecmath/bbox.h>
 
@@ -32,6 +30,9 @@
 
 namespace TrenchBroom {
     namespace Model {
+        class Brush;
+        class ModelFactory;
+
         class BrushBuilder {
         private:
             ModelFactory* m_factory;
