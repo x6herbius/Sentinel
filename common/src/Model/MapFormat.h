@@ -56,11 +56,7 @@ namespace TrenchBroom {
             /**
              * Quake 3 with brush primitives, also allows Quake 2 brushes
              */
-            Quake3,
-            /**
-            * This is essentially the same as Valve, but with extended syntax.
-            */
-            Nightfire
+            Quake3
         };
 
         /**

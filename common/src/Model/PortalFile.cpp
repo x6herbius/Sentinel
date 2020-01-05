@@ -57,8 +57,7 @@ namespace TrenchBroom {
             }
 
             std::string line;
-            int numPortals = 0;
-            int numLeaves = 0;
+            int numPortals;
 
             // read header
             std::getline(stream, line);
@@ -78,22 +77,12 @@ namespace TrenchBroom {
                 std::getline(stream, line); // number of portals
                 numPortals = std::stoi(line);
                 std::getline(stream, line); // number of leafs (ignored)
-            } else if (formatCode == "PRT1-AB") {
-                std::getline(stream, line); // number of leaves
-                numLeaves = std::stoi(line);
-                std::getline(stream, line); // number of portals
-                numPortals = std::stoi(line);
             } else {
                 throw FileFormatException("Unknown portal format: " + formatCode);
             }
 
             if (!stream.good()) {
-                throw FileFormatException("Error reading portal file header.");
-            }
-
-            // Skip past leaves.
-            for (int i = 0; i < numLeaves; ++i) {
-                std::getline(stream, line);
+                throw FileFormatException("Error reading header");
             }
 
             // read portals
@@ -101,12 +90,8 @@ namespace TrenchBroom {
                 std::getline(stream, line);
                 const auto components = kdl::str_split(line, "() \n\t\r");
 
-                if (!stream.good()) {
-                    throw FileFormatException("Error reading portal file.");
-                }
-
-                if (components.size() < 3) {
-                    throw FileFormatException("Error reading portal: expected 3 components but read " + std::to_string(components.size()) + ".");
+                if (!stream.good() || components.size() < 3) {
+                    throw FileFormatException("Error reading portal");
                 }
 
                 std::vector<vm::vec3f> verts;
@@ -114,7 +99,7 @@ namespace TrenchBroom {
                 const int numPoints = std::stoi(components.at(0));
                 for (int j = 0; j < numPoints; ++j) {
                     if (ptr + 2 >= components.size()) {
-                        throw FileFormatException("Error reading portal.");
+                        throw FileFormatException("Error reading portal");
                     }
 
                     const vm::vec3f vert(std::stof(components.at(ptr)),
