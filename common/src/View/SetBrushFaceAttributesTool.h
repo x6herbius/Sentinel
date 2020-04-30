@@ -26,12 +26,32 @@
 #include <memory>
 
 namespace TrenchBroom {
+    namespace Model {
+        class BrushFace;
+    }
     namespace View {
         class MapDocument;
 
-        class SetBrushFaceAttributesTool : public ToolControllerBase<NoPickingPolicy, NoKeyPolicy, MousePolicy, NoMouseDragPolicy, NoRenderPolicy, NoDropPolicy>, public Tool {
+        /**
+         * Functionality summary:
+         *
+         * Modifier combinations:
+         * - Alt:       transfer texture and alignment from selected
+         * - Alt+Shift: transfer texture and alignment (rotation method) from selected
+         * - Alt+Ctrl:  transfer texture (but not alignment) from selected
+         *
+         * Actions:
+         * - LMB Click: applies to clicked faces
+         * - LMB Drag: applies to all faces dragged over
+         * - LMB Double click: applies to all faces of target brush
+         */
+        class SetBrushFaceAttributesTool : public ToolControllerBase<NoPickingPolicy, NoKeyPolicy, MousePolicy, MouseDragPolicy, NoRenderPolicy, NoDropPolicy>, public Tool {
         private:
             std::weak_ptr<MapDocument> m_document;
+        private: // drag state
+            Model::BrushFace* m_dragInitialSelectedFace;
+            Model::BrushFace* m_dragTargetFace;
+            Model::BrushFace* m_dragSourceFace;
         public:
             SetBrushFaceAttributesTool(std::weak_ptr<MapDocument> document);
         private:
@@ -40,12 +60,24 @@ namespace TrenchBroom {
 
             bool doMouseClick(const InputState& inputState) override;
             bool doMouseDoubleClick(const InputState& inputState) override;
-
-            bool performCopy(const InputState& inputState, bool applyToBrush);
+            
+            void copyAttributesFromSelection(const InputState& inputState, bool applyToBrush);
+            bool canCopyAttributesFromSelection(const InputState& inputState) const;
             bool applies(const InputState& inputState) const;
-            bool copyAttributes(const InputState& inputState) const;
+            bool copyTextureOnlyModifiersDown(const InputState& inputState) const;
+            bool copyTextureAttribsProjectionModifiersDown(const InputState& inputState) const;
+            bool copyTextureAttribsRotationModifiersDown(const InputState& inputState) const;
 
             bool doCancel() override;
+            
+            bool doStartMouseDrag(const InputState& inputState) override;
+            bool doMouseDrag(const InputState& inputState) override;
+            void doEndMouseDrag(const InputState& inputState) override;
+            void doCancelMouseDrag() override;
+
+            void resetDragState();
+            void transferFaceAttributes(const InputState& inputState, Model::BrushFace* sourceFace,
+                                        const std::vector<Model::BrushFace*>& targetFaces, Model::BrushFace* faceToSelectAfter);
         };
     }
 }

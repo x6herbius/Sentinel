@@ -143,7 +143,7 @@ namespace TrenchBroom {
             expectStructure(value,
                             "["
                             "{'package': 'Map', 'format': 'Map'},"
-                            "{'attribute': 'String', 'palette': 'String', 'shaderSearchPath': 'String'}"
+                            "{'attribute': 'String', 'palette': 'String', 'shaderSearchPath': 'String', 'excludes': 'Array'}"
                             "]");
 
             const Model::TexturePackageConfig packageConfig = parseTexturePackageConfig(value["package"]);
@@ -151,8 +151,9 @@ namespace TrenchBroom {
             const Path palette(value["palette"].stringValue());
             const std::string& attribute = value["attribute"].stringValue();
             const Path shaderSearchPath(value["shaderSearchPath"].stringValue());
+            const std::vector<std::string> excludes = std::vector<std::string>(value["excludes"].asStringList());
 
-            return Model::TextureConfig(packageConfig, formatConfig, palette, attribute, shaderSearchPath);
+            return Model::TextureConfig(packageConfig, formatConfig, palette, attribute, shaderSearchPath, excludes);
         }
 
         Model::TexturePackageConfig GameConfigParser::parseTexturePackageConfig(const EL::Value& value) const {
@@ -200,14 +201,14 @@ namespace TrenchBroom {
                             "{'defaults': 'Map'}"
                             "]");
 
-            const Model::FlagsConfig surfaceFlags = parseFlagConfig(value["surfaceflags"]);
-            const Model::FlagsConfig contentFlags = parseFlagConfig(value["contentflags"]);
+            const Model::FlagsConfig surfaceFlags = parseFlagsConfig(value["surfaceflags"]);
+            const Model::FlagsConfig contentFlags = parseFlagsConfig(value["contentflags"]);
             const Model::BrushFaceAttributes defaults = parseFaceAttribsDefaults(value["defaults"], surfaceFlags, contentFlags);
 
             return Model::FaceAttribsConfig(surfaceFlags, contentFlags, defaults);
         }
 
-        std::vector<Model::FlagConfig> GameConfigParser::parseFlagConfig(const EL::Value& value) const {
+        Model::FlagsConfig GameConfigParser::parseFlagsConfig(const EL::Value& value) const {
             using Model::GameConfig;
 
             if (value.null()) {
@@ -226,7 +227,7 @@ namespace TrenchBroom {
                 flags.push_back(Model::FlagConfig(name, description));
             }
 
-            return flags;
+            return Model::FlagsConfig(flags);
         }
 
         Model::BrushFaceAttributes GameConfigParser::parseFaceAttribsDefaults(const EL::Value& value, const Model::FlagsConfig& surfaceFlags, const Model::FlagsConfig& contentFlags) const {
@@ -298,6 +299,17 @@ namespace TrenchBroom {
             return result;
         }
 
+        namespace {
+            void checkTagName(const EL::Value& nameValue, const std::vector<Model::SmartTag>& tags) {
+                const auto& name = nameValue.stringValue();
+                for (const auto& tag : tags) {
+                    if (tag.name() == name) {
+                        throw ParserException(nameValue.line(), nameValue.column(), "Duplicate tag '" + name + "'");
+                    }
+                }
+            }
+        }
+    
         void GameConfigParser::parseBrushTags(const EL::Value& value, std::vector<Model::SmartTag>& result) const {
             if (value.null()) {
                 return;
@@ -307,6 +319,8 @@ namespace TrenchBroom {
                 const auto& entry = value[i];
 
                 expectStructure(entry, "[ {'name': 'String', 'match': 'String'}, {'attribs': 'Array', 'pattern': 'String', 'texture': 'String' } ]");
+                checkTagName(entry["name"], result);
+                
                 auto name = entry["name"].stringValue();
                 auto match = entry["match"].stringValue();
 
@@ -331,6 +345,8 @@ namespace TrenchBroom {
                 const auto& entry = value[i];
 
                 expectStructure(entry, "[ {'name': 'String', 'match': 'String'}, {'attribs': 'Array', 'pattern': 'String', 'flags': 'Array' } ]");
+                checkTagName(entry["name"], result);
+
                 auto name = entry["name"].stringValue();
                 auto match = entry["match"].stringValue();
 

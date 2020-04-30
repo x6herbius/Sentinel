@@ -40,6 +40,7 @@
 #include "IO/MdlParser.h"
 #include "IO/Md2Parser.h"
 #include "IO/Md3Parser.h"
+#include "IO/MdxParser.h"
 #include "IO/NodeReader.h"
 #include "IO/NodeWriter.h"
 #include "IO/ObjParser.h"
@@ -132,7 +133,7 @@ namespace TrenchBroom {
                 auto* brush = builder.createCuboid(vm::vec3(128.0, 128.0, 32.0), Model::BrushFaceAttributes::NoTextureName);
                 world->defaultLayer()->addChild(brush);
 
-                if (format == MapFormat::Valve) {
+                if (format == MapFormat::Valve || format == MapFormat::Quake2_Valve || format == MapFormat::Quake3_Valve) {
                     world->addOrUpdateAttribute(AttributeNames::ValveVersion, "220");
                 }
 
@@ -385,10 +386,14 @@ namespace TrenchBroom {
                     auto reader = file->reader().buffer();
                     IO::Md3Parser parser(modelName, std::begin(reader), std::end(reader), m_fs);
                     return parser.initializeModel(logger);
+                } else if (extension == "mdx" && kdl::vec_contains(supported, "mdx")) {
+                    auto reader = file->reader().buffer();
+                    IO::MdxParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    return parser.initializeModel(logger);
                 } else if (extension == "bsp" && kdl::vec_contains(supported, "bsp")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
-                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette);
+                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette, m_fs);
                     return parser.initializeModel(logger);
                 } else if (extension == "dkm" && kdl::vec_contains(supported, "dkm")) {
                     auto reader = file->reader().buffer();
@@ -441,10 +446,14 @@ namespace TrenchBroom {
                     auto reader = file->reader().buffer();
                     IO::Md3Parser parser(modelName, std::begin(reader), std::end(reader), m_fs);
                     parser.loadFrame(frameIndex, model, logger);
+                } else if (extension == "mdx" && kdl::vec_contains(supported, "mdx")) {
+                    auto reader = file->reader().buffer();
+                    IO::MdxParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "bsp" && kdl::vec_contains(supported, "bsp")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
-                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette);
+                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette, m_fs);
                     parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "dkm" && kdl::vec_contains(supported, "dkm")) {
                     auto reader = file->reader().buffer();

@@ -236,7 +236,7 @@ namespace TrenchBroom {
         m_fs(fs) {}
 
         // http://tfc.duke.free.fr/old/models/md2.htm
-        std::unique_ptr<Assets::EntityModel> DkmParser::doInitializeModel(Logger& /* logger */) {
+        std::unique_ptr<Assets::EntityModel> DkmParser::doInitializeModel(Logger& logger) {
             auto reader = Reader::from(m_begin, m_end);
 
             const int ident = reader.readInt<int32_t>();
@@ -265,11 +265,11 @@ namespace TrenchBroom {
 
             const auto skins = parseSkins(reader.subReaderFromBegin(skinOffset), skinCount);
 
-            auto model = std::make_unique<Assets::EntityModel>(m_name);
+            auto model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::Normal);
             model->addFrames(frameCount);
 
             auto& surface = model->addSurface(m_name);
-            loadSkins(surface, skins);
+            loadSkins(surface, skins, logger);
 
             return model;
         }
@@ -380,10 +380,10 @@ namespace TrenchBroom {
             return meshes;
         }
 
-        void DkmParser::loadSkins(Assets::EntityModelSurface& surface, const DkmParser::DkmSkinList& skins) {
+        void DkmParser::loadSkins(Assets::EntityModelSurface& surface, const DkmParser::DkmSkinList& skins, Logger& logger) {
             for (const auto& skin : skins) {
                 const auto skinPath = findSkin(skin);
-                surface.addSkin(loadSkin(m_fs.openFile(skinPath)));
+                surface.addSkin(loadSkin(skinPath, m_fs, logger).release());
             }
         }
 

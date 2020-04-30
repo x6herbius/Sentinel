@@ -110,14 +110,6 @@ namespace TrenchBroom {
             }
         }
 
-        bool EntityModelManager::hasModel(const Model::Entity* entity) const {
-            return hasModel(entity->modelSpecification());
-        }
-
-        bool EntityModelManager::hasModel(const Assets::ModelSpecification& spec) const {
-            return renderer(spec) != nullptr;
-        }
-
         EntityModel* EntityModelManager::model(const IO::Path& path) const {
             if (path.isEmpty()) {
                 return nullptr;
@@ -167,7 +159,8 @@ namespace TrenchBroom {
                 ensure(m_loader != nullptr, "loader is null");
                 m_loader->loadFrame(spec.path, spec.frameIndex, model, m_logger);
             } catch (const Exception& e) {
-                m_logger.error() << e.what();
+                // FIXME: be specific about which exceptions to catch here
+                m_logger.error() << "Could not load entity model frame " << spec << ": " << e.what();
             }
         }
 

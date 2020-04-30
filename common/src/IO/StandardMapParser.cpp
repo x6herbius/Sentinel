@@ -68,6 +68,12 @@ namespace TrenchBroom {
                             discardUntil("\n\r");
                         }
                         break;
+                    case ';':
+                        // Heretic2 allows semicolon to start a line comment.
+                        // QuArK writes comments in this format when saving a Heretic2 .map.
+                        advance();
+                        discardUntil("\n\r");
+                        break;
                     case '{':
                         advance();
                         return Token(QuakeMapToken::OBrace, c, c+1, offset(c), startLine, startColumn);
@@ -183,7 +189,15 @@ namespace TrenchBroom {
                     m_tokenizer.readRemainder(QuakeMapToken::OBracket | QuakeMapToken::Eol);
                     expect(QuakeMapToken::OBracket | QuakeMapToken::Eol, token = m_tokenizer.peekToken());
 
-                    format = token.type() == QuakeMapToken::OBracket ? Model::MapFormat::Nightfire : Model::MapFormat::Valve;
+                    if ( token.type() == QuakeMapToken::OBracket )
+                    {
+                        format = Model::MapFormat::Nightfire;
+                    }
+                    else
+                    {
+                        format = Model::MapFormat::Valve;
+                        // TODO: Could also be Model::MapFormat::Quake2_Valve or Model::MapFormat::Quake3_Valve, handle this case.
+                    }
                 }
             }
 
@@ -348,7 +362,8 @@ namespace TrenchBroom {
                 } else {
                     parseBrush(status, startLine, false);
                 }
-            } else if (m_format == Model::MapFormat::Quake3_Legacy) {
+            } else if (m_format == Model::MapFormat::Quake3_Valve ||
+                       m_format == Model::MapFormat::Quake3_Legacy) {
                 // We expect either a patch or a regular brush.
                 expect(QuakeMapToken::String | QuakeMapToken::OParenthesis, token);
                 if (token.hasType(QuakeMapToken::String)) {
@@ -433,6 +448,10 @@ namespace TrenchBroom {
                 case Model::MapFormat::Quake3_Legacy:
                     parseQuake2Face(status);
                     break;
+                case Model::MapFormat::Quake2_Valve:
+                case Model::MapFormat::Quake3_Valve:
+                    parseQuake2ValveFace(status);
+                    break;
                 case Model::MapFormat::Hexen2:
                     parseHexen2Face(status);
                     break;
@@ -499,6 +518,33 @@ namespace TrenchBroom {
 
             if (checkFacePoints(status, p1, p2, p3, line)) {
                 brushFace(line, p1, p2, p3, attribs, vm::vec3::zero(), vm::vec3::zero(), status);
+            }
+        }
+
+        void StandardMapParser::parseQuake2ValveFace(ParserStatus& status) {
+            const auto line = m_tokenizer.line();
+
+            const auto [p1, p2, p3] = parseFacePoints(status);
+            const auto textureName = parseTextureName(status);
+
+            const auto [texX, xOffset, texY, yOffset] = parseValveTextureAxes(status);
+
+            auto attribs = Model::BrushFaceAttributes(textureName);
+            attribs.setXOffset(xOffset);
+            attribs.setYOffset(yOffset);
+            attribs.setRotation(parseFloat());
+            attribs.setXScale(parseFloat());
+            attribs.setYScale(parseFloat());
+
+            // Quake 2 extra info is optional
+            if (!check(QuakeMapToken::OParenthesis | QuakeMapToken::CBrace | QuakeMapToken::Eof, m_tokenizer.peekToken())) {
+                attribs.setSurfaceContents(parseInteger());
+                attribs.setSurfaceFlags(parseInteger());
+                attribs.setSurfaceValue(parseFloat());
+            }
+
+            if (checkFacePoints(status, p1, p2, p3, line)) {
+                brushFace(line, p1, p2, p3, attribs, texX, texY, status);
             }
         }
 

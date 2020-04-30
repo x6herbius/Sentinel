@@ -25,7 +25,8 @@
 #include "IO/FileSystem.h"
 #include "IO/FreeImageTextureReader.h"
 #include "IO/Path.h"
-#include "IO/Quake3ShaderTextureReader.h"
+#include "IO/ResourceUtils.h"
+#include "IO/SkinLoader.h"
 #include "Renderer/PrimType.h"
 #include "Renderer/TexturedIndexRangeMap.h"
 #include "Renderer/TexturedIndexRangeMapBuilder.h"
@@ -158,15 +159,29 @@ namespace TrenchBroom {
             expectDirective("MATERIAL");
             const auto index = parseSizeArgument();
             if (index < paths.size()) {
+                std::string name;
                 auto& path = paths[index];
+                
                 parseBlock({
-                    { "MAP_DIFFUSE", std::bind(&AseParser::parseMaterialListMaterialMapDiffuse, this, std::ref(logger), std::ref(path)) }
+                    { "MAP_DIFFUSE", std::bind(&AseParser::parseMaterialListMaterialMapDiffuse, this, std::ref(logger), std::ref(path)) },
+                    { "MATERIAL_NAME", std::bind(&AseParser::parseMaterialListMaterialName, this, std::ref(logger), std::ref(name)) }
                 });
+                
+                if (path.isEmpty()) {
+                    logger.warn() << "Material " << index << " is missing a 'BITMAP' directive, falling back to material name '" << name << "'";
+                    path = Path(name);
+                }
             } else {
                 logger.warn() << "Material index " << index << " is out of bounds.";
                 parseBlock({});
             }
 
+        }
+
+        void AseParser::parseMaterialListMaterialName(Logger&, std::string& name) {
+            expectDirective("MATERIAL_NAME");
+            const auto token = expect(AseToken::String, m_tokenizer.nextToken());
+            name = token.data();
         }
 
         void AseParser::parseMaterialListMaterialMapDiffuse(Logger& logger, Path& path) {
@@ -260,6 +275,8 @@ namespace TrenchBroom {
             expectDirective("MESH_FACE");
             expectSizeArgument(faces.size());
 
+            const std::size_t line = m_tokenizer.line();
+
             // the colon after the face index is sometimes missing
             m_tokenizer.skipToken(AseToken::Colon);
 
@@ -293,7 +310,7 @@ namespace TrenchBroom {
                 MeshFaceVertex{ vertexIndexA, 0 },
                 MeshFaceVertex{ vertexIndexB, 0 },
                 MeshFaceVertex{ vertexIndexC, 0 }
-            }});
+            }, line });
         }
 
         void AseParser::parseGeomObjectMeshNumTVertex(Logger& /* logger */, std::vector<vm::vec2f>& uv) {
@@ -334,7 +351,7 @@ namespace TrenchBroom {
             }
 
             for (size_t i = 0; i < 3; ++i) {
-                faces[index][i].uvIndex = parseSizeArgument();
+                faces[index].vertices[i].uvIndex = parseSizeArgument();
             }
         }
 
@@ -446,11 +463,11 @@ namespace TrenchBroom {
             result[AseToken::Eof]          = "end of file";
             return result;
         }
-
+    
         std::unique_ptr<Assets::EntityModel> AseParser::buildModel(Logger& logger, const Scene& scene) const {
             using Vertex = Assets::EntityModelVertex;
 
-            auto model = std::make_unique<Assets::EntityModel>(m_name);
+            auto model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::Normal);
             model->addFrames(1);
             auto& surface = model->addSurface(m_name);
 
@@ -460,14 +477,9 @@ namespace TrenchBroom {
             // Load the textures
             for (size_t i = 0; i < scene.materialPaths.size(); ++i) {
                 auto path = scene.materialPaths[i];
-                try {
-                    auto texture = loadTexture(logger, path);
-                    textures[i] = texture.get();
-                    surface.addSkin(texture.release());
-                } catch (const std::exception& e) {
-                    logger.error() << "Failed to load texture '" << path << "': " << e.what();
-                    textures[i] = nullptr;
-                }
+                auto texture = loadTexture(logger, path);
+                textures[i] = texture.get();
+                surface.addSkin(texture.release());
             }
 
             // Count vertices and build bounds
@@ -481,7 +493,8 @@ namespace TrenchBroom {
                 const auto textureIndex = geomObject.materialIndex;
                 auto* texture = textureIndex < textures.size() ? textures[textureIndex] : nullptr;
                 if (texture == nullptr) {
-                    logger.warn() << "Invalid texture index " << textureIndex;
+                    logger.warn() << "Invalid material index " << textureIndex;
+                    texture = loadDefaultTexture(m_fs, logger, "").release();
                 }
 
                 const auto vertexCount = mesh.faces.size() * 3;
@@ -500,11 +513,27 @@ namespace TrenchBroom {
                 auto* texture = textureIndex < textures.size() ? textures[textureIndex] : nullptr;
 
                 for (const auto& face : mesh.faces) {
+                    if (!checkIndices(logger, face, mesh)) {
+                        continue;
+                    }
+
+                    const auto& fv0 = face.vertices[0];
+                    const auto& fv1 = face.vertices[1];
+                    const auto& fv2 = face.vertices[2];
+
+                    const auto v0 = mesh.vertices[fv0.vertexIndex];
+                    const auto v1 = mesh.vertices[fv1.vertexIndex];
+                    const auto v2 = mesh.vertices[fv2.vertexIndex];
+                    
+                    const auto uv0 = fv0.uvIndex == 0u && mesh.uv.empty() ? vm::vec2f::zero() : mesh.uv[fv0.uvIndex];
+                    const auto uv1 = fv1.uvIndex == 0u && mesh.uv.empty() ? vm::vec2f::zero() : mesh.uv[fv1.uvIndex];
+                    const auto uv2 = fv2.uvIndex == 0u && mesh.uv.empty() ? vm::vec2f::zero() : mesh.uv[fv2.uvIndex];
+
                     builder.addTriangle(
                         texture,
-                        Vertex(mesh.vertices[face[2].vertexIndex], mesh.uv[face[2].uvIndex]),
-                        Vertex(mesh.vertices[face[1].vertexIndex], mesh.uv[face[1].uvIndex]),
-                        Vertex(mesh.vertices[face[0].vertexIndex], mesh.uv[face[0].uvIndex]));
+                        Vertex(v2, uv2),
+                        Vertex(v1, uv1),
+                        Vertex(v0, uv0));
                 }
 
             }
@@ -513,18 +542,23 @@ namespace TrenchBroom {
             return model;
         }
 
+        bool AseParser::checkIndices(Logger& logger, const MeshFace& face, const Mesh& mesh) const {
+            for (std::size_t i = 0u; i < 3u; ++i) {
+                const auto& faceVertex = face.vertices[i];
+                if (faceVertex.vertexIndex >= mesh.vertices.size()) {
+                    logger.warn() << "Line " << face.line << ": Vertex index " << faceVertex.vertexIndex << " is out of bounds, skipping face";
+                    return false;
+                } else if (!mesh.uv.empty() && faceVertex.uvIndex >= mesh.uv.size()) {
+                    logger.warn() << "Line " << face.line << ": UV index " << faceVertex.uvIndex << " is out of bounds, skipping face";
+                    return false;
+                }
+            }
+            return true;
+        }
+
         std::unique_ptr<Assets::Texture> AseParser::loadTexture(Logger& logger, const Path& path) const {
             const auto actualPath = fixTexturePath(logger, path);
-            if (!actualPath.isEmpty()) {
-                logger.debug() << "Loading texture from '" << actualPath << "'";
-                const auto file = m_fs.fileExists(actualPath.deleteExtension()) ? m_fs.openFile(actualPath.deleteExtension()) : m_fs.openFile(actualPath);
-
-                Quake3ShaderTextureReader reader(TextureReader::PathSuffixNameStrategy(2, true), m_fs);
-                return std::unique_ptr<Assets::Texture>(reader.readTexture(file));
-            } else {
-                IO::FreeImageTextureReader imageReader(IO::TextureReader::StaticNameStrategy(""));
-                return std::unique_ptr<Assets::Texture>(imageReader.readTexture(m_fs.openFile(IO::Path("textures/__TB_empty.png"))));
-            }
+            return loadShader(actualPath, m_fs, logger);
         }
 
         Path AseParser::fixTexturePath(Logger& /* logger */, Path path) const {
