@@ -35,11 +35,13 @@ namespace TrenchBroom {
         private:
             std::string FacePointFormat;
             std::string TextureInfoFormat;
+            std::string ValveTextureInfoFormat;
         public:
-            QuakeFileSerializer(FILE* stream) :
+            explicit QuakeFileSerializer(FILE* stream) :
             MapFileSerializer(stream),
             FacePointFormat(getFacePointFormat()),
-            TextureInfoFormat(" %s %.6g %.6g %.6g %.6g %.6g") {}
+            TextureInfoFormat(" %s %.6g %.6g %.6g %.6g %.6g"),
+            ValveTextureInfoFormat(" %s [ %.6g %.6g %.6g %.6g ] [ %.6g %.6g %.6g %.6g ] %.6g %.6g %.6g") {}
         private:
             static std::string getFacePointFormat() {
                 std::stringstream str;
@@ -88,13 +90,36 @@ namespace TrenchBroom {
                              static_cast<double>(face->xScale()),
                              static_cast<double>(face->yScale()));
             }
+
+            void writeValveTextureInfo(FILE* stream, Model::BrushFace* face) {
+                const std::string& textureName = face->textureName().empty() ? Model::BrushFaceAttributes::NoTextureName : face->textureName();
+                const vm::vec3 xAxis = face->textureXAxis();
+                const vm::vec3 yAxis = face->textureYAxis();
+
+                std::fprintf(stream, ValveTextureInfoFormat.c_str(),
+                             textureName.c_str(),
+
+                             xAxis.x(),
+                             xAxis.y(),
+                             xAxis.z(),
+                             static_cast<double>(face->xOffset()),
+
+                             yAxis.x(),
+                             yAxis.y(),
+                             yAxis.z(),
+                             static_cast<double>(face->yOffset()),
+
+                             static_cast<double>(face->rotation()),
+                             static_cast<double>(face->xScale()),
+                             static_cast<double>(face->yScale()));
+            }
         };
 
         class Quake2FileSerializer : public QuakeFileSerializer {
         private:
             std::string SurfaceAttributesFormat;
         public:
-            Quake2FileSerializer(FILE* stream) :
+            explicit Quake2FileSerializer(FILE* stream) :
             QuakeFileSerializer(stream),
             SurfaceAttributesFormat(" %d %d %.6g") {}
         private:
@@ -118,12 +143,26 @@ namespace TrenchBroom {
             }
         };
 
+        class Quake2ValveFileSerializer : public Quake2FileSerializer {
+        public:
+            explicit Quake2ValveFileSerializer(FILE* stream) :
+            Quake2FileSerializer(stream) {}
+        private:
+            size_t doWriteBrushFace(FILE* stream, Model::BrushFace* face) override {
+                writeFacePoints(stream, face);
+                writeValveTextureInfo(stream, face);
+                writeSurfaceAttributes(stream, face);
+
+                std::fprintf(stream, "\n");
+                return 1;
+            }
+        };
 
         class DaikatanaFileSerializer : public Quake2FileSerializer {
         private:
             std::string SurfaceColorFormat;
         public:
-            DaikatanaFileSerializer(FILE* stream) :
+            explicit DaikatanaFileSerializer(FILE* stream) :
             Quake2FileSerializer(stream),
             SurfaceColorFormat(" %d %d %d") {}
         private:
@@ -152,7 +191,7 @@ namespace TrenchBroom {
 
         class Hexen2FileSerializer : public QuakeFileSerializer {
         public:
-            Hexen2FileSerializer(FILE* stream):
+            explicit Hexen2FileSerializer(FILE* stream):
             QuakeFileSerializer(stream) {}
         private:
             size_t doWriteBrushFace(FILE* stream, Model::BrushFace* face) override {
@@ -164,41 +203,15 @@ namespace TrenchBroom {
         };
 
         class ValveFileSerializer : public QuakeFileSerializer {
-        private:
-            std::string ValveTextureInfoFormat;
         public:
-            ValveFileSerializer(FILE* stream) :
-            QuakeFileSerializer(stream),
-            ValveTextureInfoFormat(" %s [ %.6g %.6g %.6g %.6g ] [ %.6g %.6g %.6g %.6g ] %.6g %.6g %.6g") {}
+            explicit ValveFileSerializer(FILE* stream) :
+            QuakeFileSerializer(stream) {}
         private:
             size_t doWriteBrushFace(FILE* stream, Model::BrushFace* face) override {
                 writeFacePoints(stream, face);
                 writeValveTextureInfo(stream, face);
                 std::fprintf(stream, "\n");
                 return 1;
-            }
-        private:
-            void writeValveTextureInfo(FILE* stream, Model::BrushFace* face) {
-                const std::string& textureName = face->textureName().empty() ? Model::BrushFaceAttributes::NoTextureName : face->textureName();
-                const vm::vec3 xAxis = face->textureXAxis();
-                const vm::vec3 yAxis = face->textureYAxis();
-
-                std::fprintf(stream, ValveTextureInfoFormat.c_str(),
-                             textureName.c_str(),
-
-                             xAxis.x(),
-                             xAxis.y(),
-                             xAxis.z(),
-                             static_cast<double>(face->xOffset()),
-
-                             yAxis.x(),
-                             yAxis.y(),
-                             yAxis.z(),
-                             static_cast<double>(face->yOffset()),
-
-                             static_cast<double>(face->rotation()),
-                             static_cast<double>(face->xScale()),
-                             static_cast<double>(face->yScale()));
             }
         };
 
@@ -211,6 +224,9 @@ namespace TrenchBroom {
                 case Model::MapFormat::Quake3:
                 case Model::MapFormat::Quake3_Legacy:
                     return std::make_unique<Quake2FileSerializer>(stream);
+                case Model::MapFormat::Quake2_Valve:
+                case Model::MapFormat::Quake3_Valve:
+                    return std::make_unique<Quake2ValveFileSerializer>(stream);
                 case Model::MapFormat::Daikatana:
                     return std::make_unique<DaikatanaFileSerializer>(stream);
                 case Model::MapFormat::Valve:

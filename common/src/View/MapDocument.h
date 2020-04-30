@@ -185,6 +185,13 @@ namespace TrenchBroom {
             void setCurrentLayer(Model::Layer* currentLayer);
 
             Model::Group* currentGroup() const override;
+            /**
+             * Returns the current group if one is open, otherwise the world.
+             */
+            Model::Node* currentGroupOrWorld() const override;
+            /**
+             * Returns the current group if one is open, otherwise the current layer.
+             */
             Model::Node* currentParent() const override;
 
             Model::EditorContext& editorContext() const;
@@ -273,6 +280,7 @@ namespace TrenchBroom {
             void selectSiblings() override;
             void selectTouching(bool del) override;
             void selectInside(bool del) override;
+            void selectInverse() override;
             void selectNodesWithFilePosition(const std::vector<size_t>& positions) override;
             void select(const std::vector<Model::Node*>& nodes) override;
             void select(Model::Node* node) override;
@@ -330,7 +338,7 @@ namespace TrenchBroom {
             void openGroup(Model::Group* group);
             void closeGroup();
         public: // modifying transient node attributes, declared in MapFacade interface
-            void isolate(const std::vector<Model::Node*>& nodes);
+            void isolate();
             void hide(std::vector<Model::Node*> nodes) override; // Don't take the nodes by reference!
             void hideSelection();
             void show(const std::vector<Model::Node*>& nodes) override;
@@ -366,7 +374,7 @@ namespace TrenchBroom {
         public: // brush resizing, declared in MapFacade interface
             bool resizeBrushes(const std::vector<vm::polygon3>& faces, const vm::vec3& delta) override;
         public: // modifying face attributes, declared in MapFacade interface
-            void setTexture(Assets::Texture* texture) override;
+            void setTexture(Assets::Texture* texture, bool toggle) override;
         private:
             bool hasTexture(const std::vector<Model::BrushFace*>& faces, Assets::Texture* texture) const;
         public:

@@ -23,9 +23,14 @@
 #include "TestUtils.h"
 #include "Assets/EntityDefinition.h"
 #include "Model/Brush.h"
+#include "Model/CollectMatchingIssuesVisitor.h"
+#include "Model/EmptyAttributeNameIssueGenerator.h"
+#include "Model/EmptyAttributeValueIssueGenerator.h"
 #include "Model/Entity.h"
 #include "Model/Group.h"
 #include "Model/HitQuery.h"
+#include "Model/Issue.h"
+#include "Model/IssueQuickFix.h"
 #include "Model/Layer.h"
 #include "Model/BrushFace.h"
 #include "Model/BrushBuilder.h"
@@ -44,16 +49,21 @@
 #include <vecmath/scalar.h>
 #include <vecmath/ray.h>
 
+#include "kdl/vector_utils.h"
+
 namespace TrenchBroom {
     namespace View {
         MapDocumentTest::MapDocumentTest() :
-        MapDocumentTest(Model::MapFormat::Standard) {}
+        MapDocumentTest(Model::MapFormat::Standard) {
+            SetUp();
+        }
 
         MapDocumentTest::MapDocumentTest(const Model::MapFormat mapFormat) :
-        ::testing::Test(),
         m_mapFormat(mapFormat),
         m_pointEntityDef(nullptr),
-        m_brushEntityDef(nullptr) {}
+        m_brushEntityDef(nullptr) {
+            SetUp();
+        }
 
         void MapDocumentTest::SetUp() {
             game = std::make_shared<Model::TestGame>();
@@ -67,7 +77,7 @@ namespace TrenchBroom {
             document->setEntityDefinitions(std::vector<Assets::EntityDefinition*>{ m_pointEntityDef, m_brushEntityDef });
         }
 
-        void MapDocumentTest::TearDown() {
+        MapDocumentTest::~MapDocumentTest() {
             m_pointEntityDef = nullptr;
             m_brushEntityDef = nullptr;
         }
@@ -102,7 +112,7 @@ namespace TrenchBroom {
             checkBoundsIntegral(brush);
         }
 
-        TEST_F(MapDocumentTest, flip) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.flip") {
             Model::BrushBuilder builder(document->world(), document->worldBounds());
             Model::Brush* brush1 = builder.createCuboid(vm::bbox3(vm::vec3(0.0, 0.0, 0.0), vm::vec3(30.0, 31.0, 31.0)), "texture");
             Model::Brush* brush2 = builder.createCuboid(vm::bbox3(vm::vec3(30.0, 0.0, 0.0), vm::vec3(31.0, 31.0, 31.0)), "texture");
@@ -130,7 +140,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::bbox3(vm::vec3(0.0, 0.0, 0.0), vm::vec3(1.0, 31.0, 31.0)), brush2->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, rotate) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.rotate") {
             Model::BrushBuilder builder(document->world(), document->worldBounds());
             Model::Brush *brush1 = builder.createCuboid(vm::bbox3(vm::vec3(0.0, 0.0, 0.0), vm::vec3(30.0, 31.0, 31.0)), "texture");
             Model::Brush *brush2 = builder.createCuboid(vm::bbox3(vm::vec3(30.0, 0.0, 0.0), vm::vec3(31.0, 31.0, 31.0)), "texture");
@@ -163,7 +173,7 @@ namespace TrenchBroom {
             ASSERT_EQ(brush2ExpectedBounds, brush2->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, shearCube) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.shearCube") {
             const vm::bbox3 initialBBox(vm::vec3(100,100,100), vm::vec3(200,200,200));
 
             Model::BrushBuilder builder(document->world(), document->worldBounds());
@@ -204,7 +214,7 @@ namespace TrenchBroom {
             ASSERT_COLLECTIONS_EQUIVALENT(shearedPositions, brush1->vertexPositions());
         }
 
-        TEST_F(MapDocumentTest, shearPillar) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.shearPillar") {
             const vm::bbox3 initialBBox(vm::vec3(0,0,0), vm::vec3(100,100,400));
 
             Model::BrushBuilder builder(document->world(), document->worldBounds());
@@ -245,7 +255,7 @@ namespace TrenchBroom {
             ASSERT_COLLECTIONS_EQUIVALENT(shearedPositions, brush1->vertexPositions());
         }
 
-        TEST_F(MapDocumentTest, scaleObjects) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.scaleObjects") {
             const vm::bbox3 initialBBox(vm::vec3(-100,-100,-100), vm::vec3(100,100,100));
             const vm::bbox3 doubleBBox(2.0 * initialBBox.min, 2.0 * initialBBox.max);
             const vm::bbox3 invalidBBox(vm::vec3(0,-100,-100), vm::vec3(0,100,100));
@@ -269,7 +279,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::plane3(200.0, vm::vec3::pos_z()), brush1->findFace(vm::vec3::pos_z())->boundary());
         }
 
-        TEST_F(MapDocumentTest, scaleObjectsInGroup) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.scaleObjectsInGroup") {
             const vm::bbox3 initialBBox(vm::vec3(-100, -100, -100), vm::vec3(100, 100, 100));
             const vm::bbox3 doubleBBox(2.0 * initialBBox.min, 2.0 * initialBBox.max);
             const vm::bbox3 invalidBBox(vm::vec3(0, -100, -100), vm::vec3(0, 100, 100));
@@ -289,7 +299,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::vec3(400, 400, 400), brush1->logicalBounds().size());
         }
 
-        TEST_F(MapDocumentTest, scaleObjectsWithCenter) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.scaleObjectsWithCenter") {
             const vm::bbox3 initialBBox(vm::vec3(0,0,0), vm::vec3(100,100,400));
             const vm::bbox3 expectedBBox(vm::vec3(-50,0,0), vm::vec3(150,100,400));
 
@@ -304,7 +314,7 @@ namespace TrenchBroom {
             ASSERT_EQ(expectedBBox, brush1->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, csgConvexMergeBrushes) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.csgConvexMergeBrushes") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             auto* entity = new Model::Entity();
@@ -324,7 +334,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::bbox3(vm::vec3(0, 0, 0), vm::vec3(64, 64, 64)), brush3->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, csgConvexMergeFaces) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.csgConvexMergeFaces") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             auto* entity = new Model::Entity();
@@ -360,20 +370,20 @@ namespace TrenchBroom {
             ASSERT_EQ(bounds, brush3->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, setTextureNull) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.setTextureNull") {
             Model::BrushBuilder builder(document->world(), document->worldBounds());
             Model::Brush *brush1 = builder.createCube(64.0, Model::BrushFaceAttributes::NoTextureName);
 
             document->addNode(brush1, document->currentParent());
             document->select(brush1);
 
-            document->setTexture(nullptr);
+            document->setTexture(nullptr, false);
         }
 
         ValveMapDocumentTest::ValveMapDocumentTest() :
         MapDocumentTest(Model::MapFormat::Valve) {}
 
-        TEST_F(ValveMapDocumentTest, csgConvexMergeTexturing) {
+        TEST_CASE_METHOD(ValveMapDocumentTest, "ValveMapDocumentTest.csgConvexMergeTexturing") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             Model::Entity* entity = new Model::Entity();
@@ -400,7 +410,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::vec3(0, 1, 0), top->textureYAxis());
         }
 
-        TEST_F(ValveMapDocumentTest, csgSubtractTexturing) {
+        TEST_CASE_METHOD(ValveMapDocumentTest, "ValveMapDocumentTest.csgSubtractTexturing") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             Model::Entity* entity = new Model::Entity();
@@ -431,7 +441,7 @@ namespace TrenchBroom {
             ASSERT_EQ(vm::vec3(0, 1, 0), top->textureYAxis());
         }
 
-        TEST_F(MapDocumentTest, csgSubtractMultipleBrushes) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.csgSubtractMultipleBrushes") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             auto* entity = new Model::Entity();
@@ -465,7 +475,7 @@ namespace TrenchBroom {
             EXPECT_EQ(expectedBBox2, remainder2->logicalBounds());
         }
 
-        TEST_F(MapDocumentTest, csgSubtractAndUndoRestoresSelection) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.csgSubtractAndUndoRestoresSelection") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             auto* entity = new Model::Entity();
@@ -486,7 +496,7 @@ namespace TrenchBroom {
             EXPECT_EQ(std::vector<Model::Brush*>({ subtrahend1 }), document->selectedNodes().brushes());
         }
 
-        TEST_F(MapDocumentTest, newWithGroupOpen) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.newWithGroupOpen") {
             Model::Entity* entity = new Model::Entity();
             document->addNode(entity, document->currentParent());
             document->select(entity);
@@ -500,7 +510,7 @@ namespace TrenchBroom {
             ASSERT_EQ(nullptr, document->currentGroup());
         }
 
-        TEST_F(MapDocumentTest, ungroupInnerGroup) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.ungroupInnerGroup") {
             // see https://github.com/kduske/TrenchBroom/issues/2050
             Model::Entity* outerEnt1 = new Model::Entity();
             Model::Entity* outerEnt2 = new Model::Entity();
@@ -544,7 +554,7 @@ namespace TrenchBroom {
             ASSERT_EQ(outer, innerEnt2->parent());
         }
 
-        TEST_F(MapDocumentTest, ungroupLeavesPointEntitySelected) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.ungroupLeavesPointEntitySelected") {
             Model::Entity* ent1 = new Model::Entity();
 
             document->addNode(ent1, document->currentParent());
@@ -557,7 +567,7 @@ namespace TrenchBroom {
             ASSERT_EQ((std::vector<Model::Node*> {ent1}), document->selectedNodes().nodes());
         }
 
-        TEST_F(MapDocumentTest, ungroupLeavesBrushEntitySelected) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.ungroupLeavesBrushEntitySelected") {
             const Model::BrushBuilder builder(document->world(), document->worldBounds());
 
             Model::Entity* ent1 = new Model::Entity();
@@ -580,7 +590,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(brush1->selected());
         }
 
-        TEST_F(MapDocumentTest, mergeGroups) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.mergeGroups") {
             document->selectAllNodes();
             document->deleteObjects();
 
@@ -608,7 +618,7 @@ namespace TrenchBroom {
             ASSERT_COLLECTIONS_EQUIVALENT(std::vector<Model::Node*>({ ent1, ent2 }), group2->children());
         }
 
-        TEST_F(MapDocumentTest, pickSingleBrush) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pickSingleBrush") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -632,7 +642,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(pickResult.query().all().empty());
         }
 
-        TEST_F(MapDocumentTest, pickSingleEntity) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pickSingleEntity") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -659,7 +669,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(pickResult.query().all().empty());
         }
 
-        TEST_F(MapDocumentTest, pickSimpleGroup) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pickSimpleGroup") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -719,7 +729,7 @@ namespace TrenchBroom {
             ASSERT_EQ(std::vector<Model::Node*>{ brush1 }, hitsToNodesWithGroupPicking(hits));
         }
 
-        TEST_F(MapDocumentTest, pickNestedGroup) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pickNestedGroup") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -855,7 +865,7 @@ namespace TrenchBroom {
             ASSERT_EQ(std::vector<Model::Node*>{ brush1 }, hitsToNodesWithGroupPicking(hits));
         }
 
-        TEST_F(MapDocumentTest, pickBrushEntity) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pickBrushEntity") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -886,12 +896,12 @@ namespace TrenchBroom {
             ASSERT_DOUBLE_EQ(32.0, hits.front().distance());
         }
 
-        TEST_F(MapDocumentTest, throwExceptionDuringCommand) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.throwExceptionDuringCommand") {
             ASSERT_THROW(document->throwExceptionDuringCommand(), GeometryException);
         }
 
         // https://github.com/kduske/TrenchBroom/issues/2476
-        TEST_F(MapDocumentTest, selectTouching) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.selectTouching") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -921,8 +931,50 @@ namespace TrenchBroom {
             EXPECT_EQ(nullptr, brush2->parent());
         }
 
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.selectInverse") {
+            // delete default brush
+            document->selectAllNodes();
+            document->deleteObjects();
+
+            const Model::BrushBuilder builder(document->world(), document->worldBounds());
+            const auto box = vm::bbox3(vm::vec3(0, 0, 0), vm::vec3(64, 64, 64));
+
+            auto *brush1 = builder.createCuboid(box, "texture");
+            document->addNode(brush1, document->currentParent());
+
+            auto *brush2 = builder.createCuboid(box.translate(vm::vec3(1, 1, 1)), "texture");
+            document->addNode(brush2, document->currentParent());
+
+            auto *brush3 = builder.createCuboid(box.translate(vm::vec3(2, 2, 2)), "texture");
+            document->addNode(brush3, document->currentParent());
+
+            document->select(std::vector<Model::Node *>{brush1, brush2});
+            Model::Entity* brushEnt = document->createBrushEntity(m_brushEntityDef);
+
+            document->deselectAll();
+
+            // worldspawn {
+            //   brushEnt { brush1, brush2 },
+            //   brush3
+            // }
+
+            document->select(brush1);
+            CHECK( brush1->selected());
+            CHECK(!brush2->selected());
+            CHECK(!brush3->selected());
+            CHECK(!brushEnt->selected());
+
+            document->selectInverse();
+
+            CHECK_THAT(document->selectedNodes().brushes(), Catch::UnorderedEquals(std::vector<Model::Brush *>{brush2, brush3}));
+            CHECK(!brush1->selected());
+            CHECK( brush2->selected());
+            CHECK( brush3->selected());
+            CHECK(!brushEnt->selected());
+        }
+
         // https://github.com/kduske/TrenchBroom/issues/2776
-        TEST_F(MapDocumentTest, pasteAndTranslateGroup) {
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.pasteAndTranslateGroup") {
             // delete default brush
             document->selectAllNodes();
             document->deleteObjects();
@@ -948,6 +1000,97 @@ namespace TrenchBroom {
             ASSERT_EQ(groupName, document->selectedNodes().groups().at(0)->name());
             ASSERT_TRUE(document->translateObjects(delta));
             ASSERT_EQ(box.translate(delta), document->selectionBounds());
+        }
+
+        // https://github.com/kduske/TrenchBroom/issues/3117
+        TEST_CASE_METHOD(MapDocumentTest, "MapDocumentTest.isolate") {
+            // delete default brush
+            document->selectAllNodes();
+            document->deleteObjects();
+
+            const Model::BrushBuilder builder(document->world(), document->worldBounds());
+            const auto box = vm::bbox3(vm::vec3(0, 0, 0), vm::vec3(64, 64, 64));
+
+            auto *brush1 = builder.createCuboid(box, "texture");
+            document->addNode(brush1, document->currentParent());
+
+            auto *brush2 = builder.createCuboid(box.translate(vm::vec3(1, 1, 1)), "texture");
+            document->addNode(brush2, document->currentParent());
+
+            document->selectAllNodes();
+
+            Model::Entity* brushEntity = document->createBrushEntity(m_brushEntityDef);
+
+            document->deselectAll();
+
+            // Check initial state
+            REQUIRE(1 == document->currentLayer()->childCount());
+            REQUIRE(brushEntity == dynamic_cast<Model::Entity*>(document->currentLayer()->children().at(0)));
+            REQUIRE(2 == brushEntity->childCount());
+            REQUIRE(brush1 == dynamic_cast<Model::Brush*>(brushEntity->children().at(0)));
+            REQUIRE(brush2 == dynamic_cast<Model::Brush*>(brushEntity->children().at(1)));
+
+            CHECK(!brushEntity->selected());
+            CHECK(!brush1->selected());
+            CHECK(!brush2->selected());
+            CHECK(!brushEntity->hidden());
+            CHECK(!brush1->hidden());
+            CHECK(!brush2->hidden());
+
+            // Select just brush1
+            document->select(brush1);
+            CHECK(!brushEntity->selected());
+            CHECK(brush1->selected());
+            CHECK(!brush2->selected());
+
+            // Isolate brush1
+            document->isolate();
+
+            CHECK(!brushEntity->hidden());
+            CHECK(!brush1->hidden());
+            CHECK(brush2->hidden());
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "IssueGenerator.emptyAttribute") {
+            Model::Entity* entity = document->createPointEntity(m_pointEntityDef, vm::vec3::zero());
+            entity->addOrUpdateAttribute("", "");
+            CHECK(entity->hasAttribute(""));
+
+            auto issueGenerators = std::vector<Model::IssueGenerator*>{
+                new Model::EmptyAttributeNameIssueGenerator(),
+                new Model::EmptyAttributeValueIssueGenerator()
+            };
+
+            class AcceptAllIssues {
+            public:
+                bool operator()(const Model::Issue*) const {
+                    return true;
+                }
+            };
+
+            auto visitor = Model::CollectMatchingIssuesVisitor<AcceptAllIssues>(issueGenerators, AcceptAllIssues());
+            document->world()->acceptAndRecurse(visitor);
+
+            std::vector<Model::Issue*> issues = visitor.issues();
+            REQUIRE(2 == issues.size());
+
+            Model::Issue* issue0 = issues.at(0);
+            Model::Issue* issue1 = issues.at(1);
+
+            // Should be one EmptyAttributeNameIssue and one EmptyAttributeValueIssue
+            CHECK(((issue0->type() == issueGenerators[0]->type() && issue1->type() == issueGenerators[1]->type())
+                || (issue0->type() == issueGenerators[1]->type() && issue1->type() == issueGenerators[0]->type())));
+            
+            std::vector<Model::IssueQuickFix*> fixes = document->world()->quickFixes(issue0->type());
+            REQUIRE(1 == fixes.size());
+
+            Model::IssueQuickFix* quickFix = fixes.at(0);
+            quickFix->apply(document.get(), std::vector<Model::Issue*>{issue0});
+
+            // The fix should have deleted the attribute
+            CHECK(!entity->hasAttribute(""));
+
+            kdl::vec_clear_and_delete(issueGenerators);
         }
     }
 }

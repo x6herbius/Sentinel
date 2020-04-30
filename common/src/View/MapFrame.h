@@ -96,7 +96,7 @@ namespace TrenchBroom {
             QComboBox* m_gridChoice;
             QLabel* m_statusBarLabel;
 
-            QDialog* m_compilationDialog;
+            QPointer<QDialog> m_compilationDialog;
         private: // shortcuts
             using ActionMap = std::map<const Action*, QAction*>;
             ActionMap m_actionMap;
@@ -150,6 +150,7 @@ namespace TrenchBroom {
             void gridDidChange();
             void toolActivated(Tool* tool);
             void toolDeactivated(Tool* tool);
+            void toolHandleSelectionChanged(Tool* tool);
             void selectionDidChange(const Selection& selection);
             void currentLayerDidChange(const TrenchBroom::Model::Layer* layer);
             void groupWasOpened(Model::Group* group);
@@ -214,6 +215,7 @@ namespace TrenchBroom {
             void selectInside();
             void selectTall();
             void selectByLineNumber();
+            void selectInverse();
             void selectNone();
 
             bool canSelect() const;
@@ -222,6 +224,7 @@ namespace TrenchBroom {
             bool canSelectTall() const;
             bool canDeselect() const;
             bool canChangeSelection() const;
+            bool canSelectInverse() const;
 
             void groupSelectedObjects();
             bool canGroupSelectedObjects() const;

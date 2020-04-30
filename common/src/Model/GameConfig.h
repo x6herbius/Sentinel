@@ -88,8 +88,9 @@ namespace TrenchBroom {
             IO::Path palette;
             std::string attribute;
             IO::Path shaderSearchPath;
+            std::vector<std::string> excludes; // Glob patterns used to match texture names for exclusion
 
-            TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath);
+            TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath, const std::vector<std::string>& i_excludes);
             TextureConfig();
 
             bool operator==(const TextureConfig& other) const;
@@ -121,7 +122,7 @@ namespace TrenchBroom {
             std::vector<FlagConfig> flags;
 
             FlagsConfig();
-            FlagsConfig(const std::vector<FlagConfig>& i_flags);
+            explicit FlagsConfig(const std::vector<FlagConfig>& i_flags);
 
             int flagValue(const std::string& flagName) const;
             std::string flagName(size_t index) const;

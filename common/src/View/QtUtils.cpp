@@ -29,14 +29,13 @@
 #include "View/MapFrame.h"
 #include "View/ViewConstants.h"
 
-#include <string>
-
 #include <QtGlobal>
 #include <QAbstractButton>
 #include <QBoxLayout>
 #include <QButtonGroup>
 #include <QColor>
 #include <QDebug>
+#include <QDialog>
 #include <QDir>
 #include <QFont>
 #include <QHeaderView>
@@ -130,7 +129,7 @@ namespace TrenchBroom {
             ensure(window != nullptr, "window must not be null");
 
             const auto path = windowSettingsPath(window, "Geometry");
-            QSettings settings;
+            const QSettings settings;
             window->restoreGeometry(settings.value(path).toByteArray());
         }
 
@@ -181,13 +180,18 @@ namespace TrenchBroom {
         QWidget* makeInfo(QWidget* widget) {
             makeDefault(widget);
 
-            widget->setAttribute(Qt::WA_MacSmallSize);
+            widget = makeSmall(widget);
 
             const auto defaultPalette = QPalette();
             auto palette = widget->palette();
             palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Disabled, QPalette::WindowText));
             palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Disabled, QPalette::WindowText));
             widget->setPalette(palette);
+            return widget;
+        }
+
+        QWidget* makeSmall(QWidget* widget) {
+            widget->setAttribute(Qt::WA_MacSmallSize);
             return widget;
         }
 
@@ -209,8 +213,7 @@ namespace TrenchBroom {
             return widget;
         }
 
-        QWidget* makeSelected(QWidget* widget) {
-            const auto defaultPalette = QPalette();
+        QWidget* makeSelected(QWidget* widget, const QPalette& defaultPalette) {
             auto palette = widget->palette();
             palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Normal, QPalette::HighlightedText));
             palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Normal, QPalette::HighlightedText));
@@ -218,27 +221,12 @@ namespace TrenchBroom {
             return widget;
         }
 
-        QWidget* makeUnselected(QWidget* widget) {
-            const auto defaultPalette = QPalette();
+        QWidget* makeUnselected(QWidget* widget, const QPalette& defaultPalette) {
             auto palette = widget->palette();
             palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Normal, QPalette::WindowText));
             palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Normal, QPalette::Text));
             widget->setPalette(palette);
             return widget;
-        }
-
-        QSettings& getSettings() {
-            static auto settings =
-#if defined __linux__ || defined __FreeBSD__
-                QSettings(QDir::homePath() % QString::fromLocal8Bit("/.TrenchBroom/.preferences"), QSettings::Format::IniFormat);
-#elif defined __APPLE__
-                QSettings(QStandardPaths::locate(QStandardPaths::ConfigLocation,
-                                                 QString::fromLocal8Bit("TrenchBroom Preferences"),
-                                                 QStandardPaths::LocateOption::LocateFile), QSettings::Format::IniFormat);
-#else
-                QSettings();
-#endif
-            return settings;
         }
 
         Color fromQColor(const QColor& color) {
@@ -414,10 +402,20 @@ namespace TrenchBroom {
             tableView->resizeRowsToContents();
         }
 
-        void deleteChildWidgetsAndLayout(QWidget* widget) {
-            qDeleteAll(widget->findChildren<QWidget*>("", Qt::FindDirectChildrenOnly));
+        void deleteChildWidgetsLaterAndDeleteLayout(QWidget* widget) {
+            const QList<QWidget*> children = widget->findChildren<QWidget*>("", Qt::FindDirectChildrenOnly);
+            for (QWidget* childWidget : children) {
+                childWidget->deleteLater();
+            }
 
             delete widget->layout();
+        }
+
+        void showModelessDialog(QDialog* dialog) {
+            // https://doc.qt.io/qt-5/qdialog.html#code-examples
+            dialog->show();
+            dialog->raise();
+            dialog->activateWindow();
         }
     }
 }

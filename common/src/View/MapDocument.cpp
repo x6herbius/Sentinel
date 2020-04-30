@@ -21,12 +21,14 @@
 
 #include "PreferenceManager.h"
 #include "Preferences.h"
+#include "Assets/AssetUtils.h"
 #include "Assets/EntityDefinition.h"
 #include "Assets/EntityDefinitionGroup.h"
 #include "Assets/EntityDefinitionManager.h"
 #include "Assets/EntityModelManager.h"
 #include "Assets/Texture.h"
 #include "Assets/TextureManager.h"
+#include "EL/ELExceptions.h"
 #include "IO/DiskFileSystem.h"
 #include "IO/DiskIO.h"
 #include "IO/SimpleParserStatus.h"
@@ -212,6 +214,14 @@ namespace TrenchBroom {
 
         Model::Group* MapDocument::currentGroup() const {
             return m_editorContext->currentGroup();
+        }
+
+        Model::Node* MapDocument::currentGroupOrWorld() const {
+            Model::Node* result = currentGroup();
+            if (result == nullptr) {
+                result = m_world.get();
+            }
+            return result;
         }
 
         Model::Node* MapDocument::currentParent() const {
@@ -601,6 +611,30 @@ namespace TrenchBroom {
             select(nodes);
         }
 
+        void MapDocument::selectInverse() {
+            // This only selects nodes that have no selected children (or parents).
+            // This is because if a brush entity only 1 selected child and 1 unselected,
+            // we treat it as partially selected and don't want to try to select the entity if the
+            // selection is inverted, which would reselect both children.
+            class CollectUnselectedSelectableNodesVisitor :
+            public Model::CollectMatchingNodesVisitor<Model::NodePredicates::And<Model::MatchSelectableNodes, Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>>, Model::UniqueNodeCollectionStrategy> {
+            public:
+                CollectUnselectedSelectableNodesVisitor(const Model::EditorContext& editorContext) :
+                CollectMatchingNodesVisitor(Model::NodePredicates::And<Model::MatchSelectableNodes, Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>>(
+                    Model::MatchSelectableNodes(editorContext), 
+                    Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>())) {}
+            };
+
+            CollectUnselectedSelectableNodesVisitor visitor(*m_editorContext);
+
+            Model::Node* target = currentGroupOrWorld();
+            target->recurse(visitor);
+
+            Transaction transaction(this, "Select Inverse");
+            deselectAll();
+            select(visitor.nodes());
+        }
+
         void MapDocument::selectNodesWithFilePosition(const std::vector<size_t>& positions) {
             Model::CollectSelectableNodesWithFilePositionVisitor visitor(*m_editorContext, positions);
             m_world->acceptAndRecurse(visitor);
@@ -938,7 +972,7 @@ namespace TrenchBroom {
         private:
             const Model::World* m_world;
         public:
-            MatchGroupableNodes(const Model::World* world) : m_world(world) {}
+            explicit MatchGroupableNodes(const Model::World* world) : m_world(world) {}
         public:
             bool operator()(const Model::World*) const  { return false; }
             bool operator()(const Model::Layer*) const  { return false; }
@@ -950,7 +984,7 @@ namespace TrenchBroom {
         std::vector<Model::Node*> MapDocument::collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes) const {
             using CollectGroupableNodesVisitor = Model::CollectMatchingNodesVisitor<MatchGroupableNodes, Model::UniqueNodeCollectionStrategy, Model::StopRecursionIfMatched>;
 
-            CollectGroupableNodesVisitor collect(world());
+            CollectGroupableNodesVisitor collect((MatchGroupableNodes(world())));
             Model::Node::acceptAndEscalate(std::begin(selectedNodes), std::end(selectedNodes), collect);
             return collect.nodes();
         }
@@ -1008,13 +1042,13 @@ namespace TrenchBroom {
             }
         }
 
-        void MapDocument::isolate(const std::vector<Model::Node*>& /* nodes */) {
+        void MapDocument::isolate() {
             const std::vector<Model::Layer*>& layers = m_world->allLayers();
 
-            Model::CollectTransitivelyUnselectedNodesVisitor collectUnselected;
+            Model::CollectNotTransitivelySelectedOrDescendantSelectedNodesVisitor collectUnselected;
             Model::Node::recurse(std::begin(layers), std::end(layers), collectUnselected);
 
-            Model::CollectSelectedNodesVisitor collectSelected;
+            Model::CollectTransitivelySelectedOrDescendantSelectedNodesVisitor collectSelected;
             Model::Node::recurse(std::begin(layers), std::end(layers), collectSelected);
 
             Transaction transaction(this, "Isolate Objects");
@@ -1321,17 +1355,18 @@ namespace TrenchBroom {
             return result->success();
         }
 
-        void MapDocument::setTexture(Assets::Texture* texture) {
+        void MapDocument::setTexture(Assets::Texture* texture, const bool toggle) {
             const std::vector<Model::BrushFace*> faces = allSelectedBrushFaces();
 
             if (texture != nullptr) {
                 if (faces.empty()) {
-                    if (currentTextureName() == texture->name())
+                    if (currentTextureName() == texture->name() && toggle) {
                         setCurrentTextureName(Model::BrushFaceAttributes::NoTextureName);
-                    else
+                    } else {
                         setCurrentTextureName(texture->name());
+                    }
                 } else {
-                    if (hasTexture(faces, texture)) {
+                    if (hasTexture(faces, texture) && toggle) {
                         texture = nullptr;
                         setCurrentTextureName(Model::BrushFaceAttributes::NoTextureName);
                     } else {
@@ -1342,10 +1377,11 @@ namespace TrenchBroom {
 
             if (!faces.empty()) {
                 Model::ChangeBrushFaceAttributesRequest request;
-                if (texture == nullptr)
+                if (texture == nullptr) {
                     request.unsetTexture();
-                else
+                } else {
                     request.setTexture(texture);
+                }
                 executeAndStore(ChangeBrushFaceAttributesCommand::command(request));
             }
         }
@@ -1731,7 +1767,7 @@ namespace TrenchBroom {
         private:
             Assets::TextureManager& m_manager;
         public:
-            SetTextures(Assets::TextureManager& manager) :
+            explicit SetTextures(Assets::TextureManager& manager) :
                 m_manager(manager) {}
         private:
             void doVisit(Model::World*) override   {}
@@ -1846,16 +1882,21 @@ namespace TrenchBroom {
 
         class MapDocument::SetEntityModels : public Model::NodeVisitor {
         private:
+            Logger& m_logger;
             Assets::EntityModelManager& m_manager;
         public:
-            explicit SetEntityModels(Assets::EntityModelManager& manager) :
+            explicit SetEntityModels(Logger& logger, Assets::EntityModelManager& manager) :
+            m_logger(logger),
             m_manager(manager) {}
         private:
             void doVisit(Model::World*) override         {}
             void doVisit(Model::Layer*) override         {}
             void doVisit(Model::Group*) override         {}
             void doVisit(Model::Entity* entity) override {
-                const auto* frame = m_manager.frame(entity->modelSpecification());
+                const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entity->classname(), [&]() {
+                    return entity->modelSpecification();
+                });
+                const auto* frame = m_manager.frame(modelSpec);
                 entity->setModelFrame(frame);
             }
             void doVisit(Model::Brush*) override         {}
@@ -1871,12 +1912,12 @@ namespace TrenchBroom {
         };
 
         void MapDocument::setEntityModels() {
-            SetEntityModels visitor(*m_entityModelManager);
+            SetEntityModels visitor(*this, *m_entityModelManager);
             m_world->acceptAndRecurse(visitor);
         }
 
         void MapDocument::setEntityModels(const std::vector<Model::Node*>& nodes) {
-            SetEntityModels visitor(*m_entityModelManager);
+            SetEntityModels visitor(*this, *m_entityModelManager);
             Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), visitor);
         }
 

@@ -50,7 +50,22 @@ namespace TrenchBroom {
         };
 
         struct TextureBlendFunc {
-            bool enable;
+            enum class Enable {
+                /**
+                 * Don't change GL_BLEND and don't change the blend function.
+                 */
+                UseDefault,
+                /**
+                 * Don't change GL_BLEND, but set the blend function.
+                 */
+                UseFactors,
+                /**
+                 * Set GL_BLEND to off.
+                 */
+                DisableBlend
+            };
+            
+            Enable enable;
             GLenum srcFactor;
             GLenum destFactor;
         };
@@ -100,14 +115,17 @@ namespace TrenchBroom {
             size_t height() const;
             const Color& averageColor() const;
 
+            bool masked() const;
+            void setOpaque();
+            
             const std::set<std::string>& surfaceParms() const;
             void setSurfaceParms(const std::set<std::string>& surfaceParms);
 
             TextureCulling culling() const;
             void setCulling(TextureCulling culling);
 
-            const TextureBlendFunc& blendFunc() const;
             void setBlendFunc(GLenum srcFactor, GLenum destFactor);
+            void disableBlend();
 
             size_t usageCount() const;
             void incUsageCount();
