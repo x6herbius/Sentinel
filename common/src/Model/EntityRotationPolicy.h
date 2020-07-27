@@ -28,7 +28,7 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Entity;
+        class EntityNode;
 
         class EntityRotationPolicy {
         private:
@@ -40,20 +40,23 @@ namespace TrenchBroom {
                 Euler_PositivePitchDown,
                 Mangle
             };
+            enum class RotationUsage {
+                Allowed,
+                BlockRotation
+            };
 
             struct RotationInfo {
                 const RotationType type;
                 const std::string attribute;
-                RotationInfo(RotationType i_type, const std::string& i_attribute);
+                const RotationUsage usage;
             };
-        protected:
-            EntityRotationPolicy();
-            static vm::mat4x4 getRotation(const Entity* entity);
-            static void applyRotation(Entity* entity, const vm::mat4x4& transformation);
-            static std::string getAttribute(const Entity* entity);
+        public:
+            static vm::mat4x4 getRotation(const EntityNode* entity);
+            static void applyRotation(EntityNode* entity, const vm::mat4x4& transformation);
+            static std::string getAttribute(const EntityNode* entity);
         private:
-            static RotationInfo rotationInfo(const Entity* entity);
-            static void setAngle(Entity* entity, const std::string& attribute, const vm::vec3& direction);
+            static RotationInfo rotationInfo(const EntityNode* entity);
+            static void setAngle(EntityNode* entity, const std::string& attribute, const vm::vec3& direction);
             static FloatType getAngle(vm::vec3 direction);
         public:
             /**

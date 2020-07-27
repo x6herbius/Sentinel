@@ -30,6 +30,7 @@
 namespace TrenchBroom {
     namespace Model {
         class BrushFace;
+        class BrushNode;
         class PickResult;
     }
 
@@ -47,7 +48,7 @@ namespace TrenchBroom {
             protected:
                 ClipTool* m_tool;
             public:
-                Callback(ClipTool* tool);
+                explicit Callback(ClipTool* tool);
                 virtual ~Callback();
                 ClipTool* tool() const;
 
@@ -66,7 +67,7 @@ namespace TrenchBroom {
             class PartBase {
             protected:
                 Callback* m_callback;
-                PartBase(Callback* callback);
+                explicit PartBase(Callback* callback);
             public:
                 virtual ~PartBase();
             };
@@ -75,7 +76,7 @@ namespace TrenchBroom {
             private:
                 bool m_secondPointSet;
             public:
-                AddClipPointPart(Callback* callback);
+                explicit AddClipPointPart(Callback* callback);
             private:
                 Tool* doGetTool() override;
                 const Tool* doGetTool() const override;
@@ -92,7 +93,7 @@ namespace TrenchBroom {
 
             class MoveClipPointPart : public ToolControllerBase<NoPickingPolicy, NoKeyPolicy, NoMousePolicy, RestrictedDragPolicy, NoRenderPolicy, NoDropPolicy>, protected PartBase {
             public:
-                MoveClipPointPart(Callback* callback);
+                explicit MoveClipPointPart(Callback* callback);
             private:
                 Tool* doGetTool() override;
                 const Tool* doGetTool() const override;
@@ -105,7 +106,7 @@ namespace TrenchBroom {
         protected:
             ClipTool* m_tool;
         protected:
-            ClipToolController(ClipTool* tool);
+            explicit ClipToolController(ClipTool* tool);
             virtual ~ClipToolController() override;
         private:
             Tool* doGetTool() override;
@@ -123,17 +124,17 @@ namespace TrenchBroom {
         private:
             class Callback2D;
         public:
-            ClipToolController2D(ClipTool* tool);
+            explicit ClipToolController2D(ClipTool* tool);
         };
 
         class ClipToolController3D : public ClipToolController {
         private:
-            static std::vector<vm::vec3> selectHelpVectors(Model::BrushFace* face, const vm::vec3& hitPoint);
-            static std::vector<Model::BrushFace*> selectIncidentFaces(Model::BrushFace* face, const vm::vec3& hitPoint);
+            static std::vector<vm::vec3> selectHelpVectors(const Model::BrushNode* brushNode, const Model::BrushFace& face, const vm::vec3& hitPoint);
+            static std::vector<const Model::BrushFace*> selectIncidentFaces(const Model::BrushNode* brushNode, const Model::BrushFace& face, const vm::vec3& hitPoint);
         private:
             class Callback3D;
         public:
-            ClipToolController3D(ClipTool* tool);
+            explicit ClipToolController3D(ClipTool* tool);
         };
     }
 }

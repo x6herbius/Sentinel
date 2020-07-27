@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+#include "Model/TagType.h"
+
 class QCheckBox;
 class QWidget;
 class QButtonGroup;
@@ -87,7 +89,7 @@ namespace TrenchBroom {
             EntityDefinitionCheckBoxList* m_entityDefinitionCheckBoxList;
 
             QCheckBox* m_showBrushesCheckBox;
-            CheckBoxList m_tagCheckBoxes;
+            std::vector<std::pair<Model::TagType::Type, QCheckBox*>> m_tagCheckBoxes;
 
             QButtonGroup* m_renderModeRadioGroup;
             QCheckBox* m_shadeFacesCheckBox;
@@ -95,6 +97,8 @@ namespace TrenchBroom {
             QCheckBox* m_showEdgesCheckBox;
 
             QButtonGroup* m_entityLinkRadioGroup;
+
+            QCheckBox* m_showSoftBoundsCheckBox;
         public:
             explicit ViewEditor(std::weak_ptr<MapDocument> document, QWidget* parent = nullptr);
             ~ViewEditor() override;
@@ -131,12 +135,13 @@ namespace TrenchBroom {
             void showPointEntitiesChanged(bool checked);
             void showPointEntityModelsChanged(bool checked);
             void showBrushesChanged(bool checked);
-            void showTagChanged(bool checked);
+            void showTagChanged(bool checked, Model::TagType::Type tagType);
             void faceRenderModeChanged(int id);
             void shadeFacesChanged(bool checked);
             void showFogChanged(bool checked);
             void showEdgesChanged(bool checked);
             void entityLinkModeChanged(int id);
+            void showSoftMapBoundsChanged(bool checked);
         };
 
         class ViewPopupEditor : public QWidget {

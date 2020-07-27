@@ -22,6 +22,7 @@
 #include <QDebug>
 #include <QEvent>
 #include <QKeyEvent>
+#include <QKeySequence>
 
 namespace TrenchBroom {
     namespace View {
@@ -29,6 +30,22 @@ namespace TrenchBroom {
             qDebug() << "finish editing";
             commitData(editor);
             closeEditor(editor, QAbstractItemDelegate::EditNextItem);
+        }
+
+        /**
+         * Just for generating tooltips, keep in sync with isInsertRowShortcut
+         */
+        QString EntityAttributeTable::insertRowShortcutString() {
+            return QKeySequence(Qt::Key_Return | Qt::CTRL).toString(QKeySequence::NativeText);
+        }
+
+        /**
+         * Just for generating tooltips, keep in sync with isRemoveRowsShortcut
+         */
+        QString EntityAttributeTable::removeRowShortcutString() {
+            return QObject::tr("%1 or %2")
+                .arg(QKeySequence(Qt::Key_Delete).toString(QKeySequence::NativeText))
+                .arg(QKeySequence(Qt::Key_Backspace).toString(QKeySequence::NativeText));
         }
 
         static bool isInsertRowShortcut(QKeyEvent* event) {
@@ -97,6 +114,9 @@ namespace TrenchBroom {
         QStyleOptionViewItem EntityAttributeTable::viewOptions() const {
             QStyleOptionViewItem options = QTableView::viewOptions();
             options.decorationPosition = QStyleOptionViewItem::Right;
+            // Qt high-dpi bug: if we don't specify the size explicitly Qt, sees the larger
+            // pixmap in the QIcon and tries to draw the icon larger than its actual 12x12 size.
+            options.decorationSize = QSize(12,12);
             return options;
         }
     }

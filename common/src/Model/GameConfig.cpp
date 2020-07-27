@@ -82,12 +82,13 @@ namespace TrenchBroom {
                     rootDirectory == other.rootDirectory);
         }
 
-        TextureConfig::TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath) :
+        TextureConfig::TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath, const std::vector<std::string>& i_excludes) :
         package(i_package),
         format(i_format),
         palette(i_palette),
         attribute(i_attribute),
-        shaderSearchPath(i_shaderSearchPath) {}
+        shaderSearchPath(i_shaderSearchPath),
+        excludes(i_excludes) {}
 
         TextureConfig::TextureConfig() = default;
 
@@ -96,7 +97,8 @@ namespace TrenchBroom {
                     format == other.format &&
                     palette == other.palette &&
                     attribute == other.attribute &&
-                    shaderSearchPath == other.shaderSearchPath);
+                    shaderSearchPath == other.shaderSearchPath &&
+                    excludes == other.excludes);
         }
 
         EntityConfig::EntityConfig(const IO::Path& i_defFilePath, const std::vector<std::string>& i_modelFormats, const Color& i_defaultColor) :
@@ -118,15 +120,17 @@ namespace TrenchBroom {
                     defaultColor == other.defaultColor);
         }
 
-        FlagConfig::FlagConfig(const std::string& i_name, const std::string& i_description) :
+        FlagConfig::FlagConfig(const std::string& i_name, const std::string& i_description, const int i_value) :
         name(i_name),
-        description(i_description) {}
+        description(i_description),
+        value(i_value) {}
 
         FlagConfig::FlagConfig() = default;
 
         bool FlagConfig::operator==(const FlagConfig& other) const {
             return (name == other.name &&
-                    description == other.description);
+                    description == other.description &&
+                    value == other.value);
         }
 
         FlagsConfig::FlagsConfig() = default;
@@ -137,7 +141,7 @@ namespace TrenchBroom {
         int FlagsConfig::flagValue(const std::string& flagName) const {
             for (size_t i = 0; i < flags.size(); ++i) {
                 if (flags[i].name == flagName) {
-                    return static_cast<int>(1 << i);
+                    return flags[i].value;
                 }
             }
             return 0;
@@ -166,15 +170,23 @@ namespace TrenchBroom {
             return flags == other.flags;
         }
 
-        FaceAttribsConfig::FaceAttribsConfig() = default;
+        FaceAttribsConfig::FaceAttribsConfig() :
+        defaults(BrushFaceAttributes::NoTextureName) {}
 
-        FaceAttribsConfig::FaceAttribsConfig(const std::vector<FlagConfig>& i_surfaceFlags, const std::vector<FlagConfig>& i_contentFlags) :
+        FaceAttribsConfig::FaceAttribsConfig(const std::vector<FlagConfig>& i_surfaceFlags, const std::vector<FlagConfig>& i_contentFlags, const BrushFaceAttributes& i_defaults) :
         surfaceFlags(i_surfaceFlags),
-        contentFlags(i_contentFlags) {}
+        contentFlags(i_contentFlags),
+        defaults(i_defaults) {}
+
+        FaceAttribsConfig::FaceAttribsConfig(const FlagsConfig& i_surfaceFlags, const FlagsConfig& i_contentFlags, const BrushFaceAttributes& i_defaults) :
+        surfaceFlags(i_surfaceFlags),
+        contentFlags(i_contentFlags),
+        defaults(i_defaults) {}
 
         bool FaceAttribsConfig::operator==(const FaceAttribsConfig& other) const {
             return (surfaceFlags == other.surfaceFlags &&
-                    contentFlags == other.contentFlags);
+                    contentFlags == other.contentFlags &&
+                    defaults == other.defaults);
         }
 
         GameConfig::GameConfig() :
@@ -190,7 +202,8 @@ namespace TrenchBroom {
                                TextureConfig textureConfig,
                                EntityConfig entityConfig,
                                FaceAttribsConfig faceAttribsConfig,
-                               std::vector<SmartTag> smartTags) :
+                               std::vector<SmartTag> smartTags,
+                               std::optional<vm::bbox3> softMapBounds) :
         m_name(std::move(name)),
         m_path(std::move(path)),
         m_icon(std::move(icon)),
@@ -201,7 +214,8 @@ namespace TrenchBroom {
         m_entityConfig(std::move(entityConfig)),
         m_faceAttribsConfig(std::move(faceAttribsConfig)),
         m_smartTags(std::move(smartTags)),
-        m_maxPropertyLength(1023) {
+        m_maxPropertyLength(1023),
+        m_softMapBounds(std::move(softMapBounds)) {
             assert(!kdl::str_trim(m_name).empty());
             assert(m_path.isEmpty() || m_path.isAbsolute());
         }
@@ -244,6 +258,10 @@ namespace TrenchBroom {
 
         const std::vector<SmartTag>& GameConfig::smartTags() const {
             return m_smartTags;
+        }
+
+        const std::optional<vm::bbox3>& GameConfig::softMapBounds() const {
+            return m_softMapBounds;
         }
 
         CompilationConfig& GameConfig::compilationConfig() {

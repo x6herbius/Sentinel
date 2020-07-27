@@ -175,6 +175,14 @@ namespace TrenchBroom {
                 shader.set("ShadeFaces", shadeFaces);
                 shader.set("ShowFog", showFog);
                 shader.set("Alpha", m_alpha);
+                shader.set("EnableMasked", false);
+                shader.set("ShowSoftMapBounds", !context.softMapBounds().is_empty());
+                shader.set("SoftMapBoundsMin", context.softMapBounds().min);
+                shader.set("SoftMapBoundsMax", context.softMapBounds().max);
+                shader.set("SoftMapBoundsColor", vm::vec4f(prefs.get(Preferences::SoftMapBoundsColor).r(),
+                                                           prefs.get(Preferences::SoftMapBoundsColor).g(),
+                                                           prefs.get(Preferences::SoftMapBoundsColor).b(),
+                                                           0.1f));
 
                 RenderFunc func(shader, applyTexture, m_faceColor);
                 if (m_alpha < 1.0f) {
@@ -185,8 +193,11 @@ namespace TrenchBroom {
                         continue;
                     }
 
+                    const bool enableMasked = texture != nullptr && texture->masked();
+                    
                     // set any per-texture uniforms
                     shader.set("GridColor", gridColorForTexture(texture));
+                    shader.set("EnableMasked", enableMasked);
 
                     func.before(texture);
                     brushIndexHolderPtr->setupIndices();

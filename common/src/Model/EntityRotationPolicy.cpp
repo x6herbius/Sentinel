@@ -20,7 +20,8 @@
 #include "EntityRotationPolicy.h"
 
 #include "Macros.h"
-#include "Model/Entity.h"
+#include "Assets/EntityModel.h"
+#include "Model/EntityNode.h"
 
 #include <kdl/string_compare.h>
 #include <kdl/string_utils.h>
@@ -33,13 +34,7 @@
 
 namespace TrenchBroom {
     namespace Model {
-        EntityRotationPolicy::RotationInfo::RotationInfo(const RotationType i_type, const std::string& i_attribute) :
-        type(i_type),
-        attribute(i_attribute) {}
-
-        EntityRotationPolicy::EntityRotationPolicy() {}
-
-        vm::mat4x4 EntityRotationPolicy::getRotation(const Entity* entity) {
+        vm::mat4x4 EntityRotationPolicy::getRotation(const EntityNode* entity) {
             const RotationInfo info = rotationInfo(entity);
             switch (info.type) {
                 case RotationType::Angle: {
@@ -109,8 +104,13 @@ namespace TrenchBroom {
             }
         }
 
-        void EntityRotationPolicy::applyRotation(Entity* entity, const vm::mat4x4& transformation) {
+        void EntityRotationPolicy::applyRotation(EntityNode* entity, const vm::mat4x4& transformation) {
             const auto info = rotationInfo(entity);
+
+            if (info.usage == RotationUsage::BlockRotation) {
+                return;
+            }
+
             const auto rotation = getRotation(entity);
 
             switch (info.type) {
@@ -154,14 +154,17 @@ namespace TrenchBroom {
             }
         }
 
-        std::string EntityRotationPolicy::getAttribute(const Entity* entity) {
+        std::string EntityRotationPolicy::getAttribute(const EntityNode* entity) {
             const auto info = rotationInfo(entity);
             return info.attribute;
         }
 
-        EntityRotationPolicy::RotationInfo EntityRotationPolicy::rotationInfo(const Entity* entity) {
+        EntityRotationPolicy::RotationInfo EntityRotationPolicy::rotationInfo(const EntityNode* entity) {
             auto type = RotationType::None;
             std::string attribute;
+            RotationUsage usage = RotationUsage::Allowed;
+            const RotationType eulerType = \
+                (entity->pitchType() == Assets::PitchType::MdlInverted ? RotationType::Euler : RotationType::Euler_PositivePitchDown);
 
             // determine the type of rotation to apply to this entity
             const auto classname = entity->classname();
@@ -174,7 +177,7 @@ namespace TrenchBroom {
                     } else if (!entity->hasAttribute(AttributeNames::Target)) {
                         // not a spotlight, but might have a rotatable model, so change angle or angles
                         if (entity->hasAttribute(AttributeNames::Angles)) {
-                            type = RotationType::Euler;
+                            type = eulerType;
                             attribute = AttributeNames::Angles;
                         } else {
                             type = RotationType::Angle;
@@ -184,12 +187,15 @@ namespace TrenchBroom {
                         // spotlight with target, don't modify
                     }
                 } else {
+                    // non-light
+
                     if (!entity->pointEntity()) {
+                        // brush entity
                         if (entity->hasAttribute(AttributeNames::Angles)) {
-                            type = RotationType::Euler;
+                            type = eulerType;
                             attribute = AttributeNames::Angles;
                         } else if (entity->hasAttribute(AttributeNames::Mangle)) {
-                            type = RotationType::Mangle;
+                            type = eulerType;
                             attribute = AttributeNames::Mangle;
                         } else if (entity->hasAttribute(AttributeNames::Angle)) {
                             type = RotationType::AngleUpDown;
@@ -200,30 +206,29 @@ namespace TrenchBroom {
 
                         // if the origin of the definition's bounding box is not in its center, don't apply the rotation
                         const auto offset = entity->origin() - entity->definitionBounds().center();
-                        if (offset.x() == 0.0 && offset.y() == 0.0) {
-                            if (entity->hasAttribute(AttributeNames::Angles)) {
-                                type = RotationType::Euler;
-                                attribute = AttributeNames::Angles;
-                            } else if (entity->hasAttribute(AttributeNames::Mangle)) {
-                                if (kdl::cs::str_is_equal(classname, "info_intermission")) {
-                                    type = RotationType::Euler_PositivePitchDown;
-                                } else {
-                                    type = RotationType::Mangle;
-                                }
-                                attribute = AttributeNames::Mangle;
-                            } else {
-                                type = RotationType::AngleUpDown;
-                                attribute = AttributeNames::Angle;
-                            }
+                        if (!(offset.x() == 0.0 && offset.y() == 0.0)) {
+                            // TODO: this only makes sense for Quake
+                            usage = RotationUsage::BlockRotation;
+                        }
+
+                        if (entity->hasAttribute(AttributeNames::Angles)) {
+                            type = eulerType;
+                            attribute = AttributeNames::Angles;
+                        } else if (entity->hasAttribute(AttributeNames::Mangle)) {
+                            type = eulerType;
+                            attribute = AttributeNames::Mangle;
+                        } else {
+                            type = RotationType::AngleUpDown;
+                            attribute = AttributeNames::Angle;
                         }
                     }
                 }
             }
 
-            return RotationInfo(type, attribute);
+            return RotationInfo{type, attribute, usage};
         }
 
-        void EntityRotationPolicy::setAngle(Entity* entity, const std::string& attribute, const vm::vec3& direction) {
+        void EntityRotationPolicy::setAngle(EntityNode* entity, const std::string& attribute, const vm::vec3& direction) {
             const auto angle = getAngle(direction);
             entity->addOrUpdateAttribute(attribute, kdl::str_to_string(vm::round(angle)));
         }

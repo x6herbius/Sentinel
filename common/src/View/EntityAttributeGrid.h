@@ -80,11 +80,13 @@ namespace TrenchBroom {
             void selectionDidChange(const Selection& selection);
             void entityDefinitionsOrModsDidChange();
         private:
+            void ensureSelectionVisible();
             void updateControls();
+            void updateControlsEnabled();
         public:
             std::string selectedRowName() const;
         signals:
-            void selectedRow();
+            void currentRowChanged();
         };
     }
 }

@@ -224,8 +224,8 @@ namespace TrenchBroom {
 
             for (const auto& tag : tags) {
                 result.push_back(makeAction(
-                    IO::Path("Tags/Toggle/" + tag.name()),
-                    QObject::tr("Toggle Tag %1").arg(QString::fromStdString(tag.name())),
+                    IO::Path("Filters/Tags/" + tag.name() + "/Toggle Visible"),
+                    QObject::tr("Toggle %1 visible").arg(QString::fromStdString(tag.name())),
                     ActionContext::Any,
                     [&tag](ActionExecutionContext& context) {
                         context.view()->toggleTagVisible(tag);
@@ -234,9 +234,9 @@ namespace TrenchBroom {
                 ));
                 if (tag.canEnable()) {
                     result.push_back(makeAction(
-                        IO::Path("Tags/Enable/" + tag.name()),
-                        QObject::tr("Enable Tag %1").arg(QString::fromStdString(tag.name())),
-                        ActionContext::AnyView | ActionContext::NodeSelection | ActionContext::AnyTool,
+                        IO::Path("Tags/" + tag.name() + "/Enable"),
+                        QObject::tr("Turn Selection into %1").arg(QString::fromStdString(tag.name())),
+                        ActionContext::AnyView | ActionContext::NodeSelection | ActionContext::FaceSelection | ActionContext::AnyTool,
                         [&tag](ActionExecutionContext& context) {
                             context.view()->enableTag(tag);
                         },
@@ -245,9 +245,9 @@ namespace TrenchBroom {
                 }
                 if (tag.canDisable()) {
                     result.push_back(makeAction(
-                        IO::Path("Tags/Disable/" + tag.name()),
-                        QObject::tr("Disable Tag %1").arg(QString::fromStdString(tag.name())),
-                        ActionContext::AnyView | ActionContext::NodeSelection | ActionContext::AnyTool,
+                        IO::Path("Tags/" + tag.name() + "/Disable"),
+                        QObject::tr("Turn Selection into non-%1").arg(QString::fromStdString(tag.name())),
+                        ActionContext::AnyView | ActionContext::NodeSelection | ActionContext::FaceSelection | ActionContext::AnyTool,
                         [&tag](ActionExecutionContext& context) {
                             context.view()->disableTag(tag);
                         },
@@ -264,8 +264,8 @@ namespace TrenchBroom {
 
             for (const auto* definition : entityDefinitions) {
                 result.push_back(makeAction(
-                    IO::Path("Entity Definitions/Toggle/" + definition->name()),
-                    QObject::tr("Toggle Entity %1").arg(QString::fromStdString(definition->name())),
+                    IO::Path("Entities/" + definition->name() + "/Toggle"),
+                    QObject::tr("Toggle %1 visible").arg(QString::fromStdString(definition->name())),
                     ActionContext::Any,
                     [definition](ActionExecutionContext& context) {
                         context.view()->toggleEntityDefinitionVisible(definition);
@@ -274,9 +274,9 @@ namespace TrenchBroom {
                 ));
                 if (definition->name() != Model::AttributeValues::WorldspawnClassname) {
                     result.push_back(makeAction(
-                        IO::Path("Entity Definitions/Create/" + definition->name()),
-                        QObject::tr("Create Entity %1").arg(QString::fromStdString(definition->name())),
-                        ActionContext::AnyView | ActionContext::NodeSelection | ActionContext::AnyTool,
+                        IO::Path("Entities/" + definition->name() + "/Create"),
+                        QObject::tr("Create %1").arg(QString::fromStdString(definition->name())),
+                        ActionContext::Any,
                         [definition](ActionExecutionContext& context) {
                             context.view()->createEntity(definition);
                         },
@@ -511,57 +511,119 @@ namespace TrenchBroom {
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
 
-            /* ========== Flip ========== */
-            createAction(IO::Path("Controls/Map view/Flip objects horizontally"), QObject::tr("Flip Horizontally"),
-                ActionContext::AnyView | ActionContext::NodeSelection, QKeySequence(Qt::CTRL + Qt::Key_F),
-                [](ActionExecutionContext& context) {
-                    context.view()->flipObjects(vm::direction::left);
-                },
-                [](ActionExecutionContext& context) { return context.hasDocument() && context.view()->canFlipObjects(); },
-                IO::Path("FlipHorizontally.png"));
-            createAction(IO::Path("Controls/Map view/Flip objects vertically"), QObject::tr("Flip Vertically"),
-                ActionContext::AnyView | ActionContext::NodeSelection, QKeySequence(Qt::CTRL + Qt::ALT + Qt::Key_F),
-                [](ActionExecutionContext& context) {
-                    context.view()->flipObjects(vm::direction::up);
-                },
-                [](ActionExecutionContext& context) { return context.hasDocument() && context.view()->canFlipObjects(); },
-                IO::Path("FlipVertically.png"));
-
             /* ========== Texturing ========== */
             createAction(IO::Path("Controls/Map view/Move textures up"), QObject::tr("Move Textures Up"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_Up),
                 [](ActionExecutionContext& context) {
-                    context.view()->moveTextures(vm::direction::up);
+                    context.view()->moveTextures(vm::direction::up, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures up (coarse)"), QObject::tr("Move Textures Up (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_Up),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::up, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures up (fine)"), QObject::tr("Move Textures Up (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_Up),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::up, MapViewBase::TextureActionMode::Fine);
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
             createAction(IO::Path("Controls/Map view/Move textures down"), QObject::tr("Move Textures Down"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_Down),
                 [](ActionExecutionContext& context) {
-                    context.view()->moveTextures(vm::direction::down);
+                    context.view()->moveTextures(vm::direction::down, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures down (coarse)"), QObject::tr("Move Textures Down (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_Down),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::down, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures down (fine)"), QObject::tr("Move Textures Down (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_Down),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::down, MapViewBase::TextureActionMode::Fine);
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
             createAction(IO::Path("Controls/Map view/Move textures left"), QObject::tr("Move Textures Left"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_Left),
                 [](ActionExecutionContext& context) {
-                    context.view()->moveTextures(vm::direction::left);
+                    context.view()->moveTextures(vm::direction::left, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures left (coarse)"), QObject::tr("Move Textures Left (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_Left),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::left, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures left (fine)"), QObject::tr("Move Textures Left (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_Left),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::left, MapViewBase::TextureActionMode::Fine);
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
             createAction(IO::Path("Controls/Map view/Move textures right"), QObject::tr("Move Textures Right"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_Right),
                 [](ActionExecutionContext& context) {
-                    context.view()->moveTextures(vm::direction::right);
+                    context.view()->moveTextures(vm::direction::right, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures right (coarse)"), QObject::tr("Move Textures Right (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_Right),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::right, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Move textures right (fine)"), QObject::tr("Move Textures Right (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_Right),
+                [](ActionExecutionContext& context) {
+                    context.view()->moveTextures(vm::direction::right, MapViewBase::TextureActionMode::Fine);
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
             createAction(IO::Path("Controls/Map view/Rotate textures clockwise"), QObject::tr("Rotate Textures Clockwise"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_PageUp),
                 [](ActionExecutionContext& context) {
-                    context.view()->rotateTextures(true);
+                    context.view()->rotateTextures(true, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Rotate textures clockwise (coarse)"), QObject::tr("Rotate Textures Clockwise (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_PageUp),
+                [](ActionExecutionContext& context) {
+                    context.view()->rotateTextures(true, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Rotate textures clockwise (fine)"), QObject::tr("Rotate Textures Clockwise (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_PageUp),
+                [](ActionExecutionContext& context) {
+                    context.view()->rotateTextures(true, MapViewBase::TextureActionMode::Fine);
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
             createAction(IO::Path("Controls/Map view/Rotate textures counter-clockwise"), QObject::tr("Rotate Textures Counter-clockwise"),
                 ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::Key_PageDown),
                 [](ActionExecutionContext& context) {
-                    context.view()->rotateTextures(false);
+                    context.view()->rotateTextures(false, MapViewBase::TextureActionMode::Normal);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Rotate textures counter-clockwise (coarse)"), QObject::tr("Rotate Textures Counter-clockwise (Coarse)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::SHIFT + Qt::Key_PageDown),
+                [](ActionExecutionContext& context) {
+                    context.view()->rotateTextures(false, MapViewBase::TextureActionMode::Coarse);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Rotate textures counter-clockwise (fine)"), QObject::tr("Rotate Textures Counter-clockwise (Fine)"),
+                ActionContext::View3D | ActionContext::FaceSelection, QKeySequence(Qt::CTRL + Qt::Key_PageDown),
+                [](ActionExecutionContext& context) {
+                    context.view()->rotateTextures(false, MapViewBase::TextureActionMode::Fine);
+                },
+                [](ActionExecutionContext& context) { return context.hasDocument(); });
+            createAction(IO::Path("Controls/Map view/Reveal in texture browser"), QObject::tr("Reveal in texture browser"),
+                ActionContext::View3D | ActionContext::AnySelection, QKeySequence(),
+                [](ActionExecutionContext& context) {
+                    context.frame()->revealTexture();
                 },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
 
@@ -638,11 +700,6 @@ namespace TrenchBroom {
                 ActionContext::Any, QKeySequence(Qt::Key_Escape),
                 [](ActionExecutionContext& context) { context.view()->cancel(); },
                 [](ActionExecutionContext& context) { return context.hasDocument(); });
-            createAction(IO::Path("Controls/Map view/Deactivate current tool"), QObject::tr("Deactivate Current Tool"),
-                ActionContext::AnyView | ActionContext::AnyTool, QKeySequence(Qt::CTRL + Qt::Key_Escape),
-                [](ActionExecutionContext& context) { context.view()->deactivateTool(); },
-                [](ActionExecutionContext& context) { return context.hasDocument(); },
-                IO::Path("NoTool.png"));
         }
 
         void ActionManager::createMenu() {
@@ -814,7 +871,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->canDuplicateSelectino();
                 },
-                IO::Path("DuplicateObjects.png")));
+                IO::Path("DuplicateObjects.svg")));
             editMenu.addItem(createAction(IO::Path("Menu/Edit/Delete"), QObject::tr("Delete"), ActionContext::Any, QKeySequence(
 #ifdef __APPLE__
                 Qt::Key_Backspace
@@ -873,6 +930,14 @@ namespace TrenchBroom {
                     return context.hasDocument() && context.frame()->canSelect();
                 }));
             editMenu.addItem(
+                createAction(IO::Path("Menu/Edit/Select Inverse"), QObject::tr("Select Inverse"), ActionContext::Any, QKeySequence(Qt::CTRL + Qt::ALT + Qt::Key_A),
+                    [](ActionExecutionContext& context) {
+                        context.frame()->selectInverse();
+                    },
+                    [](ActionExecutionContext& context) {
+                        return context.hasDocument() && context.frame()->canSelectInverse();
+                    }));
+            editMenu.addItem(
                 createAction(IO::Path("Menu/Edit/Select None"), QObject::tr("Select None"), ActionContext::Any, QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_A),
                     [](ActionExecutionContext& context) {
                         context.frame()->selectNone();
@@ -898,6 +963,24 @@ namespace TrenchBroom {
                 }));
             editMenu.addSeparator();
 
+            editMenu.addItem(
+                createAction(IO::Path("Controls/Map view/Flip objects horizontally"), QObject::tr("Flip Horizontally"), ActionContext::AnyView | ActionContext::NodeSelection, QKeySequence(Qt::CTRL + Qt::Key_F),
+                    [](ActionExecutionContext& context) {
+                        context.view()->flipObjects(vm::direction::left);
+                    },
+                    [](ActionExecutionContext& context) {
+                        return context.hasDocument() && context.view() && context.view()->canFlipObjects();
+                    }, IO::Path("FlipHorizontally.svg")));
+            editMenu.addItem(
+                createAction(IO::Path("Controls/Map view/Flip objects vertically"), QObject::tr("Flip Vertically"), ActionContext::AnyView | ActionContext::NodeSelection, QKeySequence(Qt::CTRL + Qt::ALT + Qt::Key_F),
+                    [](ActionExecutionContext& context) {
+                        context.view()->flipObjects(vm::direction::up);
+                    },
+                    [](ActionExecutionContext& context) {
+                        return context.hasDocument() && context.view() && context.view()->canFlipObjects();
+                    }, IO::Path("FlipVertically.svg")));
+            editMenu.addSeparator();
+
             auto& toolMenu = editMenu.addMenu("Tools");
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Brush Tool"), QObject::tr("Brush Tool"), Qt::Key_B,
                 [](ActionExecutionContext& context) {
@@ -909,7 +992,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->createComplexBrushToolActive();
                 },
-                IO::Path("BrushTool.png")));
+                IO::Path("BrushTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Clip Tool"), QObject::tr("Clip Tool"), Qt::Key_C,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleClipTool();
@@ -920,7 +1003,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->clipToolActive();
                 },
-                IO::Path("ClipTool.png")));
+                IO::Path("ClipTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Rotate Tool"), QObject::tr("Rotate Tool"), Qt::Key_R,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleRotateObjectsTool();
@@ -931,7 +1014,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->rotateObjectsToolActive();
                 },
-                IO::Path("RotateTool.png")));
+                IO::Path("RotateTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Scale Tool"), QObject::tr("Scale Tool"), Qt::Key_T,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleScaleObjectsTool();
@@ -942,7 +1025,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->scaleObjectsToolActive();
                 },
-                IO::Path("ScaleTool.png")));
+                IO::Path("ScaleTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Shear Tool"), QObject::tr("Shear Tool"), Qt::Key_G,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleShearObjectsTool();
@@ -953,7 +1036,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->shearObjectsToolActive();
                 },
-                IO::Path("ShearTool.png")));
+                IO::Path("ShearTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Vertex Tool"), QObject::tr("Vertex Tool"), Qt::Key_V,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleVertexTool();
@@ -964,7 +1047,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->vertexToolActive();
                 },
-                IO::Path("VertexTool.png")));
+                IO::Path("VertexTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Edge Tool"), QObject::tr("Edge Tool"), Qt::Key_E,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleEdgeTool();
@@ -975,7 +1058,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->edgeToolActive();
                 },
-                IO::Path("EdgeTool.png")));
+                IO::Path("EdgeTool.svg")));
             toolMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Tools/Face Tool"), QObject::tr("Face Tool"), Qt::Key_F,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleFaceTool();
@@ -986,7 +1069,18 @@ namespace TrenchBroom {
                 [](ActionExecutionContext& context) {
                     return context.hasDocument() && context.frame()->faceToolActive();
                 },
-                IO::Path("FaceTool.png")));
+                IO::Path("FaceTool.svg")));
+            toolMenu.addItem(createMenuAction(IO::Path("Controls/Map view/Deactivate current tool"), QObject::tr("Deactivate Current Tool"), Qt::CTRL + Qt::Key_Escape,
+                [](ActionExecutionContext& context) {
+                    context.view()->deactivateTool();
+                },
+                [](ActionExecutionContext& context) {
+                    return context.hasDocument();
+                },
+                [](ActionExecutionContext& context) {
+                    return context.hasDocument() && !context.frame()->anyToolActive();
+                },
+                IO::Path("NoTool.svg")));
 
             auto& csgMenu = editMenu.addMenu("CSG");
             csgMenu.addItem(createMenuAction(IO::Path("Menu/Edit/CSG/Convex Merge"), QObject::tr("Convex Merge"), Qt::CTRL + Qt::Key_J,
@@ -1044,7 +1138,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext&) {
                     return pref(Preferences::TextureLock);
                 },
-                IO::Path("TextureLock.png")));
+                IO::Path("TextureLock.svg")));
             editMenu.addItem(createMenuAction(IO::Path("Menu/Edit/UV Lock"), QObject::tr("UV Lock"), Qt::Key_U,
                 [](ActionExecutionContext& context) {
                     context.frame()->toggleUVLock();
@@ -1055,7 +1149,7 @@ namespace TrenchBroom {
                 [](ActionExecutionContext&) {
                     return pref(Preferences::UVLock);
                 },
-                IO::Path("UVLock.png")));
+                IO::Path("UVLock.svg")));
             editMenu.addSeparator();
             editMenu.addItem(createMenuAction(IO::Path("Menu/Edit/Replace Texture..."), QObject::tr("Replace Texture..."), 0,
                 [](ActionExecutionContext& context) {
@@ -1075,6 +1169,9 @@ namespace TrenchBroom {
                 },
                 [](ActionExecutionContext& context) {
                     return context.hasDocument();
+                },
+                [](ActionExecutionContext& context) {
+                    return context.hasDocument() && context.document()->grid().visible();
                 }));
             gridMenu.addItem(createMenuAction(IO::Path("Menu/View/Grid/Snap to Grid"), QObject::tr("Snap to Grid"), Qt::ALT + Qt::Key_0,
                 [](ActionExecutionContext& context) {
@@ -1082,6 +1179,9 @@ namespace TrenchBroom {
                 },
                 [](ActionExecutionContext& context) {
                     return context.hasDocument();
+                },
+                [](ActionExecutionContext& context) {
+                    return context.hasDocument() && context.document()->grid().snap();
                 }));
             gridMenu.addItem(createMenuAction(IO::Path("Menu/View/Grid/Increase Grid Size"), QObject::tr("Increase Grid Size"), Qt::Key_Plus,
                 [](ActionExecutionContext& context) {
@@ -1425,6 +1525,13 @@ namespace TrenchBroom {
             debugMenu.addItem(createMenuAction(IO::Path("Menu/Debug/Set Window Size..."), QObject::tr("Set Window Size..."), 0,
                 [](ActionExecutionContext& context) {
                     context.frame()->debugSetWindowSize();
+                },
+                [](ActionExecutionContext& context) {
+                    return context.hasDocument();
+                }));
+            debugMenu.addItem(createMenuAction(IO::Path("Menu/Debug/Show Palette..."), QObject::tr("Show Palette..."), 0,
+                [](ActionExecutionContext& context) {
+                    context.frame()->debugShowPalette();
                 },
                 [](ActionExecutionContext& context) {
                     return context.hasDocument();

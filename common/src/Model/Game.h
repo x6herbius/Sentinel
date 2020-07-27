@@ -25,9 +25,14 @@
 #include "IO/EntityModelLoader.h"
 #include "Model/MapFormat.h"
 
+#include <vecmath/forward.h>
+#include <vecmath/bbox.h>
+
 #include <memory>
 #include <map>
 #include <string>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace TrenchBroom {
@@ -41,12 +46,13 @@ namespace TrenchBroom {
     namespace Model {
         class AttributableNode;
         class BrushFace;
+        class BrushFaceAttributes;
         class CompilationConfig;
         enum class ExportFormat;
         struct FlagsConfig;
         class Node;
         class SmartTag;
-        class World;
+        class WorldNode;
 
         class Game : public IO::EntityDefinitionLoader, public IO::EntityModelLoader {
         public:
@@ -70,21 +76,40 @@ namespace TrenchBroom {
             size_t maxPropertyLength() const;
 
             const std::vector<SmartTag>& smartTags() const;
-        public: // loading and writing map files
-            std::unique_ptr<World> newMap(MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const;
-            std::unique_ptr<World> loadMap(MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const;
-            void writeMap(World& world, const IO::Path& path) const;
-            void exportMap(World& world, Model::ExportFormat format, const IO::Path& path) const;
-        public: // parsing and serializing objects
-            std::vector<Node*> parseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const;
-            std::vector<BrushFace*> parseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const;
 
-            void writeNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const;
-            void writeBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const;
+            enum class SoftMapBoundsType { Game, Map };
+            struct SoftMapBounds {
+                SoftMapBoundsType source;
+                /**
+                 * std::nullopt indicates unlimited soft map bounds
+                 */
+                std::optional<vm::bbox3> bounds;
+            };
+            /**
+             * Returns the soft map bounds configured in the game config
+             */
+            std::optional<vm::bbox3> softMapBounds() const;
+            /**
+             * Returns the soft map bounds specified in the given World entity, or if unset, the value from softMapBounds()
+             */
+            SoftMapBounds extractSoftMapBounds(const AttributableNode& node) const;
+        public: // loading and writing map files
+            std::unique_ptr<WorldNode> newMap(MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const;
+            std::unique_ptr<WorldNode> loadMap(MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const;
+            void writeMap(WorldNode& world, const IO::Path& path) const;
+            void exportMap(WorldNode& world, Model::ExportFormat format, const IO::Path& path) const;
+        public: // parsing and serializing objects
+            std::vector<Node*> parseNodes(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const;
+            std::vector<BrushFace> parseBrushFaces(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const;
+
+            void writeNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const;
+            void writeBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const;
         public: // texture collection handling
             TexturePackageType texturePackageType() const;
             void loadTextureCollections(AttributableNode& node, const IO::Path& documentPath, Assets::TextureManager& textureManager, Logger& logger) const;
             bool isTextureCollection(const IO::Path& path) const;
+            std::vector<std::string> fileTextureCollectionExtensions() const;
+
             std::vector<IO::Path> findTextureCollections() const;
             std::vector<IO::Path> extractTextureCollections(const AttributableNode& node) const;
             void updateTextureCollections(AttributableNode& node, const std::vector<IO::Path>& paths) const;
@@ -98,9 +123,10 @@ namespace TrenchBroom {
             std::vector<std::string> availableMods() const;
             std::vector<std::string> extractEnabledMods(const AttributableNode& node) const;
             std::string defaultMod() const;
-        public: // flag configs for faces
+        public: // configs for faces
             const FlagsConfig& surfaceFlags() const;
             const FlagsConfig& contentFlags() const;
+            const BrushFaceAttributes& defaultFaceAttribs() const;
         private: // subclassing interface
             virtual const std::string& doGameName() const = 0;
             virtual IO::Path doGamePath() const = 0;
@@ -110,22 +136,25 @@ namespace TrenchBroom {
 
             virtual CompilationConfig& doCompilationConfig() = 0;
             virtual size_t doMaxPropertyLength() const = 0;
+            virtual std::optional<vm::bbox3> doSoftMapBounds() const = 0;
+            virtual SoftMapBounds doExtractSoftMapBounds(const AttributableNode& node) const = 0;
 
             virtual const std::vector<SmartTag>& doSmartTags() const = 0;
 
-            virtual std::unique_ptr<World> doNewMap(MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const = 0;
-            virtual std::unique_ptr<World> doLoadMap(MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const = 0;
-            virtual void doWriteMap(World& world, const IO::Path& path) const = 0;
-            virtual void doExportMap(World& world, Model::ExportFormat format, const IO::Path& path) const = 0;
+            virtual std::unique_ptr<WorldNode> doNewMap(MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const = 0;
+            virtual std::unique_ptr<WorldNode> doLoadMap(MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const = 0;
+            virtual void doWriteMap(WorldNode& world, const IO::Path& path) const = 0;
+            virtual void doExportMap(WorldNode& world, Model::ExportFormat format, const IO::Path& path) const = 0;
 
-            virtual std::vector<Node*> doParseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const = 0;
-            virtual std::vector<BrushFace*> doParseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const = 0;
-            virtual void doWriteNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const = 0;
-            virtual void doWriteBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const = 0;
+            virtual std::vector<Node*> doParseNodes(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const = 0;
+            virtual std::vector<BrushFace> doParseBrushFaces(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const = 0;
+            virtual void doWriteNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const = 0;
+            virtual void doWriteBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const = 0;
 
             virtual TexturePackageType doTexturePackageType() const = 0;
             virtual void doLoadTextureCollections(AttributableNode& node, const IO::Path& documentPath, Assets::TextureManager& textureManager, Logger& logger) const = 0;
             virtual bool doIsTextureCollection(const IO::Path& path) const = 0;
+            virtual std::vector<std::string> doFileTextureCollectionExtensions() const = 0;
             virtual std::vector<IO::Path> doFindTextureCollections() const = 0;
             virtual std::vector<IO::Path> doExtractTextureCollections(const AttributableNode& node) const = 0;
             virtual void doUpdateTextureCollections(AttributableNode& node, const std::vector<IO::Path>& paths) const = 0;
@@ -142,6 +171,7 @@ namespace TrenchBroom {
 
             virtual const FlagsConfig& doSurfaceFlags() const = 0;
             virtual const FlagsConfig& doContentFlags() const = 0;
+            virtual const BrushFaceAttributes& doDefaultFaceAttribs() const = 0;
         };
     }
 }

@@ -89,7 +89,7 @@ endmacro(SET_XCODE_ATTRIBUTES)
 
 macro(set_compiler_config TARGET)
     if(COMPILER_IS_CLANG)
-        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -pedantic)
+        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -Wshadow-all -pedantic)
         target_compile_options(${TARGET} PRIVATE -Wno-global-constructors -Wno-exit-time-destructors -Wno-padded -Wno-format-nonliteral -Wno-used-but-marked-unused)
 
         # disable C++98 compatibility warnings
@@ -104,8 +104,11 @@ macro(set_compiler_config TARGET)
 
         # FIXME: Suppress warnings in moc generated files:
         target_compile_options(${TARGET} PRIVATE -Wno-redundant-parens)
+
+        # Disable a warning in clang when using PCH:
+        target_compile_options(${TARGET} PRIVATE -Wno-pragma-system-header-outside-header)
     elseif(COMPILER_IS_GNU)
-        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -pedantic)
+        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -Wshadow=local -pedantic)
         target_compile_options(${TARGET} PRIVATE "$<$<CONFIG:RELEASE>:-O3>")
 
         # FIXME: enable -Wcpp once we found a workaround for glew / QOpenGLWindow problem, see RenderView.h
@@ -170,7 +173,13 @@ endmacro(GET_GIT_DESCRIBE)
 
 macro(GET_BUILD_PLATFORM PLATFORM_NAME)
     if(WIN32)
-        set(${PLATFORM_NAME} "Win32")
+        if(CMAKE_VS_PLATFORM_NAME STREQUAL "Win32")
+            set(${PLATFORM_NAME} "Win32")
+        elseif(CMAKE_VS_PLATFORM_NAME STREQUAL "x64")
+            set(${PLATFORM_NAME} "Win64")
+        else()
+            message(ERROR "Unsupported CMAKE_VS_PLATFORM_NAME ${CMAKE_VS_PLATFORM_NAME}")
+        endif()
     elseif(APPLE)
         set(${PLATFORM_NAME} "MacOSX")
     elseif(UNIX)

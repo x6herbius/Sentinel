@@ -13,7 +13,7 @@ if(APPLE)
     set_source_files_properties(${MACOSX_ICON_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
     # Configure button bitmaps etc.
-    file(GLOB_RECURSE MACOSX_IMAGE_FILES "${APP_RESOURCE_DIR}/graphics/images/*.png")
+    file(GLOB_RECURSE MACOSX_IMAGE_FILES "${APP_RESOURCE_DIR}/graphics/images/*")
     set(APP_SOURCE ${APP_SOURCE} ${MACOSX_IMAGE_FILES})
     set_source_files_properties(${MACOSX_IMAGE_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/images)
 
@@ -21,6 +21,19 @@ if(APPLE)
     file(GLOB_RECURSE MACOSX_FONT_FILES "${APP_RESOURCE_DIR}/fonts/*.*")
     set(APP_SOURCE ${APP_SOURCE} ${MACOSX_FONT_FILES})
     set_source_files_properties(${MACOSX_FONT_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/fonts)
+
+    # Configure default resources
+    # Collect all default resources
+    file(GLOB_RECURSE MACOSX_DEFAULT_FILES RELATIVE ${APP_RESOURCE_DIR}/defaults "${APP_RESOURCE_DIR}/defaults/*")
+
+    # Set correct locations for default resources
+    foreach(DEFAULT_FILE ${MACOSX_DEFAULT_FILES})
+        get_filename_component(DEFAULT_FILE_DIR "${DEFAULT_FILE}" DIRECTORY)
+        set(DEFAULT_FILE "${APP_RESOURCE_DIR}/defaults/${DEFAULT_FILE}")
+
+        set(APP_SOURCE ${APP_SOURCE} ${DEFAULT_FILE})
+        set_source_files_properties(${DEFAULT_FILE} PROPERTIES  MACOSX_PACKAGE_LOCATION Resources/defaults/${DEFAULT_FILE_DIR})
+    endforeach()
 
     # Configure game resources
     # Collect all game resources
@@ -57,6 +70,12 @@ if(APPLE)
     set_source_files_properties(${MACOSX_SHADER_FILES} PROPERTIES  MACOSX_PACKAGE_LOCATION Resources/shader)
     set(APP_SOURCE ${APP_SOURCE} ${MACOSX_SHADER_FILES})
 
+    # Configure Qt stylesheets
+    file (GLOB_RECURSE MACOSX_STYLESHEET_FILES
+            "${APP_RESOURCE_DIR}/stylesheets/*.qss")
+    set_source_files_properties(${MACOSX_STYLESHEET_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/stylesheets)
+    set(APP_SOURCE ${APP_SOURCE} ${MACOSX_STYLESHEET_FILES})
+
     # Configure manual files
     set_source_files_properties(${INDEX_OUTPUT_PATH} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/manual)
     set_source_files_properties(${DOC_MANUAL_TARGET_FILES_ABSOLUTE} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/manual)
@@ -78,11 +97,13 @@ if(WIN32)
     endif()
 endif()
 
-# Extract version information and configure CPack with it
-set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
+# Set CPACK_PACKAGE_VERSION which is used by CPack.
+# Strip the "v" prefix off GIT_DESCRIBE (e.g. "v2020.1-RC1") to produce a CPACK_PACKAGE_VERSION of "2020.1-RC1"
+# Debian wants the first character to be a number
+string(REGEX REPLACE "^v(.*)" "\\1" CPACK_PACKAGE_VERSION "${GIT_DESCRIBE}")
 get_build_platform(APP_PLATFORM_NAME)
 
-macro(configure_app_target APP_TARGET_NAME)
+macro(configure_app_target APP_TARGET_NAME SHOULD_BUILD_MANUAL)
     target_link_libraries(${APP_TARGET_NAME} common) # common already comes with all its dependencies, no need to repeat them here
     set_compiler_config(${APP_TARGET_NAME})
 
@@ -127,10 +148,10 @@ macro(configure_app_target APP_TARGET_NAME)
         add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:freeimage>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:freetype>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:z>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Widgets>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Gui>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Core>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Svg>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>"
                 COMMAND ${CMAKE_COMMAND} -E make_directory    "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>/platforms"
                 COMMAND ${CMAKE_COMMAND} -E make_directory    "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>/styles"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::QWindowsIntegrationPlugin>" "$<TARGET_FILE_DIR:${APP_TARGET_NAME}>/platforms"
@@ -160,6 +181,10 @@ macro(configure_app_target APP_TARGET_NAME)
         add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}/fonts" "${APP_RESOURCE_DEST_DIR}/fonts")
 
+        # Copy default resources to resources directory
+        add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}/defaults/" "${APP_RESOURCE_DEST_DIR}/defaults")
+
         # Copy game files to resources directory
         add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}/games/" "${APP_RESOURCE_DEST_DIR}/games")
@@ -174,46 +199,47 @@ macro(configure_app_target APP_TARGET_NAME)
         add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}/shader" "${APP_RESOURCE_DEST_DIR}/shader")
 
-        # Copy manual files to resource directory
+        # Copy Qt stylesheet files to resources directory
         add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_RESOURCE_DEST_DIR}/manual/"
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_RESOURCE_DEST_DIR}/manual/images"
-                COMMAND ${CMAKE_COMMAND} -E copy "${INDEX_OUTPUT_PATH}" "${APP_RESOURCE_DEST_DIR}/manual/"
-                COMMAND ${CMAKE_COMMAND} -E copy "${DOC_MANUAL_SHORTCUTS_JS_TARGET_ABSOLUTE}" "${APP_RESOURCE_DEST_DIR}/manual/")
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_RESOURCE_DEST_DIR}/stylesheets/"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}/stylesheets" "${APP_RESOURCE_DEST_DIR}/stylesheets")
 
-        foreach(MANUAL_FILE ${DOC_MANUAL_TARGET_FILES_ABSOLUTE})
+        if (${SHOULD_BUILD_MANUAL})
+            # Copy manual files to resource directory
             add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy ${MANUAL_FILE} "${APP_RESOURCE_DEST_DIR}/manual/")
-        endforeach(MANUAL_FILE)
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_RESOURCE_DEST_DIR}/manual/"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_RESOURCE_DEST_DIR}/manual/images"
+                    COMMAND ${CMAKE_COMMAND} -E copy "${INDEX_OUTPUT_PATH}" "${APP_RESOURCE_DEST_DIR}/manual/"
+                    COMMAND ${CMAKE_COMMAND} -E copy "${DOC_MANUAL_SHORTCUTS_JS_TARGET_ABSOLUTE}" "${APP_RESOURCE_DEST_DIR}/manual/")
 
-        foreach(MANUAL_IMAGE_FILE ${DOC_MANUAL_TARGET_IMAGE_FILES_ABSOLUTE})
-            add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy ${MANUAL_IMAGE_FILE} "${APP_RESOURCE_DEST_DIR}/manual/images/")
-        endforeach(MANUAL_IMAGE_FILE)
+            foreach(MANUAL_FILE ${DOC_MANUAL_TARGET_FILES_ABSOLUTE})
+                add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy ${MANUAL_FILE} "${APP_RESOURCE_DEST_DIR}/manual/")
+            endforeach(MANUAL_FILE)
+
+            foreach(MANUAL_IMAGE_FILE ${DOC_MANUAL_TARGET_IMAGE_FILES_ABSOLUTE})
+                add_custom_command(TARGET ${APP_TARGET_NAME} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy ${MANUAL_IMAGE_FILE} "${APP_RESOURCE_DEST_DIR}/manual/images/")
+            endforeach(MANUAL_IMAGE_FILE)
+        endif()
     endif()
 endmacro()
 
 # Create the executable target and link with libraries
 add_executable(TrenchBroom WIN32 MACOSX_BUNDLE)
 target_sources(TrenchBroom PRIVATE ${APP_SOURCE} ${INDEX_OUTPUT_PATH} ${DOC_MANUAL_TARGET_FILES_ABSOLUTE} ${DOC_MANUAL_SHORTCUTS_JS_TARGET_ABSOLUTE} ${DOC_MANUAL_TARGET_IMAGE_FILES_ABSOLUTE})
-configure_app_target(TrenchBroom)
+configure_app_target(TrenchBroom YES)
 
 add_executable(TrenchBroom-nomanual WIN32 MACOSX_BUNDLE EXCLUDE_FROM_ALL)
 target_sources(TrenchBroom-nomanual PRIVATE ${APP_SOURCE})
-configure_app_target(TrenchBroom-nomanual)
-
-
-# Enable ASAN if possible and requested
-if(COMPILER_IS_GNU AND TB_ENABLE_ASAN)
-    target_link_libraries(TrenchBroom asan)
-endif()
+configure_app_target(TrenchBroom-nomanual NO)
 
 # Common CPack configuration
 set(APP_PACKAGE_FILE_NAME "TrenchBroom-${APP_PLATFORM_NAME}-${GIT_DESCRIBE}-${CMAKE_BUILD_TYPE}")
 set(APP_PACKAGE_DIR_NAME "$ENV{DROPBOX}/TrenchBroom/")
 set(CPACK_PACKAGE_FILE_NAME ${APP_PACKAGE_FILE_NAME})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "TrenchBroom Level Editor")
-set(CPACK_PACKAGE_VENDOR "Kristian Duske")
+set(CPACK_PACKAGE_VENDOR "TrenchBroom")
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
     # We want stack trace symbols even in our release builds, so don't strip
     set(CPACK_STRIP_FILES FALSE)
@@ -245,10 +271,10 @@ if(WIN32)
     install(FILES
             $<TARGET_FILE:freeimage>
             $<TARGET_FILE:freetype>
-            $<TARGET_FILE:z>
             $<TARGET_FILE:Qt5::Widgets>
             $<TARGET_FILE:Qt5::Gui>
             $<TARGET_FILE:Qt5::Core>
+            $<TARGET_FILE:Qt5::Svg>
             DESTINATION . COMPONENT TrenchBroom)
 
     #Qt plugins
@@ -271,8 +297,10 @@ if(WIN32)
     install(DIRECTORY
             "${APP_DIR}/resources/graphics/images"
             "${APP_DIR}/resources/fonts"
+            "${APP_DIR}/resources/defaults"
             "${APP_DIR}/resources/games"
             "${APP_DIR}/resources/shader"
+            "${APP_DIR}/resources/stylesheets"
             DESTINATION . COMPONENT TrenchBroom)
     set(CPACK_GENERATOR "7Z")
     set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY FALSE)
@@ -305,10 +333,12 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     # add files
     install(TARGETS TrenchBroom RUNTIME DESTINATION bin COMPONENT TrenchBroom)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fonts"           DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/defaults"        DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/games"           DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/manual"          DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/images"          DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shader"          DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/stylesheets"     DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(DIRECTORY "${APP_DIR}/resources/linux/icons"            DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom FILES_MATCHING PATTERN "*.png")
     install(FILES "${CMAKE_SOURCE_DIR}/LICENSE.txt"                 DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
     install(FILES "${APP_DIR}/resources/linux/copyright"            DESTINATION ${LINUX_RESOURCE_LOCATION} COMPONENT TrenchBroom)
@@ -320,7 +350,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     # The following dependencies were generated by running with CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON, and then adding "libqt5widgets5 (>= 5.9.5)" as an alternate for qt59base.
     # Our CI builds on Ubuntu 16.04 need to pull Qt 5.9.5 from ppa:beineri/opt-qt595-xenial, which is where the "qt59base" package comes from.
     # We want to support Ubuntu 18.04, though, which should have libqt5widgets5 5.9.5.
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.14), libfreeimage3, libfreetype6 (>= 2.2.1), libgcc1 (>= 1:3.0), libgl1-mesa-glx | libgl1, libstdc++6 (>= 5.2), qt59base | libqt5widgets5 (>= 5.9.5)")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.14), libfreeimage3, libfreetype6 (>= 2.2.1), libgcc1 (>= 1:3.0), libgl1-mesa-glx | libgl1, libstdc++6 (>= 5.2), qt59base | libqt5widgets5 (>= 5.9.5), qt59svg | libqt5svg5 (>= 5.9.5)")
     set(CPACK_DEBIAN_PACKAGE_SECTION "games")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://kristianduske.com/trenchbroom/")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_BINARY_DIR}/linux/postinst;${CMAKE_CURRENT_BINARY_DIR}/linux/prerm;${CMAKE_CURRENT_BINARY_DIR}/linux/postrm")

@@ -17,14 +17,17 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
 
-#include "Model/Brush.h"
+#include "GTestCompat.h"
+
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
 #include "Model/NodeCollection.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
 
@@ -32,28 +35,28 @@ namespace TrenchBroom {
     namespace View {
         class SelectionTest : public MapDocumentTest {};
 
-        TEST_F(SelectionTest, selectTouchingWithGroup) {
+        TEST_CASE_METHOD(SelectionTest, "SelectionTest.selectTouchingWithGroup") {
             document->selectAllNodes();
             document->deleteObjects();
             assert(document->selectedNodes().nodeCount() == 0);
 
-            Model::Layer* layer = new Model::Layer("Layer 1");
+            Model::LayerNode* layer = new Model::LayerNode("Layer 1");
             document->addNode(layer, document->world());
 
-            Model::Group* group = new Model::Group("Unnamed");
+            Model::GroupNode* group = new Model::GroupNode("Unnamed");
             document->addNode(group, layer);
 
             Model::BrushBuilder builder(document->world(), document->worldBounds());
             const vm::bbox3 brushBounds(vm::vec3(-32.0, -32.0, -32.0),
                                     vm::vec3(+32.0, +32.0, +32.0));
 
-            Model::Brush* brush = builder.createCuboid(brushBounds, "texture");
+            Model::BrushNode* brush = new Model::BrushNode(builder.createCuboid(brushBounds, "texture"));
             document->addNode(brush, group);
 
             const vm::bbox3 selectionBounds(vm::vec3(-16.0, -16.0, -48.0),
                                         vm::vec3(+16.0, +16.0, +48.0));
 
-            Model::Brush* selectionBrush = builder.createCuboid(selectionBounds, "texture");
+            Model::BrushNode* selectionBrush = new Model::BrushNode(builder.createCuboid(selectionBounds, "texture"));
             document->addNode(selectionBrush, layer);
 
             document->select(selectionBrush);
@@ -62,34 +65,61 @@ namespace TrenchBroom {
             ASSERT_EQ(1u, document->selectedNodes().nodeCount());
         }
 
-        TEST_F(SelectionTest, selectInsideWithGroup) {
+        TEST_CASE_METHOD(SelectionTest, "SelectionTest.selectInsideWithGroup") {
             document->selectAllNodes();
             document->deleteObjects();
             assert(document->selectedNodes().nodeCount() == 0);
 
-            Model::Layer* layer = new Model::Layer("Layer 1");
+            Model::LayerNode* layer = new Model::LayerNode("Layer 1");
             document->addNode(layer, document->world());
 
-            Model::Group* group = new Model::Group("Unnamed");
+            Model::GroupNode* group = new Model::GroupNode("Unnamed");
             document->addNode(group, layer);
 
             Model::BrushBuilder builder(document->world(), document->worldBounds());
             const vm::bbox3 brushBounds(vm::vec3(-32.0, -32.0, -32.0),
                                     vm::vec3(+32.0, +32.0, +32.0));
 
-            Model::Brush* brush = builder.createCuboid(brushBounds, "texture");
+            Model::BrushNode* brush = new Model::BrushNode(builder.createCuboid(brushBounds, "texture"));
             document->addNode(brush, group);
 
             const vm::bbox3 selectionBounds(vm::vec3(-48.0, -48.0, -48.0),
                                         vm::vec3(+48.0, +48.0, +48.0));
 
-            Model::Brush* selectionBrush = builder.createCuboid(selectionBounds, "texture");
+            Model::BrushNode* selectionBrush = new Model::BrushNode(builder.createCuboid(selectionBounds, "texture"));
             document->addNode(selectionBrush, layer);
 
             document->select(selectionBrush);
             document->selectInside(true);
 
             ASSERT_EQ(1u, document->selectedNodes().nodeCount());
+        }
+        
+        TEST_CASE_METHOD(SelectionTest, "SelectionTest.updateLastSelectionBounds") {
+            auto* entityNode = new Model::EntityNode();
+            entityNode->addOrUpdateAttribute("classname", "point_entity");
+            document->addNode(entityNode, document->parentForNodes());
+            REQUIRE(!entityNode->logicalBounds().is_empty());
+            
+            document->selectAllNodes();
+            
+            auto bounds = document->selectionBounds();
+            document->deselectAll();
+            CHECK(document->lastSelectionBounds() == bounds);
+            
+            document->deselectAll();
+            CHECK(document->lastSelectionBounds() == bounds);
+            
+            auto* brushNode = createBrushNode();
+            document->addNode(brushNode, document->parentForNodes());
+            
+            document->select(brushNode);
+            CHECK(document->lastSelectionBounds() == bounds);
+            
+            bounds = brushNode->logicalBounds();
+            
+            document->deselectAll();
+            CHECK(document->lastSelectionBounds() == bounds);
         }
     }
 }

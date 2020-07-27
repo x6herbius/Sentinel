@@ -99,10 +99,10 @@ namespace TrenchBroom {
 
             m_taskList = new CompilationTaskListBox(m_document, containerPanel);
 
-            m_addTaskButton = createBitmapButton("Add.png", "Add task");
-            m_removeTaskButton = createBitmapButton("Remove.png", "Remove the selected task");
-            m_moveTaskUpButton = createBitmapButton("Up.png", "Move the selected task up");
-            m_moveTaskDownButton = createBitmapButton("Down.png", "Move the selected task down");
+            m_addTaskButton = createBitmapButton("Add.svg", "Add task");
+            m_removeTaskButton = createBitmapButton("Remove.svg", "Remove the selected task");
+            m_moveTaskUpButton = createBitmapButton("Up.svg", "Move the selected task up");
+            m_moveTaskDownButton = createBitmapButton("Down.svg", "Move the selected task down");
 
             auto* buttonLayout = createMiniToolBarLayout(m_addTaskButton, m_removeTaskButton, m_moveTaskUpButton, m_moveTaskDownButton);
 
@@ -205,10 +205,7 @@ namespace TrenchBroom {
         }
 
         void CompilationProfileEditor::taskSelectionChanged() {
-            m_addTaskButton->setEnabled(m_profile != nullptr);
-            m_removeTaskButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() >= 0);
-            m_moveTaskUpButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() > 0);
-            m_moveTaskDownButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() >= 0 && m_taskList->currentRow() < static_cast<int>(m_profile->taskCount()) - 1);
+            refresh();
         }
 
         void CompilationProfileEditor::setProfile(Model::CompilationProfile* profile) {
@@ -245,6 +242,10 @@ namespace TrenchBroom {
                     m_workDirTxt->setText(QString::fromStdString(m_profile->workDirSpec()));
                 }
             }
+            m_addTaskButton->setEnabled(m_profile != nullptr);
+            m_removeTaskButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() >= 0);
+            m_moveTaskUpButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() > 0);
+            m_moveTaskDownButton->setEnabled(m_profile != nullptr && m_taskList->currentRow() >= 0 && m_taskList->currentRow() < static_cast<int>(m_profile->taskCount()) - 1);
         }
     }
 }

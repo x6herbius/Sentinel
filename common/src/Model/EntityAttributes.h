@@ -47,12 +47,17 @@ namespace TrenchBroom {
             extern const std::string GroupType;
             extern const std::string LayerId;
             extern const std::string LayerName;
+            extern const std::string LayerSortIndex;
+            extern const std::string LayerColor;
+            extern const std::string LayerLocked;
+            extern const std::string LayerHidden;
             extern const std::string Layer;
             extern const std::string GroupId;
             extern const std::string GroupName;
             extern const std::string Group;
             extern const std::string Message;
             extern const std::string ValveVersion;
+            extern const std::string SoftMapBounds;
         }
 
         namespace AttributeValues {
@@ -62,6 +67,10 @@ namespace TrenchBroom {
             extern const std::string GroupClassname;
             extern const std::string GroupTypeLayer;
             extern const std::string GroupTypeGroup;
+            extern const std::string DefaultValue;
+            extern const std::string NoSoftMapBounds;
+            extern const std::string LayerLockedValue;
+            extern const std::string LayerHiddenValue;
         }
 
         bool isNumberedAttribute(std::string_view prefix, std::string_view name);
@@ -98,12 +107,16 @@ namespace TrenchBroom {
         bool isLayer(const std::string& classname, const std::vector<EntityAttribute>& attributes);
         bool isGroup(const std::string& classname, const std::vector<EntityAttribute>& attributes);
         bool isWorldspawn(const std::string& classname, const std::vector<EntityAttribute>& attributes);
-        const std::string& findAttribute(const std::vector<EntityAttribute>& attributes, const std::string& name, const std::string& defaultValue = "");
+        const std::string& findAttribute(const std::vector<EntityAttribute>& attributes, const std::string& name, const std::string& defaultValue = AttributeValues::DefaultValue);
 
         class EntityAttributes {
         private:
             std::vector<EntityAttribute> m_attributes;
         public:
+            EntityAttributes();
+            explicit EntityAttributes(std::vector<EntityAttribute> attributes);
+
+            std::vector<EntityAttribute> releaseAttributes();
             const std::vector<EntityAttribute>& attributes() const;
             void setAttributes(const std::vector<EntityAttribute>& attributes);
 

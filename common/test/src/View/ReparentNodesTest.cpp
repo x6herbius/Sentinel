@@ -17,13 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
 
-#include "Model/Brush.h"
-#include "Model/Entity.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "GTestCompat.h"
+
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
 
@@ -31,24 +33,24 @@ namespace TrenchBroom {
     namespace View {
         class ReparentNodesTest : public MapDocumentTest {};
 
-        TEST_F(ReparentNodesTest, reparentLayerToLayer) {
-            Model::Layer* layer1 = new Model::Layer("Layer 1");
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentLayerToLayer") {
+            Model::LayerNode* layer1 = new Model::LayerNode("Layer 1");
             document->addNode(layer1, document->world());
 
-            Model::Layer* layer2 = new Model::Layer("Layer 2");
+            Model::LayerNode* layer2 = new Model::LayerNode("Layer 2");
             document->addNode(layer2, document->world());
 
             ASSERT_FALSE(document->reparentNodes(layer2, { layer1 }));
         }
 
-        TEST_F(ReparentNodesTest, reparentBetweenLayers) {
-            Model::Layer* oldParent = new Model::Layer("Layer 1");
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentBetweenLayers") {
+            Model::LayerNode* oldParent = new Model::LayerNode("Layer 1");
             document->addNode(oldParent, document->world());
 
-            Model::Layer* newParent = new Model::Layer("Layer 2");
+            Model::LayerNode* newParent = new Model::LayerNode("Layer 2");
             document->addNode(newParent, document->world());
 
-            Model::Entity* entity = new Model::Entity();
+            Model::EntityNode* entity = new Model::EntityNode();
             document->addNode(entity, oldParent);
 
             assert(entity->parent() == oldParent);
@@ -59,93 +61,93 @@ namespace TrenchBroom {
             ASSERT_EQ(oldParent, entity->parent());
         }
 
-        TEST_F(ReparentNodesTest, reparentGroupToItself) {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentGroupToItself") {
+            Model::GroupNode* group = new Model::GroupNode("Group");
+            document->addNode(group, document->parentForNodes());
 
             ASSERT_FALSE(document->reparentNodes(group, { group }));
         }
 
-        TEST_F(ReparentNodesTest, reparentGroupToChild) {
-            Model::Group* outer = new Model::Group("Outer");
-            document->addNode(outer, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentGroupToChild") {
+            Model::GroupNode* outer = new Model::GroupNode("Outer");
+            document->addNode(outer, document->parentForNodes());
 
-            Model::Group* inner = new Model::Group("Inner");
+            Model::GroupNode* inner = new Model::GroupNode("Inner");
             document->addNode(inner, outer);
 
             ASSERT_FALSE(document->reparentNodes(inner, { outer }));
         }
 
-        TEST_F(ReparentNodesTest, removeEmptyGroup) {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyGroup") {
+            Model::GroupNode* group = new Model::GroupNode("Group");
+            document->addNode(group, document->parentForNodes());
 
-            Model::Entity* entity = new Model::Entity();
+            Model::EntityNode* entity = new Model::EntityNode();
             document->addNode(entity, group);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { entity }));
-            ASSERT_EQ(document->currentParent(), entity->parent());
+            ASSERT_TRUE(document->reparentNodes(document->parentForNodes(), { entity }));
+            ASSERT_EQ(document->parentForNodes(), entity->parent());
             ASSERT_TRUE(group->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), group->parent());
+            ASSERT_EQ(document->parentForNodes(), group->parent());
             ASSERT_EQ(group, entity->parent());
         }
 
-        TEST_F(ReparentNodesTest, recursivelyRemoveEmptyGroups) {
-            Model::Group* outer = new Model::Group("Outer");
-            document->addNode(outer, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.recursivelyRemoveEmptyGroups") {
+            Model::GroupNode* outer = new Model::GroupNode("Outer");
+            document->addNode(outer, document->parentForNodes());
 
-            Model::Group* inner = new Model::Group("Inner");
+            Model::GroupNode* inner = new Model::GroupNode("Inner");
             document->addNode(inner, outer);
 
-            Model::Entity* entity = new Model::Entity();
+            Model::EntityNode* entity = new Model::EntityNode();
             document->addNode(entity, inner);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { entity }));
-            ASSERT_EQ(document->currentParent(), entity->parent());
+            ASSERT_TRUE(document->reparentNodes(document->parentForNodes(), { entity }));
+            ASSERT_EQ(document->parentForNodes(), entity->parent());
             ASSERT_TRUE(inner->parent() == nullptr);
             ASSERT_TRUE(outer->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), outer->parent());
+            ASSERT_EQ(document->parentForNodes(), outer->parent());
             ASSERT_EQ(outer, inner->parent());
             ASSERT_EQ(inner, entity->parent());
         }
 
-        TEST_F(ReparentNodesTest, removeEmptyEntity) {
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyEntity") {
+            Model::EntityNode* entity = new Model::EntityNode();
+            document->addNode(entity, document->parentForNodes());
 
-            Model::Brush* brush = createBrush();
+            Model::BrushNode* brush = createBrushNode();
             document->addNode(brush, entity);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { brush }));
-            ASSERT_EQ(document->currentParent(), brush->parent());
+            ASSERT_TRUE(document->reparentNodes(document->parentForNodes(), { brush }));
+            ASSERT_EQ(document->parentForNodes(), brush->parent());
             ASSERT_TRUE(entity->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), entity->parent());
+            ASSERT_EQ(document->parentForNodes(), entity->parent());
             ASSERT_EQ(entity, brush->parent());
         }
 
-        TEST_F(ReparentNodesTest, removeEmptyGroupAndEntity) {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyGroupAndEntity") {
+            Model::GroupNode* group = new Model::GroupNode("Group");
+            document->addNode(group, document->parentForNodes());
 
-            Model::Entity* entity = new Model::Entity();
+            Model::EntityNode* entity = new Model::EntityNode();
             document->addNode(entity, group);
 
-            Model::Brush* brush = createBrush();
+            Model::BrushNode* brush = createBrushNode();
             document->addNode(brush, entity);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { brush }));
-            ASSERT_EQ(document->currentParent(), brush->parent());
+            ASSERT_TRUE(document->reparentNodes(document->parentForNodes(), { brush }));
+            ASSERT_EQ(document->parentForNodes(), brush->parent());
             ASSERT_TRUE(group->parent() == nullptr);
             ASSERT_TRUE(entity->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), group->parent());
+            ASSERT_EQ(document->parentForNodes(), group->parent());
             ASSERT_EQ(group, entity->parent());
             ASSERT_EQ(entity, brush->parent());
         }

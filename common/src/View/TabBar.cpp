@@ -25,39 +25,55 @@
 #include "View/QtUtils.h"
 
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QStackedLayout>
-
-#include <cassert>
-#include <iostream>
 
 namespace TrenchBroom {
     namespace View {
         // TabBarButton
 
         TabBarButton::TabBarButton(const QString& label, QWidget* parent) :
-        QLabel(label, parent),
+        QWidget(parent),
+        m_label(new QLabel(label, this)),
+        m_indicator(new QWidget(this)),
         m_pressed(false) {
-            makeEmphasized(this);
+            auto* labelLayout = new QHBoxLayout();
+            labelLayout->setContentsMargins(LayoutConstants::WideHMargin, 0, LayoutConstants::WideHMargin, 0);
+            labelLayout->addWidget(m_label);
+            
+            auto* outerLayout = new QVBoxLayout();
+            outerLayout->setContentsMargins(0, 1, 0, 1); // needs extra vertical space!
+            outerLayout->setSpacing(0);
+            
+            outerLayout->addSpacing(LayoutConstants::MediumVMargin);
+            outerLayout->addSpacing(LayoutConstants::NarrowVMargin);
+            outerLayout->addLayout(labelLayout);
+            outerLayout->addSpacing(LayoutConstants::NarrowVMargin);
+            outerLayout->addWidget(m_indicator);
+
+            makeEmphasized(m_label);
+            m_indicator->setFixedHeight(LayoutConstants::MediumVMargin);
+            m_indicator->setAutoFillBackground(true);
+            
+            setLayout(outerLayout);
         }
 
         void TabBarButton::setPressed(const bool pressed) {
             m_pressed = pressed;
-            updateLabel();
+            updateState();
         }
 
         void TabBarButton::mousePressEvent(QMouseEvent*) {
             emit clicked();
         }
 
-        void TabBarButton::updateLabel() {
+        void TabBarButton::updateState() {
             QPalette pal;
             if (m_pressed) {
-                pal.setColor(QPalette::WindowText, Colors::highlightText());
+                m_indicator->setBackgroundRole(QPalette::Highlight);
             } else {
-                pal.setColor(QPalette::WindowText, Colors::defaultText());
+                m_indicator->setBackgroundRole(QPalette::NoRole);
             }
-            setPalette(pal);
-            repaint(); // on macOS, the label's don't repaint automatically for some reason
         }
 
         // TabBar
@@ -70,11 +86,12 @@ namespace TrenchBroom {
             connect(m_tabBook, &TabBook::pageChanged, this, &TabBar::tabBookPageChanged);
 
             m_controlLayout = new QHBoxLayout();
-            m_controlLayout->setContentsMargins(0, LayoutConstants::NarrowHMargin, 0, LayoutConstants::NarrowHMargin);
+            m_controlLayout->setContentsMargins(0, 0, 0, 0);
+            m_controlLayout->setSpacing(0);
             m_controlLayout->addSpacing(LayoutConstants::TabBarBarLeftMargin);
             m_controlLayout->addStretch(1);
             m_controlLayout->addLayout(m_barBook, 0);
-            assert(m_controlLayout->setAlignment(m_barBook, Qt::AlignVCenter));
+            m_controlLayout->setAlignment(m_barBook, Qt::AlignVCenter);
             m_controlLayout->addSpacing(LayoutConstants::NarrowHMargin);
 
             setLayout(m_controlLayout);
@@ -88,9 +105,8 @@ namespace TrenchBroom {
             button->setPressed(m_buttons.empty());
             m_buttons.push_back(button);
 
-            const auto sizerIndex = static_cast<int>(2 * (m_buttons.size() - 1) + 1);
-            m_controlLayout->insertWidget(sizerIndex, button, 0, Qt::AlignVCenter);
-            m_controlLayout->insertSpacing(sizerIndex + 1, LayoutConstants::WideHMargin);
+            const auto sizerIndex = static_cast<int>(m_buttons.size());
+            m_controlLayout->insertWidget(sizerIndex, button);
 
             QWidget* barPage = bookPage->createTabBarPage(nullptr);
             m_barBook->addWidget(barPage);

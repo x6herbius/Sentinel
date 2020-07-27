@@ -82,6 +82,7 @@ namespace TrenchBroom {
             void doMoveCameraToCurrentTracePoint() override;
         private: // implement MapViewBase interface
             vm::vec3 doGetMoveDirection(vm::direction direction) const override;
+            size_t doGetFlipAxis(const vm::direction direction) const override;
             vm::vec3 doComputePointEntityPosition(const vm::bbox3& bounds) const override;
 
             ActionContext::Type doGetActionContext() const override;
@@ -94,6 +95,7 @@ namespace TrenchBroom {
             void doRenderMap(Renderer::MapRenderer& renderer, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
             void doRenderTools(MapViewToolBox& toolBox, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
             void doRenderExtras(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
+            void doRenderSoftWorldBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
         private: // implement CameraLinkableView interface
             void doLinkCamera(CameraLinkHelper& linkHelper) override;
         };

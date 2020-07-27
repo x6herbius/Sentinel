@@ -21,7 +21,7 @@
 
 #include "Notifier.h"
 #include "PreferenceManager.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Model/Game.h"
 #include "View/BorderLine.h"
 #include "View/MapDocument.h"
@@ -60,9 +60,11 @@ namespace TrenchBroom {
         }
 
         void ModEditor::createGui() {
-            auto* availableModContainer = new TitledPanel("Available", false, false);
+            auto* availableModContainer = new TitledPanel("Available", false, true);
+            availableModContainer->setBackgroundRole(QPalette::Base);
+            availableModContainer->setAutoFillBackground(true);
+            
             m_availableModList = new QListWidget();
-            m_availableModList->setStyleSheet("QListWidget { border: none; }");
             m_availableModList->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
             auto* availableModContainerSizer = new QVBoxLayout();
@@ -79,9 +81,11 @@ namespace TrenchBroom {
             filterBoxSizer->setSpacing(0);
             filterBoxSizer->addWidget(m_filterBox, 1);
 
-            auto* enabledModContainer = new TitledPanel("Enabled", false, false);
+            auto* enabledModContainer = new TitledPanel("Enabled", false, true);
+            enabledModContainer->setBackgroundRole(QPalette::Base);
+            enabledModContainer->setAutoFillBackground(true);
+
             m_enabledModList = new QListWidget();
-            m_enabledModList->setStyleSheet("QListWidget { border: none; }");
             m_enabledModList->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
             auto* enabledModContainerSizer = new QVBoxLayout();
@@ -90,10 +94,10 @@ namespace TrenchBroom {
             enabledModContainerSizer->addWidget(m_enabledModList, 1);
             enabledModContainer->getPanel()->setLayout(enabledModContainerSizer);
 
-            m_addModsButton = createBitmapButton("Add.png", tr("Enable the selected mods"));
-            m_removeModsButton = createBitmapButton("Remove.png", tr("Disable the selected mods"));
-            m_moveModUpButton = createBitmapButton("Up.png", tr("Move the selected mod up"));
-            m_moveModDownButton = createBitmapButton("Down.png", tr("Move the selected mod down"));
+            m_addModsButton = createBitmapButton("Add.svg", tr("Enable the selected mods"));
+            m_removeModsButton = createBitmapButton("Remove.svg", tr("Disable the selected mods"));
+            m_moveModUpButton = createBitmapButton("Up.svg", tr("Move the selected mod up"));
+            m_moveModDownButton = createBitmapButton("Down.svg", tr("Move the selected mod down"));
 
             auto* toolBar = createMiniToolBarLayout(
                 m_addModsButton,

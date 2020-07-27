@@ -41,6 +41,13 @@ namespace TrenchBroom {
     namespace View {
         class CommandProcessor;
 
+        /**
+         * MapDocument API that is private to Command classes.
+         *
+         * These `performSomething()` methods will actually do an action, where
+         * the corresponding `something()` in MapDocument would create and execute a
+         * Command object which then calls `performSomething()`.
+         */
         class MapDocumentCommandFacade : public MapDocument {
         private:
             std::unique_ptr<CommandProcessor> m_commandProcessor;
@@ -52,13 +59,13 @@ namespace TrenchBroom {
             ~MapDocumentCommandFacade() override;
         public: // selection modification
             void performSelect(const std::vector<Model::Node*>& nodes);
-            void performSelect(const std::vector<Model::BrushFace*>& faces);
+            void performSelect(const std::vector<Model::BrushFaceHandle>& faces);
             void performSelectAllNodes();
             void performSelectAllBrushFaces();
             void performConvertToBrushFaceSelection();
 
             void performDeselect(const std::vector<Model::Node*>& nodes);
-            void performDeselect(const std::vector<Model::BrushFace*>& faces);
+            void performDeselect(const std::vector<Model::BrushFaceHandle>& faces);
             void performDeselectAll();
         private:
             void deselectAllNodes();
@@ -72,14 +79,16 @@ namespace TrenchBroom {
             void restoreVisibilityState(const std::map<Model::Node*, Model::VisibilityState>& nodes);
             std::map<Model::Node*, Model::LockState> setLockState(const std::vector<Model::Node*>& nodes, Model::LockState lockState);
             void restoreLockState(const std::map<Model::Node*, Model::LockState>& nodes);
+        public: // layers
+            using MapDocument::performSetCurrentLayer;
         private:  // groups
             class RenameGroupsVisitor;
             class UndoRenameGroupsVisitor;
         public:
-            std::map<Model::Group*, std::string> performRenameGroups(const std::string& newName);
-            void performUndoRenameGroups(const std::map<Model::Group*, std::string>& newNames);
+            std::map<Model::GroupNode*, std::string> performRenameGroups(const std::string& newName);
+            void performUndoRenameGroups(const std::map<Model::GroupNode*, std::string>& newNames);
 
-            void performPushGroup(Model::Group* group);
+            void performPushGroup(Model::GroupNode* group);
             void performPopGroup();
         public: // transformation
             /**
@@ -90,10 +99,13 @@ namespace TrenchBroom {
         public: // entity attributes
             using EntityAttributeSnapshotMap = std::map<Model::AttributableNode*, std::vector<Model::EntityAttributeSnapshot>>;
             EntityAttributeSnapshotMap performSetAttribute(const std::string& name, const std::string& value);
+            EntityAttributeSnapshotMap performSetAttributeForNodes(const std::vector<Model::AttributableNode*>& nodes, const std::string& name, const std::string& value);
             EntityAttributeSnapshotMap performRemoveAttribute(const std::string& name);
+            EntityAttributeSnapshotMap performRemoveAttributeForNodes(const std::vector<Model::AttributableNode*>& nodes, const std::string& name);
             EntityAttributeSnapshotMap performUpdateSpawnflag(const std::string& name, const size_t flagIndex, const bool setFlag);
             EntityAttributeSnapshotMap performConvertColorRange(const std::string& name, Assets::ColorRange::Type colorRange);
             EntityAttributeSnapshotMap performRenameAttribute(const std::string& oldName, const std::string& newName);
+            EntityAttributeSnapshotMap performRenameAttributeForNodes(const std::vector<Model::AttributableNode*>& nodes, const std::string& oldName, const std::string& newName);
             void restoreAttributes(const EntityAttributeSnapshotMap& attributes);
         public: // brush resizing
             std::vector<vm::polygon3> performResizeBrushes(const std::vector<vm::polygon3>& polygons, const vm::vec3& delta);
@@ -106,13 +118,11 @@ namespace TrenchBroom {
         public: // vertices
             bool performFindPlanePoints();
             bool performSnapVertices(FloatType snapTo);
-            std::vector<vm::vec3> performMoveVertices(const std::map<Model::Brush*, std::vector<vm::vec3>>& vertices, const vm::vec3& delta);
-            std::vector<vm::segment3> performMoveEdges(const std::map<Model::Brush*, std::vector<vm::segment3>>& edges, const vm::vec3& delta);
-            std::vector<vm::polygon3> performMoveFaces(const std::map<Model::Brush*, std::vector<vm::polygon3>>& faces, const vm::vec3& delta);
-            void performAddVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices);
-            void performRemoveVertices(const std::map<Model::Brush*, std::vector<vm::vec3>>& vertices);
-        private: // implement MapDocument operations
-            void performRebuildBrushGeometry(const std::vector<Model::Brush*>& brushes) override;
+            std::vector<vm::vec3> performMoveVertices(const std::map<Model::BrushNode*, std::vector<vm::vec3>>& vertices, const vm::vec3& delta);
+            std::vector<vm::segment3> performMoveEdges(const std::map<Model::BrushNode*, std::vector<vm::segment3>>& edges, const vm::vec3& delta);
+            std::vector<vm::polygon3> performMoveFaces(const std::map<Model::BrushNode*, std::vector<vm::polygon3>>& faces, const vm::vec3& delta);
+            void performAddVertices(const std::map<vm::vec3, std::vector<Model::BrushNode*>>& vertices);
+            void performRemoveVertices(const std::map<Model::BrushNode*, std::vector<vm::vec3>>& vertices);
         public: // snapshots and restoration
             void restoreSnapshot(Model::Snapshot* snapshot);
         public: // entity definition file management

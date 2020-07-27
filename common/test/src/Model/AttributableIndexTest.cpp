@@ -17,12 +17,14 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "TestUtils.h"
 #include "Model/AttributableNode.h"
 #include "Model/AttributableNodeIndex.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 
 #include <kdl/vector_utils.h>
 
@@ -39,13 +41,13 @@ namespace TrenchBroom {
             return index.findAttributableNodes(AttributableNodeIndexQuery::numbered(name), value);
         }
 
-        TEST(EntityAttributeIndexTest, addAttributableNode) {
+        TEST_CASE("EntityAttributeIndexTest.addAttributableNode", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue");
             entity2->addOrUpdateAttribute("other", "someothervalue");
 
@@ -67,13 +69,13 @@ namespace TrenchBroom {
             delete entity2;
         }
 
-        TEST(EntityAttributeIndexTest, removeAttributableNode) {
+        TEST_CASE("EntityAttributeIndexTest.removeAttributableNode", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue");
             entity2->addOrUpdateAttribute("other", "someothervalue");
 
@@ -90,13 +92,13 @@ namespace TrenchBroom {
             delete entity2;
         }
 
-        TEST(EntityAttributeIndexTest, addAttribute) {
+        TEST_CASE("EntityAttributeIndexTest.addAttribute", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue");
 
             index.addAttributableNode(entity1);
@@ -120,13 +122,13 @@ namespace TrenchBroom {
             delete entity2;
         }
 
-        TEST(EntityAttributeIndexTest, removeAttribute) {
+        TEST_CASE("EntityAttributeIndexTest.removeAttribute", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue");
             entity2->addOrUpdateAttribute("other", "someothervalue");
 
@@ -146,10 +148,10 @@ namespace TrenchBroom {
             delete entity2;
         }
 
-        TEST(EntityAttributeIndexTest, addNumberedEntityAttribute) {
+        TEST_CASE("EntityAttributeIndexTest.addNumberedEntityAttribute", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test1", "somevalue");
             entity1->addOrUpdateAttribute("test2", "somevalue");
 
@@ -165,10 +167,10 @@ namespace TrenchBroom {
         }
 
 
-        TEST(EntityAttributeIndexTest, addRemoveFloatProperty) {
+        TEST_CASE("EntityAttributeIndexTest.addRemoveFloatProperty", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("delay", "3.5");
 
             index.addAttributableNode(entity1);
@@ -182,13 +184,13 @@ namespace TrenchBroom {
             delete entity1;
         }
 
-        TEST(EntityAttributeIndexTest, allNames) {
+        TEST_CASE("EntityAttributeIndexTest.allNames", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue");
             entity2->addOrUpdateAttribute("other", "someothervalue");
 
@@ -198,13 +200,13 @@ namespace TrenchBroom {
             ASSERT_COLLECTIONS_EQUIVALENT(std::vector<std::string>{ "test", "other" }, index.allNames());
         }
 
-        TEST(EntityAttributeIndexTest, allValuesForNames) {
+        TEST_CASE("EntityAttributeIndexTest.allValuesForNames", "[EntityAttributeIndexTest]") {
             AttributableNodeIndex index;
 
-            Entity* entity1 = new Entity();
+            EntityNode* entity1 = new EntityNode();
             entity1->addOrUpdateAttribute("test", "somevalue");
 
-            Entity* entity2 = new Entity();
+            EntityNode* entity2 = new EntityNode();
             entity2->addOrUpdateAttribute("test", "somevalue2");
             entity2->addOrUpdateAttribute("other", "someothervalue");
 

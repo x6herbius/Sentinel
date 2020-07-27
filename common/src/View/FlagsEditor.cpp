@@ -48,7 +48,8 @@ namespace TrenchBroom {
 
         void FlagsEditor::setFlags(const QList<int>& values, const QStringList& labels, const QStringList& tooltips) {
             const auto count = static_cast<size_t>(values.size());
-            const auto numRows = count / m_numCols;
+            const size_t numRows = (count + (m_numCols - 1)) / m_numCols;
+            ensure(numRows * m_numCols >= count, "didn't allocate enough grid cells");
 
             m_checkBoxes.clear();
             m_values.clear();
@@ -56,7 +57,7 @@ namespace TrenchBroom {
             m_checkBoxes.resize(count, nullptr);
             m_values.resize(count, 0);
 
-            deleteChildWidgetsAndLayout(this);
+            deleteChildWidgetsLaterAndDeleteLayout(this);
 
             auto* layout = new QGridLayout();
             layout->setHorizontalSpacing(LayoutConstants::WideHMargin);
@@ -70,19 +71,24 @@ namespace TrenchBroom {
                         const int indexInt = static_cast<int>(index);
                         const int rowInt = static_cast<int>(row);
                         const int colInt = static_cast<int>(col);
+                        const int value = values[indexInt];
 
                         m_checkBoxes[index] = new QCheckBox();
-                        m_values[index] = values[indexInt];
+                        m_values[index] = value;
 
-                        m_checkBoxes[index]->setText(indexInt < labels.size() ? labels[indexInt] : QString::number(1 << index));
+                        m_checkBoxes[index]->setText(indexInt < labels.size() ? labels[indexInt] : QString::number(value));
                         m_checkBoxes[index]->setToolTip(indexInt < tooltips.size() ? tooltips[indexInt] : "");
-                        connect(m_checkBoxes[index], &QCheckBox::clicked, this, [index, this](){
-                            emit flagChanged(index, this->getSetFlagValue(), this->getMixedFlagValue());
+                        connect(m_checkBoxes[index], &QCheckBox::clicked, this, [index, value, this](){
+                            emit flagChanged(index, value, this->getSetFlagValue(), this->getMixedFlagValue());
                         });
 
                         layout->addWidget(m_checkBoxes[index], rowInt, colInt);
                     }
                 }
+            }
+
+            for (size_t i = 0; i < m_checkBoxes.size(); ++i) {
+                ensure(m_checkBoxes[i] != nullptr, "didn't create enough checkbox widgets");
             }
 
             setLayout(layout);

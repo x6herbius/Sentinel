@@ -22,25 +22,25 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
-        class Entity;
-        class Group;
-        class Layer;
+        class BrushNode;
+        class EntityNode;
+        class GroupNode;
+        class LayerNode;
         class Node;
         enum class VisibilityState;
-        class World;
+        class WorldNode;
 
         class MatchNodesByVisibility {
         private:
             VisibilityState m_visibility;
         public:
-            MatchNodesByVisibility(VisibilityState visibility);
+            explicit MatchNodesByVisibility(VisibilityState visibility);
 
-            bool operator()(const World* world) const;
-            bool operator()(const Layer* layer) const;
-            bool operator()(const Group* group) const;
-            bool operator()(const Entity* entity) const;
-            bool operator()(const Brush* brush) const;
+            bool operator()(const WorldNode* world) const;
+            bool operator()(const LayerNode* layer) const;
+            bool operator()(const GroupNode* group) const;
+            bool operator()(const EntityNode* entity) const;
+            bool operator()(const BrushNode* brush) const;
         private:
             bool match(const Node* node) const;
         };

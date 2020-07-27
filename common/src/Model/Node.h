@@ -25,6 +25,7 @@
 #include "Model/Tag.h"
 
 #include <vecmath/forward.h>
+#include <vecmath/bbox.h>
 
 #include <string>
 #include <vector>
@@ -54,8 +55,8 @@ namespace TrenchBroom {
             VisibilityState m_visibilityState;
             LockState m_lockState;
 
-            size_t m_lineNumber;
-            size_t m_lineCount;
+            mutable size_t m_lineNumber;
+            mutable size_t m_lineCount;
 
             mutable std::vector<Issue*> m_issues;
             mutable bool m_issuesValid;
@@ -217,6 +218,15 @@ namespace TrenchBroom {
             void nodeWillChange();
             void nodeDidChange();
 
+            friend class NotifyPhysicalBoundsChange;
+            class NotifyPhysicalBoundsChange {
+            private:
+                Node* m_node;
+                vm::bbox3 m_oldBounds;
+            public:
+                explicit NotifyPhysicalBoundsChange(Node* node);
+                ~NotifyPhysicalBoundsChange();
+            };
             void nodePhysicalBoundsDidChange(vm::bbox3 oldBounds);
         private:
             void childWillChange(Node* node);
@@ -231,7 +241,13 @@ namespace TrenchBroom {
             void select();
             void deselect();
 
+            /**
+             * Returns true if this node or our parent or grandparent, etc., is selected
+             */
             bool transitivelySelected() const;
+            /**
+             * Returns true if our parent or grandparent, etc., is selected
+             */
             bool parentSelected() const;
 
             bool childSelected() const;
@@ -251,7 +267,7 @@ namespace TrenchBroom {
              * it's a list of the contained brushes (excluding the Entity itself).
              */
             virtual std::vector<Node*> nodesRequiredForViewSelection();
-        protected:
+        private:
             void incChildSelectionCount(size_t delta);
             void decChildSelectionCount(size_t delta);
         private:
@@ -276,7 +292,7 @@ namespace TrenchBroom {
             void findNodesContaining(const vm::vec3& point, std::vector<Node*>& result);
         public: // file position
             size_t lineNumber() const;
-            void setFilePosition(size_t lineNumber, size_t lineCount);
+            void setFilePosition(size_t lineNumber, size_t lineCount) const;
             bool containsLine(size_t lineNumber) const;
         public: // issue management
             const std::vector<Issue*>& issues(const std::vector<IssueGenerator*>& issueGenerators);
@@ -289,6 +305,9 @@ namespace TrenchBroom {
             void validateIssues(const std::vector<IssueGenerator*>& issueGenerators);
             void clearIssues() const;
         public: // visitors
+            /**
+             * Visit this node, and recursively visit its children
+             */
             template <class V>
             void acceptAndRecurse(V& visitor) {
                 accept(visitor);
@@ -296,6 +315,9 @@ namespace TrenchBroom {
                     recurse(visitor);
             }
 
+            /**
+             * Visit this node, and recursively visit its children
+             */
             template <class V>
             void acceptAndRecurse(V& visitor) const {
                 accept(visitor);
@@ -303,6 +325,10 @@ namespace TrenchBroom {
                     recurse(visitor);
             }
 
+            /**
+             * For each node in the given range, visit it, and then recursively visit its children,
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void acceptAndRecurse(I cur, I end, V& visitor) {
                 while (cur != end && !visitor.cancelled()) {
@@ -311,6 +337,9 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Visit this node, and recursively visit its parents
+             */
             template <class V>
             void acceptAndEscalate(V& visitor) {
                 accept(visitor);
@@ -318,6 +347,9 @@ namespace TrenchBroom {
                     escalate(visitor);
             }
 
+            /**
+             * Visit this node, and recursively visit its parents
+             */
             template <class V>
             void acceptAndEscalate(V& visitor) const {
                 accept(visitor);
@@ -325,6 +357,10 @@ namespace TrenchBroom {
                     escalate(visitor);
             }
 
+            /**
+             * For each node in the given range, visit it, and then recursively visit its parents,
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void acceptAndEscalate(I cur, I end, V& visitor) {
                 while (cur != end && !visitor.cancelled()) {
@@ -333,16 +369,26 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Visit this node (not visiting parents or children)
+             */
             template <class V>
             void accept(V& visitor) {
                 doAccept(visitor);
             }
 
+            /**
+             * Visit this node (not visiting parents or children)
+             */
             template <class V>
             void accept(V& visitor) const {
                 doAccept(visitor);
             }
 
+            /**
+             * For each node in the given range, visit it (not visiting parents or children),
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void accept(I cur, I end, V& visitor) {
                 while (cur != end && !visitor.cancelled()) {
@@ -351,6 +397,9 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Recursively visit this node's children (but not visiting this)
+             */
             template <class V>
             void recurse(V& visitor) {
                 for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
@@ -359,6 +408,9 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Recursively visit this node's children (but not visiting this)
+             */
             template <class V>
             void recurse(V& visitor) const {
                 for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
@@ -367,6 +419,10 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * For each node in the given range, recursively visit its children,
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void recurse(I cur, I end, V& visitor) {
                 while (cur != end) {
@@ -375,6 +431,9 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Visit this node's children only
+             */
             template <class V>
             void iterate(V& visitor) {
                 for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
@@ -383,6 +442,9 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Visit this node's children only
+             */
             template <class V>
             void iterate(V& visitor) const {
                 for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
@@ -391,6 +453,10 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * For each node in the given range, visit its children (not visiting the node itself),
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void iterate(I cur, I end, V& visitor) {
                 while (cur != end && !visitor.cancelled()) {
@@ -399,18 +465,28 @@ namespace TrenchBroom {
                 }
             }
 
+            /**
+             * Recursively visit this node's parents (not visiting the node itself)
+             */
             template <class V>
             void escalate(V& visitor) {
                 if (parent() != nullptr && !visitor.cancelled())
                     parent()->acceptAndEscalate(visitor);
             }
 
+            /**
+             * Recursively visit this node's parents (not visiting the node itself)
+             */
             template <class V>
             void escalate(V& visitor) const {
                 if (parent() != nullptr && !visitor.cancelled())
                     parent()->acceptAndEscalate(visitor);
             }
 
+            /**
+             * For each node in the given range, recursively visit its parents (not visiting the node itself),
+             * until the visitor gets cancelled
+             */
             template <typename I, typename V>
             static void escalate(I cur, I end, V& visitor) {
                 while (cur != end && !visitor.cancelled()) {

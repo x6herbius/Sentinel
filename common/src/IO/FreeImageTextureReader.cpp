@@ -21,16 +21,19 @@
 
 #include "Color.h"
 #include "Ensure.h"
+#include "Exceptions.h"
 #include "FreeImage.h"
 #include "Assets/Texture.h"
 #include "Assets/TextureBuffer.h"
 #include "IO/File.h"
 #include "IO/ImageLoaderImpl.h"
 
+#include <stdexcept>
+
 namespace TrenchBroom {
     namespace IO {
-        FreeImageTextureReader::FreeImageTextureReader(const NameStrategy& nameStrategy) :
-        TextureReader(nameStrategy) {}
+        FreeImageTextureReader::FreeImageTextureReader(const NameStrategy& nameStrategy, const FileSystem& fs, Logger& logger) :
+        TextureReader(nameStrategy, fs, logger) {}
 
         /**
          * The byte order of a 32bpp FIBITMAP is defined by the macros FI_RGBA_RED,
@@ -89,7 +92,7 @@ namespace TrenchBroom {
 
             if (image == nullptr) {
                 FreeImage_CloseMemory(imageMemory);
-                return new Assets::Texture(textureName(path), 64, 64);
+                throw AssetException("FreeImage could not load image data");
             }
 
             const auto imageWidth      = static_cast<size_t>(FreeImage_GetWidth(image));
@@ -97,7 +100,7 @@ namespace TrenchBroom {
 
             if (!checkTextureDimensions(imageWidth, imageHeight)) {
                 FreeImage_CloseMemory(imageMemory);
-                return new Assets::Texture(textureName(path), 64, 64);
+                throw AssetException("Invalid texture dimensions");
             }
 
             const auto imageColourType = FreeImage_GetColorType(image);

@@ -39,6 +39,11 @@ namespace TrenchBroom {
         using Exception::Exception;
     };
 
+    class BrushFaceReferenceException : public Exception {
+    public:
+        using Exception::Exception;
+    };
+
     class EntityAttributeException : public Exception {
     public:
         using Exception::Exception;
@@ -73,7 +78,7 @@ namespace TrenchBroom {
     class FileNotFoundException : public Exception {
     public:
         using Exception::Exception;
-        FileNotFoundException(const std::string& path);
+        explicit FileNotFoundException(const std::string& path);
         FileNotFoundException(const std::string& path, const PathException& e);
     };
 

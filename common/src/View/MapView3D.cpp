@@ -24,9 +24,9 @@
 #include "Preferences.h"
 #include "FloatType.h"
 #include "Assets/EntityDefinitionManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushGeometry.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Model/HitAdapter.h"
 #include "Model/HitQuery.h"
 #include "Model/PickResult.h"
@@ -81,6 +81,8 @@ namespace TrenchBroom {
             initializeToolChain(toolBox);
 
             m_camera->setFov(pref(Preferences::CameraFov));
+
+            mapViewBaseVirtualInit();
         }
 
         MapView3D::~MapView3D() {
@@ -213,11 +215,10 @@ namespace TrenchBroom {
                 auto pickResult = Model::PickResult::byDistance(editorContext);
 
                 document->pick(pickRay, pickResult);
-                const auto& hit = pickResult.query().pickable().type(Model::Brush::BrushHit).occluded().first();
-
-                if (hit.isMatch()) {
-                    const auto* face = Model::hitToFace(hit);
-                    const auto dragPlane = vm::aligned_orthogonal_plane(hit.hitPoint(), face->boundary().normal);
+                const auto& hit = pickResult.query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    const auto& face = faceHandle->face();
+                    const auto dragPlane = vm::aligned_orthogonal_plane(hit.hitPoint(), face.boundary().normal);
                     return grid.moveDeltaForBounds(dragPlane, bounds, document->worldBounds(), pickRay);
                 } else {
                     const auto point = vm::vec3(grid.snap(m_camera->defaultPoint(pickRay)));
@@ -266,19 +267,20 @@ namespace TrenchBroom {
                 return m_center / static_cast<FloatType>(m_count);
             }
         private:
-            void doVisit(const Model::World*) override   {}
-            void doVisit(const Model::Layer*) override   {}
-            void doVisit(const Model::Group*) override   {}
+            void doVisit(const Model::WorldNode*) override   {}
+            void doVisit(const Model::LayerNode*) override   {}
+            void doVisit(const Model::GroupNode*) override   {}
 
-            void doVisit(const Model::Entity* entity) override {
+            void doVisit(const Model::EntityNode* entity) override {
                 if (!entity->hasChildren()) {
                     const auto& bounds = entity->logicalBounds();
                     bounds.for_each_vertex([&](const vm::vec3& v) { addPoint(v); });
                 }
             }
 
-            void doVisit(const Model::Brush* brush) override   {
-                for (const Model::BrushVertex* vertex : brush->vertices()) {
+            void doVisit(const Model::BrushNode* brushNode) override   {
+                const Model::Brush& brush = brushNode->brush();
+                for (const Model::BrushVertex* vertex : brush.vertices()) {
                     addPoint(vertex->position());
                 }
             }
@@ -310,11 +312,11 @@ namespace TrenchBroom {
                 return m_offset;
             }
         private:
-            void doVisit(const Model::World*) override   {}
-            void doVisit(const Model::Layer*) override   {}
-            void doVisit(const Model::Group*) override   {}
+            void doVisit(const Model::WorldNode*) override   {}
+            void doVisit(const Model::LayerNode*) override   {}
+            void doVisit(const Model::GroupNode*) override   {}
 
-            void doVisit(const Model::Entity* entity) override {
+            void doVisit(const Model::EntityNode* entity) override {
                 if (!entity->hasChildren()) {
                     const auto& bounds = entity->logicalBounds();
                     bounds.for_each_vertex([&](const vm::vec3& v) {
@@ -325,8 +327,9 @@ namespace TrenchBroom {
                 }
             }
 
-            void doVisit(const Model::Brush* brush) override   {
-                for (const auto* vertex : brush->vertices()) {
+            void doVisit(const Model::BrushNode* brushNode) override   {
+                const Model::Brush& brush = brushNode->brush();
+                for (const auto* vertex : brush.vertices()) {
                     for (size_t j = 0; j < 4; ++j) {
                         addPoint(vm::vec3f(vertex->position()), m_frustumPlanes[j]);
                     }
@@ -423,16 +426,20 @@ namespace TrenchBroom {
             }
         }
 
+        size_t MapView3D::doGetFlipAxis(const vm::direction direction) const {
+            return vm::find_abs_max_component(doGetMoveDirection(direction));
+        }
+
         vm::vec3 MapView3D::doComputePointEntityPosition(const vm::bbox3& bounds) const {
             auto document = kdl::mem_lock(m_document);
 
             auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::Brush::BrushHit).occluded().first();
-            if (hit.isMatch()) {
-                const auto* face = Model::hitToFace(hit);
-                return grid.moveDeltaForBounds(face->boundary(), bounds, worldBounds, pickRay());
+            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                const auto& face = faceHandle->face();
+                return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());
             } else {
                 const auto newPosition = Renderer::Camera::defaultPoint(pickRay());
                 const auto defCenter = bounds.center();
@@ -485,6 +492,10 @@ namespace TrenchBroom {
 
         void MapView3D::doRenderTools(MapViewToolBox& /* toolBox */, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
             renderTools(renderContext, renderBatch);
+        }
+
+        void MapView3D::doRenderSoftWorldBounds(Renderer::RenderContext&, Renderer::RenderBatch&) {
+            // the bounds rect itself is only rendered in MapView2D, it just clutters the 3D view
         }
 
         bool MapView3D::doBeforePopupMenu() {

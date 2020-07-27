@@ -42,8 +42,8 @@ namespace TrenchBroom {
 
         class UVOriginTool : public ToolControllerBase<PickingPolicy, NoKeyPolicy, NoMousePolicy, MouseDragPolicy, RenderPolicy, NoDropPolicy>, public Tool {
         public:
-            static const Model::HitType::Type XHandleHit;
-            static const Model::HitType::Type YHandleHit;
+            static const Model::HitType::Type XHandleHitType;
+            static const Model::HitType::Type YHandleHitType;
         private:
             static const FloatType MaxPickDistance;
             static const float OriginHandleRadius;
@@ -55,7 +55,7 @@ namespace TrenchBroom {
             vm::vec2f m_lastPoint;
             vm::vec2f m_selector;
         public:
-            UVOriginTool(UVViewHelper& helper);
+            explicit UVOriginTool(UVViewHelper& helper);
         private:
             Tool* doGetTool() override;
             const Tool* doGetTool() const override;

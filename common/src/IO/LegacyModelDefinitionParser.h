@@ -44,10 +44,10 @@ namespace TrenchBroom {
         class LegacyModelDefinitionTokenizer : public Tokenizer<MdlToken::Type> {
         public:
             LegacyModelDefinitionTokenizer(const char* begin, const char* end);
-            LegacyModelDefinitionTokenizer(const std::string& str);
+            explicit LegacyModelDefinitionTokenizer(const std::string& str);
 
             template <typename OtherToken>
-            LegacyModelDefinitionTokenizer(Tokenizer<OtherToken>& nestedTokenizer) :
+            explicit LegacyModelDefinitionTokenizer(Tokenizer<OtherToken>& nestedTokenizer) :
             Tokenizer(nestedTokenizer) {}
         private:
             static const std::string WordDelims;
@@ -60,18 +60,18 @@ namespace TrenchBroom {
             LegacyModelDefinitionTokenizer m_tokenizer;
         public:
             LegacyModelDefinitionParser(const char* begin, const char* end);
-            LegacyModelDefinitionParser(const std::string& str);
+            explicit LegacyModelDefinitionParser(const std::string& str);
 
             template <typename OtherToken>
-            LegacyModelDefinitionParser(Tokenizer<OtherToken>& nestedTokenizer) :
+            explicit LegacyModelDefinitionParser(Tokenizer<OtherToken>& nestedTokenizer) :
             m_tokenizer(nestedTokenizer) {}
         public:
             EL::Expression parse(ParserStatus& status);
         private:
             EL::Expression parseModelDefinition(ParserStatus& status);
-            EL::ExpressionBase* parseStaticModelDefinition(ParserStatus& status);
-            EL::ExpressionBase* parseDynamicModelDefinition(ParserStatus& status);
-            EL::ExpressionBase* parseNamedValue(ParserStatus& status, const std::string& name);
+            EL::Expression parseStaticModelDefinition(ParserStatus& status);
+            EL::Expression parseDynamicModelDefinition(ParserStatus& status);
+            EL::Expression parseNamedValue(ParserStatus& status, const std::string& name);
         private:
             TokenNameMap tokenNames() const override;
         };

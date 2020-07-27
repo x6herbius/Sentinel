@@ -21,21 +21,24 @@
 
 #include "PreferenceManager.h"
 #include "Preferences.h"
+#include "Assets/AssetUtils.h"
 #include "Assets/EntityDefinition.h"
 #include "Assets/EntityDefinitionGroup.h"
 #include "Assets/EntityDefinitionManager.h"
 #include "Assets/EntityModelManager.h"
 #include "Assets/Texture.h"
 #include "Assets/TextureManager.h"
+#include "EL/ELExceptions.h"
 #include "IO/DiskFileSystem.h"
 #include "IO/DiskIO.h"
+#include "IO/GameConfigParser.h"
 #include "IO/SimpleParserStatus.h"
 #include "IO/SystemPaths.h"
 #include "Model/AttributeNameWithDoubleQuotationMarksIssueGenerator.h"
 #include "Model/AttributeValueWithDoubleQuotationMarksIssueGenerator.h"
 #include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/BrushFace.h"
 #include "Model/BrushGeometry.h"
 #include "Model/ChangeBrushFaceAttributesRequest.h"
 #include "Model/CollectAttributableNodesVisitor.h"
@@ -53,12 +56,15 @@
 #include "Model/EmptyAttributeValueIssueGenerator.h"
 #include "Model/EmptyBrushEntityIssueGenerator.h"
 #include "Model/EmptyGroupIssueGenerator.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
+#include "Model/FindGroupVisitor.h"
+#include "Model/FindLayerVisitor.h"
 #include "Model/LinkSourceIssueGenerator.h"
 #include "Model/LinkTargetIssueGenerator.h"
+#include "Model/LockState.h"
 #include "Model/Game.h"
 #include "Model/GameFactory.h"
-#include "Model/Group.h"
+#include "Model/GroupNode.h"
 #include "Model/InvalidTextureScaleIssueGenerator.h"
 #include "Model/LongAttributeNameIssueGenerator.h"
 #include "Model/LongAttributeValueIssueGenerator.h"
@@ -78,8 +84,10 @@
 #include "Model/Polyhedron.h"
 #include "Model/Polyhedron3.h"
 #include "Model/PortalFile.h"
+#include "Model/SoftMapBoundsIssueGenerator.h"
 #include "Model/TagManager.h"
-#include "Model/World.h"
+#include "Model/VisibilityState.h"
+#include "Model/WorldNode.h"
 #include "View/AddBrushVerticesCommand.h"
 #include "View/AddRemoveNodesCommand.h"
 #include "View/Actions.h"
@@ -92,6 +100,7 @@
 #include "View/EntityDefinitionFileCommand.h"
 #include "View/FindPlanePointsCommand.h"
 #include "View/Grid.h"
+#include "View/MapTextEncoding.h"
 #include "View/MapViewConfig.h"
 #include "View/MoveBrushEdgesCommand.h"
 #include "View/MoveBrushFacesCommand.h"
@@ -101,13 +110,13 @@
 #include "View/RemoveBrushEdgesCommand.h"
 #include "View/RemoveBrushFacesCommand.h"
 #include "View/RemoveBrushVerticesCommand.h"
-#include "View/RenameGroupsCommand.h"
 #include "View/ReparentNodesCommand.h"
 #include "View/ResizeBrushesCommand.h"
 #include "View/CopyTexCoordSystemFromFaceCommand.h"
 #include "View/RotateTexturesCommand.h"
 #include "View/SelectionCommand.h"
 #include "View/SetLockStateCommand.h"
+#include "View/SetCurrentLayerCommand.h"
 #include "View/SetModsCommand.h"
 #include "View/SetVisibilityCommand.h"
 #include "View/ShearTexturesCommand.h"
@@ -127,6 +136,7 @@
 #include <vecmath/vec_io.h>
 
 #include <cassert>
+#include <cstdlib> // for std::abs
 #include <map>
 #include <sstream>
 #include <string>
@@ -159,7 +169,7 @@ namespace TrenchBroom {
         m_lastSaveModificationCount(0),
         m_modificationCount(0),
         m_currentLayer(nullptr),
-        m_currentTextureName(Model::BrushFace::NoTextureName),
+        m_currentTextureName(Model::BrushFaceAttributes::NoTextureName),
         m_lastSelectionBounds(0.0, 32.0),
         m_selectionBoundsValid(true),
         m_viewEffectsService(nullptr) {
@@ -190,7 +200,7 @@ namespace TrenchBroom {
             return m_worldBounds;
         }
 
-        Model::World* MapDocument::world() const {
+        Model::WorldNode* MapDocument::world() const {
             return m_world.get();
         }
 
@@ -198,28 +208,76 @@ namespace TrenchBroom {
             return m_game.get() != nullptr && m_game->isGamePathPreference(path);
         }
 
-        Model::Layer* MapDocument::currentLayer() const {
+        Model::LayerNode* MapDocument::currentLayer() const {
             ensure(m_currentLayer != nullptr, "currentLayer is null");
             return m_currentLayer;
         }
 
-        void MapDocument::setCurrentLayer(Model::Layer* currentLayer) {
+        /**
+         * Sets the current layer immediately, without adding a Command to the undo stack.
+         */
+        Model::LayerNode* MapDocument::performSetCurrentLayer(Model::LayerNode* currentLayer) {
             ensure(currentLayer != nullptr, "currentLayer is null");
-            assert(!currentLayer->locked());
-            assert(!currentLayer->hidden());
+            
+            Model::LayerNode* oldCurrentLayer = m_currentLayer;
             m_currentLayer = currentLayer;
             currentLayerDidChangeNotifier(m_currentLayer);
+
+            return oldCurrentLayer;
         }
 
-        Model::Group* MapDocument::currentGroup() const {
+        void MapDocument::setCurrentLayer(Model::LayerNode* currentLayer) {
+            ensure(m_currentLayer != nullptr, "old currentLayer is null");
+            ensure(currentLayer != nullptr, "new currentLayer is null");
+
+            Transaction transaction(this, "Set Current Layer");
+
+            while (currentGroup() != nullptr) {
+                closeGroup();
+            }
+
+            Model::CollectNodesVisitor collect;
+            m_currentLayer->recurse(collect);
+            downgradeShownToInherit(collect.nodes());                
+            downgradeUnlockedToInherit(collect.nodes());
+
+            executeAndStore(SetCurrentLayerCommand::set(currentLayer));
+        }
+
+        bool MapDocument::canSetCurrentLayer(Model::LayerNode* currentLayer) const {
+            return m_currentLayer != currentLayer;
+        }
+
+        Model::GroupNode* MapDocument::currentGroup() const {
             return m_editorContext->currentGroup();
         }
 
-        Model::Node* MapDocument::currentParent() const {
+        Model::Node* MapDocument::currentGroupOrWorld() const {
             Model::Node* result = currentGroup();
-            if (result == nullptr)
-                result = currentLayer();
+            if (result == nullptr) {
+                result = m_world.get();
+            }
             return result;
+        }
+
+        Model::Node* MapDocument::parentForNodes(const std::vector<Model::Node*>& nodes) const {
+            if (nodes.empty()) {
+                // No reference nodes, so return either the current group (if open) or current layer 
+                Model::Node* result = currentGroup();
+                if (result == nullptr) {
+                    result = currentLayer();
+                }
+                return result;
+            }
+
+            Model::GroupNode* parentGroup = Model::findGroup(nodes.at(0));
+            if (parentGroup != nullptr) {
+                return parentGroup;
+            }
+
+            Model::LayerNode* parentLayer = Model::findLayer(nodes.at(0));
+            ensure(parentLayer != nullptr, "no parent layer");
+            return parentLayer;
         }
 
         Model::EditorContext& MapDocument::editorContext() const {
@@ -337,6 +395,10 @@ namespace TrenchBroom {
             }
         }
 
+        MapTextEncoding MapDocument::encoding() const {
+            return MapTextEncoding::Quake;
+        }
+
         std::string MapDocument::serializeSelectedNodes() {
             std::stringstream stream;
             m_game->writeNodesToStream(*m_world, m_selectedNodes.nodes(), stream);
@@ -345,7 +407,8 @@ namespace TrenchBroom {
 
         std::string MapDocument::serializeSelectedBrushFaces() {
             std::stringstream stream;
-            m_game->writeBrushFacesToStream(*m_world, m_selectedBrushFaces, stream);
+            const auto faces = kdl::vec_transform(m_selectedBrushFaces, [](const auto& h) { return h.face(); });
+            m_game->writeBrushFacesToStream(*m_world, faces, stream);
             return stream.str();
         }
 
@@ -356,7 +419,7 @@ namespace TrenchBroom {
                     return PasteType::Node;
             } catch (const ParserException& e) {
                 try {
-                    const std::vector<Model::BrushFace*> faces = m_game->parseBrushFaces(str, *m_world, m_worldBounds, logger());
+                    const std::vector<Model::BrushFace> faces = m_game->parseBrushFaces(str, *m_world, m_worldBounds, logger());
                     if (!faces.empty() && pasteBrushFaces(faces)) {
                         return PasteType::BrushFace;
                     }
@@ -368,7 +431,7 @@ namespace TrenchBroom {
         }
 
         bool MapDocument::pasteNodes(const std::vector<Model::Node*>& nodes) {
-            Model::MergeNodesIntoWorldVisitor mergeNodes(m_world.get(), currentParent());
+            Model::MergeNodesIntoWorldVisitor mergeNodes(m_world.get(), parentForNodes());
             Model::Node::accept(std::begin(nodes), std::end(nodes), mergeNodes);
 
             const std::vector<Model::Node*> addedNodes = addNodes(mergeNodes.result());
@@ -384,16 +447,12 @@ namespace TrenchBroom {
             return true;
         }
 
-        bool MapDocument::pasteBrushFaces(const std::vector<Model::BrushFace*>& faces) {
+        bool MapDocument::pasteBrushFaces(const std::vector<Model::BrushFace>& faces) {
             assert(!faces.empty());
-            const Model::BrushFace* face = faces.back();
-
-            const bool result = setFaceAttributes(face->attribs());
-            kdl::col_delete_all(faces);
-
-            return result;
+            return setFaceAttributesExceptContentFlags(faces.back().attributes());
         }
 
+        // cppcheck-suppress passedByValue
         void MapDocument::loadPointFile(const IO::Path path) {
             static_assert(!std::is_reference<decltype(path)>::value,
                           "path must be passed by value because reloadPointFile() passes m_pointFilePath");
@@ -435,6 +494,7 @@ namespace TrenchBroom {
             pointFileWasUnloadedNotifier();
         }
 
+        // cppcheck-suppress passedByValue
         void MapDocument::loadPortalFile(const IO::Path path) {
             static_assert(!std::is_reference<decltype(path)>::value,
                           "path must be passed by value because reloadPortalFile() passes m_portalFilePath");
@@ -511,7 +571,7 @@ namespace TrenchBroom {
             return m_selectedNodes;
         }
 
-        std::vector<Model::BrushFace*> MapDocument::allSelectedBrushFaces() const {
+        std::vector<Model::BrushFaceHandle> MapDocument::allSelectedBrushFaces() const {
             if (hasSelectedBrushFaces())
                 return selectedBrushFaces();
             Model::CollectBrushFacesVisitor visitor;
@@ -519,7 +579,7 @@ namespace TrenchBroom {
             return visitor.faces();
         }
 
-        const std::vector<Model::BrushFace*>& MapDocument::selectedBrushFaces() const {
+        std::vector<Model::BrushFaceHandle> MapDocument::selectedBrushFaces() const {
             return m_selectedBrushFaces;
         }
 
@@ -571,9 +631,9 @@ namespace TrenchBroom {
         }
 
         void MapDocument::selectTouching(const bool del) {
-            const std::vector<Model::Brush*>& brushes = m_selectedNodes.brushes();
+            const std::vector<Model::BrushNode*>& brushes = m_selectedNodes.brushes();
 
-            Model::CollectTouchingNodesVisitor<std::vector<Model::Brush*>::const_iterator> visitor(std::begin(brushes), std::end(brushes), editorContext());
+            Model::CollectTouchingNodesVisitor<std::vector<Model::BrushNode*>::const_iterator> visitor(std::begin(brushes), std::end(brushes), editorContext());
             m_world->acceptAndRecurse(visitor);
 
             const std::vector<Model::Node*> nodes = visitor.nodes();
@@ -587,9 +647,9 @@ namespace TrenchBroom {
         }
 
         void MapDocument::selectInside(const bool del) {
-            const std::vector<Model::Brush*>& brushes = m_selectedNodes.brushes();
+            const std::vector<Model::BrushNode*>& brushes = m_selectedNodes.brushes();
 
-            Model::CollectContainedNodesVisitor<std::vector<Model::Brush*>::const_iterator> visitor(std::begin(brushes), std::end(brushes), editorContext());
+            Model::CollectContainedNodesVisitor<std::vector<Model::BrushNode*>::const_iterator> visitor(std::begin(brushes), std::end(brushes), editorContext());
             m_world->acceptAndRecurse(visitor);
 
             const std::vector<Model::Node*> nodes = visitor.nodes();
@@ -600,6 +660,30 @@ namespace TrenchBroom {
             else
                 deselectAll();
             select(nodes);
+        }
+
+        void MapDocument::selectInverse() {
+            // This only selects nodes that have no selected children (or parents).
+            // This is because if a brush entity only 1 selected child and 1 unselected,
+            // we treat it as partially selected and don't want to try to select the entity if the
+            // selection is inverted, which would reselect both children.
+            class CollectUnselectedSelectableNodesVisitor :
+            public Model::CollectMatchingNodesVisitor<Model::NodePredicates::And<Model::MatchSelectableNodes, Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>>, Model::UniqueNodeCollectionStrategy> {
+            public:
+                CollectUnselectedSelectableNodesVisitor(const Model::EditorContext& editorContext) :
+                CollectMatchingNodesVisitor(Model::NodePredicates::And<Model::MatchSelectableNodes, Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>>(
+                    Model::MatchSelectableNodes(editorContext), 
+                    Model::MatchTransitivelySelectedOrDescendantSelectedNodes<false>())) {}
+            };
+
+            CollectUnselectedSelectableNodesVisitor visitor(*m_editorContext);
+
+            Model::Node* target = currentGroupOrWorld();
+            target->recurse(visitor);
+
+            Transaction transaction(this, "Select Inverse");
+            deselectAll();
+            select(visitor.nodes());
         }
 
         void MapDocument::selectNodesWithFilePosition(const std::vector<size_t>& positions) {
@@ -619,13 +703,13 @@ namespace TrenchBroom {
             executeAndStore(SelectionCommand::select(std::vector<Model::Node*>(1, node)));
         }
 
-        void MapDocument::select(const std::vector<Model::BrushFace*>& faces) {
-            executeAndStore(SelectionCommand::select(faces));
+        void MapDocument::select(const std::vector<Model::BrushFaceHandle>& handles) {
+            executeAndStore(SelectionCommand::select(handles));
         }
 
-        void MapDocument::select(Model::BrushFace* face) {
-            executeAndStore(SelectionCommand::select(std::vector<Model::BrushFace*>(1, face)));
-            setCurrentTextureName(face->textureName());
+        void MapDocument::select(const Model::BrushFaceHandle& handle) {
+            executeAndStore(SelectionCommand::select({ handle }));
+            setCurrentTextureName(handle.face().attributes().textureName());
         }
 
         void MapDocument::convertToFaceSelection() {
@@ -633,12 +717,12 @@ namespace TrenchBroom {
         }
 
         void MapDocument::selectFacesWithTexture(const Assets::Texture* texture) {
-            Model::CollectSelectableBrushFacesVisitor visitor(*m_editorContext, [=](const Model::BrushFace* face) {
+            Model::CollectSelectableBrushFacesVisitor visitor(*m_editorContext, [=](const Model::BrushNode* brush, const Model::BrushFace& face) {
                 // FIXME: we shouldn't need this extra check here to prevent hidden brushes from being included; fix it in EditorContext
-                if (face->brush()->hidden()) {
+                if (brush->hidden()) {
                     return false;
                 }
-                return face->texture() == texture;
+                return face.texture() == texture;
             });
             m_world->acceptAndRecurse(visitor);
 
@@ -660,12 +744,15 @@ namespace TrenchBroom {
             executeAndStore(SelectionCommand::deselect(nodes));
         }
 
-        void MapDocument::deselect(Model::BrushFace* face) {
-            executeAndStore(SelectionCommand::deselect(std::vector<Model::BrushFace*>(1, face)));
+        void MapDocument::deselect(const Model::BrushFaceHandle& handle) {
+            executeAndStore(SelectionCommand::deselect({ handle }));
         }
 
         void MapDocument::updateLastSelectionBounds() {
-            m_lastSelectionBounds = selectionBounds();
+            const auto currentSelectionBounds = selectionBounds();
+            if (currentSelectionBounds.is_valid() && !currentSelectionBounds.is_empty()) {
+                m_lastSelectionBounds = selectionBounds();
+            }
         }
 
         void MapDocument::invalidateSelectionBounds() {
@@ -707,7 +794,8 @@ namespace TrenchBroom {
             }
 
             const std::vector<Model::Node*> addedNodes = collectChildren(nodes);
-            ensureVisible(collectChildren(nodes));
+            ensureVisible(addedNodes);
+            ensureUnlocked(addedNodes);
             return addedNodes;
         }
 
@@ -801,6 +889,27 @@ namespace TrenchBroom {
             }
 
             Transaction transaction(this, "Reparent Objects");
+
+            // This handles two main cases:
+            // - creating brushes in a hidden layer, and then grouping / ungrouping them keeps them visible
+            // - creating brushes in a hidden layer, then moving them to a hidden layer, should downgrade them
+            //   to inherited and hide them
+            for (auto& [newParent, nodes] : nodesToAdd) {
+                Model::LayerNode* newParentLayer = Model::findLayer(newParent);
+
+                Model::CollectNodesVisitor collect;
+                Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), collect);
+
+                std::vector<Model::Node*> nodesToDowngrade;
+                for (auto* node : collect.nodes()) {
+                    if (Model::findLayer(node) != newParentLayer) {
+                        nodesToDowngrade.push_back(node);
+                    }
+                }
+                downgradeUnlockedToInherit(nodesToDowngrade);
+                downgradeShownToInherit(nodesToDowngrade);
+            }
+
             executeAndStore(ReparentNodesCommand::reparent(nodesToAdd, nodesToRemove));
 
             std::map<Model::Node*, std::vector<Model::Node*>> removableNodes = collectRemovableParents(nodesToRemove);
@@ -835,13 +944,15 @@ namespace TrenchBroom {
         bool MapDocument::duplicateObjects() {
             const auto result = executeAndStore(DuplicateNodesCommand::duplicate());
             if (result->success()) {
-                m_viewEffectsService->flashSelection();
+                if (m_viewEffectsService) {
+                    m_viewEffectsService->flashSelection();
+                }
                 return true;
             }
             return false;
         }
 
-        Model::Entity* MapDocument::createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) {
+        Model::EntityNode* MapDocument::createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) {
             ensure(definition != nullptr, "definition is null");
 
             auto* entity = m_world->createEntity();
@@ -852,14 +963,14 @@ namespace TrenchBroom {
 
             const Transaction transaction(this, name.str());
             deselectAll();
-            addNode(entity, currentParent());
+            addNode(entity, parentForNodes());
             select(entity);
             translateObjects(delta);
 
             return entity;
         }
 
-        Model::Entity* MapDocument::createBrushEntity(const Assets::BrushEntityDefinition* definition) {
+        Model::EntityNode* MapDocument::createBrushEntity(const Assets::BrushEntityDefinition* definition) {
             ensure(definition != nullptr, "definition is null");
 
             const auto brushes = selectedNodes().brushes();
@@ -891,14 +1002,14 @@ namespace TrenchBroom {
 
             const Transaction transaction(this, name.str());
             deselectAll();
-            addNode(entity, currentParent());
+            addNode(entity, parentForNodes(nodes));
             reparentNodes(entity, nodes);
             select(nodes);
 
             return entity;
         }
 
-        Model::Group* MapDocument::groupSelection(const std::string& name) {
+        Model::GroupNode* MapDocument::groupSelection(const std::string& name) {
             if (!hasSelectedNodes())
                 return nullptr;
 
@@ -906,23 +1017,23 @@ namespace TrenchBroom {
             if (nodes.empty())
                 return nullptr;
 
-            Model::Group* group = new Model::Group(name);
+            Model::GroupNode* group = new Model::GroupNode(name);
 
             const Transaction transaction(this, "Group Selected Objects");
             deselectAll();
-            addNode(group, currentParent());
+            addNode(group, parentForNodes(nodes));
             reparentNodes(group, nodes);
             select(group);
 
             return group;
         }
 
-        void MapDocument::mergeSelectedGroupsWithGroup(Model::Group* group) {
+        void MapDocument::mergeSelectedGroupsWithGroup(Model::GroupNode* group) {
             if (!hasSelectedNodes() || !m_selectedNodes.hasOnlyGroups())
                 return;
 
             const Transaction transaction(this, "Merge Groups");
-            const std::vector<Model::Group*> groupsToMerge = m_selectedNodes.groups();
+            const std::vector<Model::GroupNode*> groupsToMerge = m_selectedNodes.groups();
 
             deselectAll();
             for (auto groupToMerge : groupsToMerge) {
@@ -937,21 +1048,21 @@ namespace TrenchBroom {
 
         class MapDocument::MatchGroupableNodes {
         private:
-            const Model::World* m_world;
+            const Model::WorldNode* m_world;
         public:
-            MatchGroupableNodes(const Model::World* world) : m_world(world) {}
+            explicit MatchGroupableNodes(const Model::WorldNode* world) : m_world(world) {}
         public:
-            bool operator()(const Model::World*) const  { return false; }
-            bool operator()(const Model::Layer*) const  { return false; }
-            bool operator()(const Model::Group*) const  { return true;  }
-            bool operator()(const Model::Entity*) const { return true; }
-            bool operator()(const Model::Brush* brush) const   { return brush->entity() == m_world; }
+            bool operator()(const Model::WorldNode*) const  { return false; }
+            bool operator()(const Model::LayerNode*) const  { return false; }
+            bool operator()(const Model::GroupNode*) const  { return true;  }
+            bool operator()(const Model::EntityNode*) const { return true; }
+            bool operator()(const Model::BrushNode* brush) const   { return brush->entity() == m_world; }
         };
 
         std::vector<Model::Node*> MapDocument::collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes) const {
             using CollectGroupableNodesVisitor = Model::CollectMatchingNodesVisitor<MatchGroupableNodes, Model::UniqueNodeCollectionStrategy, Model::StopRecursionIfMatched>;
 
-            CollectGroupableNodesVisitor collect(world());
+            CollectGroupableNodesVisitor collect((MatchGroupableNodes(world())));
             Model::Node::acceptAndEscalate(std::begin(selectedNodes), std::end(selectedNodes), collect);
             return collect.nodes();
         }
@@ -977,14 +1088,20 @@ namespace TrenchBroom {
         }
 
         void MapDocument::renameGroups(const std::string& name) {
-            executeAndStore(RenameGroupsCommand::rename(name));
+            if (!hasSelectedNodes() || !m_selectedNodes.hasOnlyGroups())
+                return;
+            
+            const std::vector<Model::AttributableNode*> groups = kdl::vec_element_cast<Model::AttributableNode*>(m_selectedNodes.groups());
+
+            const Transaction transaction(this, "Rename Groups");
+            executeAndStore(ChangeEntityAttributesCommand::setForNodes(groups, Model::AttributeNames::GroupName, name));
         }
 
-        void MapDocument::openGroup(Model::Group* group) {
+        void MapDocument::openGroup(Model::GroupNode* group) {
             const Transaction transaction(this, "Open Group");
 
             deselectAll();
-            Model::Group* previousGroup = m_editorContext->currentGroup();
+            Model::GroupNode* previousGroup = m_editorContext->currentGroup();
             if (previousGroup == nullptr)
                 lock(std::vector<Model::Node*>(1, m_world.get()));
             else
@@ -997,11 +1114,11 @@ namespace TrenchBroom {
             const Transaction transaction(this, "Close Group");
 
             deselectAll();
-            Model::Group* previousGroup = m_editorContext->currentGroup();
+            Model::GroupNode* previousGroup = m_editorContext->currentGroup();
             resetLock(std::vector<Model::Node*>(1, previousGroup));
             executeAndStore(CurrentGroupCommand::pop());
 
-            Model::Group* currentGroup = m_editorContext->currentGroup();
+            Model::GroupNode* currentGroup = m_editorContext->currentGroup();
             if (currentGroup != nullptr) {
                 unlock(std::vector<Model::Node*>(1, currentGroup));
             } else {
@@ -1009,13 +1126,211 @@ namespace TrenchBroom {
             }
         }
 
-        void MapDocument::isolate(const std::vector<Model::Node*>& /* nodes */) {
-            const std::vector<Model::Layer*>& layers = m_world->allLayers();
+        void MapDocument::renameLayer(Model::LayerNode* layer, const std::string& name) {
+            const Transaction transaction(this, "Rename Layer");
 
-            Model::CollectTransitivelyUnselectedNodesVisitor collectUnselected;
+            const auto result = executeAndStore(ChangeEntityAttributesCommand::setForNodes({ layer }, Model::AttributeNames::LayerName, name));
+            unused(result);
+        }
+
+        bool MapDocument::moveLayerByOne(Model::LayerNode* layer, MoveDirection direction) {
+            const std::vector<Model::LayerNode*> sorted = m_world->customLayersUserSorted();
+
+            const auto maybeIndex = kdl::vec_index_of(sorted, layer);
+            if (!maybeIndex.has_value()) {
+                return false;
+            }
+
+            const int newIndex = static_cast<int>(*maybeIndex) + (direction == MoveDirection::Down ? 1 : -1);
+            if (newIndex < 0 || newIndex >= static_cast<int>(sorted.size())) {
+                return false;
+            }
+            
+            Model::LayerNode* neighbour = sorted.at(static_cast<size_t>(newIndex));           
+            const int ourSortIndex = layer->sortIndex();
+            const int neighbourSortIndex = neighbour->sortIndex();
+
+            // Swap the sort indices of `layer` and `neighbour`
+            executeAndStore(ChangeEntityAttributesCommand::setForNodes({ layer },     Model::AttributeNames::LayerSortIndex, std::to_string(neighbourSortIndex)));
+            executeAndStore(ChangeEntityAttributesCommand::setForNodes({ neighbour }, Model::AttributeNames::LayerSortIndex, std::to_string(ourSortIndex)));
+            return true;
+        }
+
+        void MapDocument::moveLayer(Model::LayerNode* layer, const int offset) {
+            ensure(layer != m_world->defaultLayer(), "attempted to move default layer");
+
+            const Transaction transaction(this, "Move Layer");
+            
+            const MoveDirection direction = (offset > 0) ? MoveDirection::Down : MoveDirection::Up;
+            for (int i = 0; i < std::abs(offset); ++i) {
+                if (!moveLayerByOne(layer, direction)) {
+                    break;
+                }
+            }
+        }
+        
+        bool MapDocument::canMoveLayer(Model::LayerNode* layer, const int offset) const {
+            ensure(layer != nullptr, "null layer");
+
+            Model::WorldNode* world = this->world();
+            if (layer == world->defaultLayer()) {
+                return false;
+            }
+
+            const std::vector<Model::LayerNode*> sorted = world->customLayersUserSorted();            
+            const auto maybeIndex = kdl::vec_index_of(sorted, layer);
+            if (!maybeIndex.has_value()) {
+                return false;
+            }
+
+            const int newIndex = static_cast<int>(*maybeIndex) + offset;
+            return (newIndex >= 0 && newIndex < static_cast<int>(sorted.size()));
+        }
+
+        class CollectMoveableNodes : public Model::NodeVisitor {
+        private:
+            Model::WorldNode* m_world;
+            std::set<Model::Node*> m_selectNodes;
+            std::set<Model::Node*> m_moveNodes;
+        public:
+            explicit CollectMoveableNodes(Model::WorldNode* world) : m_world(world) {}
+
+            const std::vector<Model::Node*> selectNodes() const {
+                return std::vector<Model::Node*>(std::begin(m_selectNodes), std::end(m_selectNodes));
+            }
+
+            const std::vector<Model::Node*> moveNodes() const {
+                return std::vector<Model::Node*>(std::begin(m_moveNodes), std::end(m_moveNodes));
+            }
+        private:
+            void doVisit(Model::WorldNode*) override   {}
+            void doVisit(Model::LayerNode*) override   {}
+
+            void doVisit(Model::GroupNode* group) override   {
+                assert(group->selected());
+
+                if (!group->grouped()) {
+                    m_moveNodes.insert(group);
+                    m_selectNodes.insert(group);
+                }
+            }
+
+            void doVisit(Model::EntityNode* entity) override {
+                assert(entity->selected());
+
+                if (!entity->grouped()) {
+                    m_moveNodes.insert(entity);
+                    m_selectNodes.insert(entity);
+                }
+            }
+
+            void doVisit(Model::BrushNode* brush) override   {
+                assert(brush->selected());
+                if (!brush->grouped()) {
+                    auto* entity = brush->entity();
+                    if (entity == m_world) {
+                        m_moveNodes.insert(brush);
+                        m_selectNodes.insert(brush);
+                    } else {
+                        if (m_moveNodes.insert(entity).second) {
+                            const std::vector<Model::Node*>& siblings = entity->children();
+                            m_selectNodes.insert(std::begin(siblings), std::end(siblings));
+                        }
+                    }
+                }
+            }
+        };
+
+        void MapDocument::moveSelectionToLayer(Model::LayerNode* layer) {
+            Transaction transaction(this, "Move Nodes to " + layer->name());
+
+            const auto& selectedNodes = this->selectedNodes().nodes();
+
+            CollectMoveableNodes visitor(world());
+            Model::Node::accept(std::begin(selectedNodes), std::end(selectedNodes), visitor);
+
+            const auto moveNodes = visitor.moveNodes();
+            if (!moveNodes.empty()) {
+                deselectAll();
+                reparentNodes(layer, visitor.moveNodes());
+                if (!layer->hidden() && !layer->locked()) {
+                    select(visitor.selectNodes());
+                }
+            }
+        }
+
+        bool MapDocument::canMoveSelectionToLayer(Model::LayerNode* layer) const {
+            ensure(layer != nullptr, "null layer");
+
+            const auto& nodes = selectedNodes().nodes();
+            if (nodes.empty()) {
+                return false;
+            }
+
+            for (auto* node : nodes) {
+                auto* nodeGroup = Model::findGroup(node);
+                if (nodeGroup != nullptr) {
+                    return false;
+                }
+            }
+
+            for (auto* node : nodes) {
+                auto* nodeLayer = Model::findLayer(node);
+                if (nodeLayer != layer) {
+                    return true;
+                }
+            }
+
+            return true;
+        }
+
+        void MapDocument::hideLayers(const std::vector<Model::LayerNode*>& layers) {
+            Transaction transaction(this, "Hide Layers");
+            hide(std::vector<Model::Node*>(std::begin(layers), std::end(layers)));
+        }
+
+        bool MapDocument::canHideLayers(const std::vector<Model::LayerNode*>& layers) const {
+            for (auto* layer : layers) {
+                if (layer->visible()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void MapDocument::isolateLayers(const std::vector<Model::LayerNode*>& layers) {
+            const auto allLayers = world()->allLayers();
+
+            Transaction transaction(this, "Isolate Layers");
+            hide(std::vector<Model::Node*>(std::begin(allLayers), std::end(allLayers)));
+            show(std::vector<Model::Node*>(std::begin(layers), std::end(layers)));
+        }
+
+        bool MapDocument::canIsolateLayers(const std::vector<Model::LayerNode*>& layers) const {
+            if (layers.empty()) {
+                return false;
+            }
+            for (auto* layer : m_world->allLayers()) {
+                const bool shouldShowLayer = kdl::vec_contains(layers, layer);
+
+                if (shouldShowLayer && layer->hidden()) {
+                    return true;
+                }
+                if (!shouldShowLayer && layer->shown()) {
+                    return true;
+                }
+            }
+            // The layers are already isolated
+            return false;
+        }
+
+        void MapDocument::isolate() {
+            const std::vector<Model::LayerNode*>& layers = m_world->allLayers();
+
+            Model::CollectNotTransitivelySelectedOrDescendantSelectedNodesVisitor collectUnselected;
             Model::Node::recurse(std::begin(layers), std::end(layers), collectUnselected);
 
-            Model::CollectSelectedNodesVisitor collectSelected;
+            Model::CollectTransitivelySelectedOrDescendantSelectedNodesVisitor collectSelected;
             Model::Node::recurse(std::begin(layers), std::end(layers), collectSelected);
 
             Transaction transaction(this, "Isolate Objects");
@@ -1024,11 +1339,22 @@ namespace TrenchBroom {
         }
 
         void MapDocument::hide(const std::vector<Model::Node*> nodes) {
-            Model::CollectSelectedNodesVisitor collect;
-            Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), collect);
-
             const Transaction transaction(this, "Hide Objects");
-            deselect(collect.nodes());
+
+            // Deselect any selected nodes inside `nodes`
+            {
+                Model::CollectSelectedNodesVisitor collect;
+                Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), collect);
+                deselect(collect.nodes());
+            }
+
+            // Reset visibility of any forced shown children of `nodes`
+            {
+                Model::CollectNodesVisitor collect;
+                Model::Node::recurse(std::begin(nodes), std::end(nodes), collect);
+                downgradeShownToInherit(collect.nodes()); 
+            }
+
             executeAndStore(SetVisibilityCommand::hide(nodes));
         }
 
@@ -1041,7 +1367,7 @@ namespace TrenchBroom {
         }
 
         void MapDocument::showAll() {
-            const std::vector<Model::Layer*>& layers = m_world->allLayers();
+            const std::vector<Model::LayerNode*>& layers = m_world->allLayers();
             Model::CollectNodesVisitor collect;
             Model::Node::recurse(std::begin(layers), std::end(layers), collect);
             resetVisibility(collect.nodes());
@@ -1056,20 +1382,71 @@ namespace TrenchBroom {
         }
 
         void MapDocument::lock(const std::vector<Model::Node*>& nodes) {
-            Model::CollectSelectedNodesVisitor collect;
-            Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), collect);
-
             const Transaction transaction(this, "Lock Objects");
+
+            // Deselect any selected nodes inside `nodes`
+            {
+                Model::CollectSelectedNodesVisitor collect;
+                Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), collect);
+                deselect(collect.nodes());
+            }
+
+            // Reset lock state of any forced unlocked children of `nodes`
+            {
+                Model::CollectNodesVisitor collect;
+                Model::Node::recurse(std::begin(nodes), std::end(nodes), collect);
+                downgradeUnlockedToInherit(collect.nodes()); 
+            }
+
             executeAndStore(SetLockStateCommand::lock(nodes));
-            deselect(collect.nodes());
         }
 
         void MapDocument::unlock(const std::vector<Model::Node*>& nodes) {
             executeAndStore(SetLockStateCommand::unlock(nodes));
         }
 
+        /**
+         * Unlocks only those nodes from the given list whose lock state resolves to "locked"
+         */
+        void MapDocument::ensureUnlocked(const std::vector<Model::Node*>& nodes) {
+            std::vector<Model::Node*> nodesToUnlock;
+            for (auto* node : nodes) {
+                if (node->locked()) {
+                    nodesToUnlock.push_back(node);
+                }
+            }
+            unlock(nodesToUnlock);
+        }
+
         void MapDocument::resetLock(const std::vector<Model::Node*>& nodes) {
             executeAndStore(SetLockStateCommand::reset(nodes));
+        }
+
+        /**
+         * This is called to clear the forced Visibility_Shown that was set on newly created nodes
+         * so they could be visible if created in a hidden layer
+         */
+        void MapDocument::downgradeShownToInherit(const std::vector<Model::Node*>& nodes) {
+            std::vector<Model::Node*> nodesToReset;
+            for (auto* node : nodes) {
+                if (node->visibilityState() == Model::VisibilityState::Visibility_Shown) {
+                    nodesToReset.push_back(node);
+                }
+            }
+            resetVisibility(nodesToReset);
+        }
+
+        /**
+         * See downgradeShownToInherit
+         */
+        void MapDocument::downgradeUnlockedToInherit(const std::vector<Model::Node*>& nodes) {
+            std::vector<Model::Node*> nodesToReset;
+            for (auto* node : nodes) {
+                if (node->lockState() == Model::LockState::Lock_Unlocked) {
+                    nodesToReset.push_back(node);
+                }
+            }
+            resetLock(nodesToReset);
         }
 
         bool MapDocument::translateObjects(const vm::vec3& delta) {
@@ -1103,17 +1480,17 @@ namespace TrenchBroom {
         }
 
         bool MapDocument::createBrush(const std::vector<vm::vec3>& points) {
-            Model::BrushBuilder builder(m_world.get(), m_worldBounds);
-            Model::Brush* brush = builder.createBrush(points, currentTextureName());
-            if (!brush->fullySpecified()) {
-                delete brush;
+            Model::BrushBuilder builder(m_world.get(), m_worldBounds, m_game->defaultFaceAttribs());
+            Model::BrushNode* brushNode = m_world->createBrush(builder.createBrush(points, currentTextureName()));
+            if (!brushNode->brush().fullySpecified()) {
+                delete brushNode;
                 return false;
             }
 
             Transaction transaction(this, "Create Brush");
             deselectAll();
-            addNode(brush, currentParent());
-            select(brush);
+            addNode(brushNode, parentForNodes());
+            select(brushNode);
             return true;
         }
 
@@ -1122,54 +1499,60 @@ namespace TrenchBroom {
                 return false;
             }
 
-            Model::Polyhedron3 polyhedron;
+            std::vector<vm::vec3> points;
 
             if (hasSelectedBrushFaces()) {
-                for (const Model::BrushFace* face : selectedBrushFaces()) {
-                    for (const Model::BrushVertex* vertex : face->vertices()) {
-                        polyhedron.addPoint(vertex->position());
+                for (const auto& handle : selectedBrushFaces()) {
+                    for (const Model::BrushVertex* vertex : handle.face().vertices()) {
+                        points.push_back(vertex->position());
                     }
                 }
             } else if (selectedNodes().hasOnlyBrushes()) {
-                for (const Model::Brush* brush : selectedNodes().brushes()) {
-                    for (const Model::BrushVertex* vertex : brush->vertices()) {
-                        polyhedron.addPoint(vertex->position());
+                for (const Model::BrushNode* brushNode : selectedNodes().brushes()) {
+                    const Model::Brush& brush = brushNode->brush();
+                    for (const Model::BrushVertex* vertex : brush.vertices()) {
+                        points.push_back(vertex->position());
                     }
                 }
             }
 
+            Model::Polyhedron3 polyhedron(std::move(points));
             if (!polyhedron.polyhedron() || !polyhedron.closed()) {
                 return false;
             }
 
-            const Model::BrushBuilder builder(m_world.get(), m_worldBounds);
-            auto* brush = builder.createBrush(polyhedron, currentTextureName());
-            brush->cloneFaceAttributesFrom(selectedNodes().brushes());
+            const Model::BrushBuilder builder(m_world.get(), m_worldBounds, m_game->defaultFaceAttribs());
+            Model::Brush brush = builder.createBrush(polyhedron, currentTextureName());
+            for (const Model::BrushNode* selectedBrushNode : selectedNodes().brushes()) {
+                brush.cloneFaceAttributesFrom(selectedBrushNode->brush());
+            }
 
             // The nodelist is either empty or contains only brushes.
             const auto toRemove = selectedNodes().nodes();
 
             // We could be merging brushes that have different parents; use the parent of the first brush.
-            Model::Node* parent = nullptr;
+            Model::Node* parentNode = nullptr;
             if (!selectedNodes().brushes().empty()) {
-                parent = selectedNodes().brushes().front()->parent();
+                parentNode = selectedNodes().brushes().front()->parent();
             } else if (!selectedBrushFaces().empty()) {
-                parent = selectedBrushFaces().front()->brush()->parent();
+                parentNode = selectedBrushFaces().front().node()->parent();
             } else {
-                parent = currentParent();
+                parentNode = parentForNodes();
             }
 
+            Model::BrushNode* brushNode = new Model::BrushNode(std::move(brush));
+            
             const Transaction transaction(this, "CSG Convex Merge");
             deselectAll();
-            addNode(brush, parent);
+            addNode(brushNode, parentNode);
             removeNodes(toRemove);
-            select(brush);
+            select(brushNode);
             return true;
         }
 
         bool MapDocument::csgSubtract() {
-            const auto subtrahends = std::vector<Model::Brush*>{selectedNodes().brushes()};
-            if (subtrahends.size() == 0) {
+            const auto subtrahendNodes = std::vector<Model::BrushNode*>{selectedNodes().brushes()};
+            if (subtrahendNodes.empty()) {
                 return false;
             }
 
@@ -1177,22 +1560,20 @@ namespace TrenchBroom {
             // Select touching, but don't delete the subtrahends yet
             selectTouching(false);
 
-            const auto minuends = std::vector<Model::Brush*>{selectedNodes().brushes()};
+            const auto minuendNodes = std::vector<Model::BrushNode*>{selectedNodes().brushes()};
 
             std::map<Model::Node*, std::vector<Model::Node*>> toAdd;
-            std::vector<Model::Node*> toRemove;
-
-            for (auto* subtrahend : subtrahends) {
-                toRemove.push_back(subtrahend);
-            }
-
-            for (auto* minuend : minuends) {
-                const std::vector<Model::Brush*> result = minuend->subtract(*m_world, m_worldBounds, currentTextureName(), subtrahends);
-
-                if (!result.empty()) {
-                    kdl::vec_append(toAdd[minuend->parent()], result);
+            std::vector<Model::Node*> toRemove(std::begin(subtrahendNodes), std::end(subtrahendNodes));
+            const std::vector<const Model::Brush*> subtrahends = kdl::vec_transform(subtrahendNodes, [](const auto* subtrahendNode) { return &subtrahendNode->brush(); });
+            
+            for (Model::BrushNode* minuendNode : minuendNodes) {
+                const Model::Brush& minuend = minuendNode->brush();
+                std::vector<Model::Brush> resultBrushes = minuend.subtract(*m_world, m_worldBounds, currentTextureName(), subtrahends);
+                if (!resultBrushes.empty()) {
+                    const std::vector<Model::BrushNode*> resultNodes = kdl::vec_transform(std::move(resultBrushes), [&](auto brush) { return m_world->createBrush(std::move(brush)); });
+                    kdl::vec_append(toAdd[minuendNode->parent()], resultNodes);
                 }
-                toRemove.push_back(minuend);
+                toRemove.push_back(minuendNode);
             }
 
             deselectAll();
@@ -1204,18 +1585,20 @@ namespace TrenchBroom {
         }
 
         bool MapDocument::csgIntersect() {
-            const std::vector<Model::Brush*> brushes = selectedNodes().brushes();
-            if (brushes.size() < 2)
+            const std::vector<Model::BrushNode*> brushes = selectedNodes().brushes();
+            if (brushes.size() < 2u) {
                 return false;
+            }
 
-            Model::Brush* result = brushes.front()->clone(m_worldBounds);
+            Model::Brush intersection = brushes.front()->brush();
 
             bool valid = true;
-            std::vector<Model::Brush*>::const_iterator it, end;
-            for (it = std::begin(brushes), end = std::end(brushes); it != end && valid; ++it) {
-                Model::Brush* brush = *it;
+            for (auto it = std::begin(brushes), end = std::end(brushes); it != end && valid; ++it) {
+                Model::BrushNode* brushNode = *it;
+                const Model::Brush& brush = brushNode->brush();
+                
                 try {
-                    result->intersect(m_worldBounds, brush);
+                    intersection.intersect(m_worldBounds, brush);
                 } catch (const GeometryException&) {
                     valid = false;
                 }
@@ -1227,38 +1610,40 @@ namespace TrenchBroom {
             deselect(toRemove);
 
             if (valid) {
-                addNode(result, currentParent());
+                Model::BrushNode* intersectionNode = new Model::BrushNode(std::move(intersection));
+                addNode(intersectionNode, parentForNodes(toRemove));
                 removeNodes(toRemove);
-                select(result);
+                select(intersectionNode);
             } else {
                 removeNodes(toRemove);
-                delete result;
             }
 
             return true;
         }
 
         bool MapDocument::csgHollow() {
-            const std::vector<Model::Brush*> brushes = selectedNodes().brushes();
-            if (brushes.empty()) {
+            const std::vector<Model::BrushNode*> brushNodes = selectedNodes().brushes();
+            if (brushNodes.empty()) {
                 return false;
             }
 
             std::map<Model::Node*, std::vector<Model::Node*>> toAdd;
             std::vector<Model::Node*> toRemove;
 
-            for (Model::Brush* brush : brushes) {
+            for (Model::BrushNode* brushNode : brushNodes) {
+                const Model::Brush& brush = brushNode->brush();
+
                 // make an shrunken copy of brush
-                Model::Brush* shrunken = brush->clone(m_worldBounds);
-                if (shrunken->expand(m_worldBounds, -1.0 * static_cast<FloatType>(m_grid->actualSize()), true)) {
-                    // shrinking gave us a valid brush, so subtract it from `brush`
-                    const std::vector<Model::Brush*> fragments = brush->subtract(*m_world, m_worldBounds, currentTextureName(), shrunken);
+                Model::Brush shrunken = brush;
+                if (shrunken.expand(m_worldBounds, -1.0 * static_cast<FloatType>(m_grid->actualSize()), true)) {
+                    std::vector<Model::Brush> fragments = brush.subtract(*m_world, m_worldBounds, currentTextureName(), shrunken);
+                    std::vector<Model::BrushNode*> fragmentNodes = kdl::vec_transform(std::move(fragments), [](auto&& b) {
+                        return new Model::BrushNode(std::move(b));
+                    });
 
-                    kdl::vec_append(toAdd[brush->parent()], fragments);
-                    toRemove.push_back(brush);
+                    kdl::vec_append(toAdd[brushNode->parent()], fragmentNodes);
+                    toRemove.push_back(brushNode);
                 }
-
-                delete shrunken;
             }
 
             Transaction transaction(this, "CSG Hollow");
@@ -1271,16 +1656,15 @@ namespace TrenchBroom {
         }
 
         bool MapDocument::clipBrushes(const vm::vec3& p1, const vm::vec3& p2, const vm::vec3& p3) {
-            const std::vector<Model::Brush*>& brushes = m_selectedNodes.brushes();
+            const std::vector<Model::BrushNode*>& brushes = m_selectedNodes.brushes();
             std::map<Model::Node*, std::vector<Model::Node*>> clippedBrushes;
 
-            for (const Model::Brush* originalBrush : brushes) {
-                Model::BrushFace* clipFace = m_world->createFace(p1, p2, p3, Model::BrushFaceAttributes(currentTextureName()));
-                Model::Brush* clippedBrush = originalBrush->clone(m_worldBounds);
-                if (clippedBrush->clip(m_worldBounds, clipFace))
-                    clippedBrushes[originalBrush->parent()].push_back(clippedBrush);
-                else
-                    delete clippedBrush;
+            for (const Model::BrushNode* originalBrush : brushes) {
+                Model::BrushFace clipFace = m_world->createFace(p1, p2, p3, Model::BrushFaceAttributes(currentTextureName()));
+                Model::Brush clippedBrush = originalBrush->brush();
+                if (clippedBrush.clip(m_worldBounds, std::move(clipFace))) {
+                    clippedBrushes[originalBrush->parent()].push_back(new Model::BrushNode(std::move(clippedBrush)));
+                }
             }
 
             Transaction transaction(this, "Clip Brushes");
@@ -1322,54 +1706,15 @@ namespace TrenchBroom {
             return result->success();
         }
 
-        void MapDocument::setTexture(Assets::Texture* texture) {
-            const std::vector<Model::BrushFace*> faces = allSelectedBrushFaces();
-
-            if (texture != nullptr) {
-                if (faces.empty()) {
-                    if (currentTextureName() == texture->name())
-                        setCurrentTextureName(Model::BrushFace::NoTextureName);
-                    else
-                        setCurrentTextureName(texture->name());
-                } else {
-                    if (hasTexture(faces, texture)) {
-                        texture = nullptr;
-                        setCurrentTextureName(Model::BrushFace::NoTextureName);
-                    } else {
-                        setCurrentTextureName(texture->name());
-                    }
-                }
-            }
-
-            if (!faces.empty()) {
-                Model::ChangeBrushFaceAttributesRequest request;
-                if (texture == nullptr)
-                    request.unsetTexture();
-                else
-                    request.setTexture(texture);
-                executeAndStore(ChangeBrushFaceAttributesCommand::command(request));
-            }
-        }
-
-        bool MapDocument::hasTexture(const std::vector<Model::BrushFace*>& faces, Assets::Texture* texture) const {
-            for (const Model::BrushFace* face : faces) {
-                if (face->texture() != texture)
-                    return false;
-            }
-
-            return true;
-        }
-
         bool MapDocument::setFaceAttributes(const Model::BrushFaceAttributes& attributes) {
             Model::ChangeBrushFaceAttributesRequest request;
             request.setAll(attributes);
+            return setFaceAttributes(request);
+        }
 
-            // try to find the texture if it is null, maybe it just wasn't set?
-            if (attributes.texture() == nullptr) {
-                Assets::Texture* texture = m_textureManager->texture(attributes.textureName());
-                request.setTexture(texture);
-            }
-
+        bool MapDocument::setFaceAttributesExceptContentFlags(const Model::BrushFaceAttributes& attributes) {
+            Model::ChangeBrushFaceAttributesRequest request;
+            request.setAllExceptContentFlags(attributes);
             return setFaceAttributes(request);
         }
 
@@ -1398,12 +1743,7 @@ namespace TrenchBroom {
             return result->success();
         }
 
-        void MapDocument::rebuildBrushGeometry(const std::vector<Model::Brush*>& brushes) {
-            performRebuildBrushGeometry(brushes);
-        }
-
         bool MapDocument::snapVertices(const FloatType snapTo) {
-            assert(m_selectedNodes.hasOnlyBrushes());
             const auto result = executeAndStore(SnapBrushVerticesCommand::snap(snapTo));
             return result->success();
         }
@@ -1413,7 +1753,7 @@ namespace TrenchBroom {
             return result->success();
         }
 
-        MapDocument::MoveVerticesResult MapDocument::moveVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices, const vm::vec3& delta) {
+        MapDocument::MoveVerticesResult MapDocument::moveVertices(const std::map<vm::vec3, std::vector<Model::BrushNode*>>& vertices, const vm::vec3& delta) {
             const auto result = executeAndStore(MoveBrushVerticesCommand::move(vertices, delta));
             const auto* moveVerticesResult = dynamic_cast<MoveBrushVerticesCommandResult*>(result.get());
             ensure(moveVerticesResult != nullptr, "command processor returned unexpected command result type");
@@ -1421,51 +1761,53 @@ namespace TrenchBroom {
             return MoveVerticesResult(moveVerticesResult->success(), moveVerticesResult->hasRemainingVertices());
         }
 
-        bool MapDocument::moveEdges(const std::map<vm::segment3, std::vector<Model::Brush*>>& edges, const vm::vec3& delta) {
+        bool MapDocument::moveEdges(const std::map<vm::segment3, std::vector<Model::BrushNode*>>& edges, const vm::vec3& delta) {
             const auto result = executeAndStore(MoveBrushEdgesCommand::move(edges, delta));
             return result->success();
         }
 
-        bool MapDocument::moveFaces(const std::map<vm::polygon3, std::vector<Model::Brush*>>& faces, const vm::vec3& delta) {
+        bool MapDocument::moveFaces(const std::map<vm::polygon3, std::vector<Model::BrushNode*>>& faces, const vm::vec3& delta) {
             const auto result = executeAndStore(MoveBrushFacesCommand::move(faces, delta));
             return result->success();
         }
 
-        bool MapDocument::addVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices) {
+        bool MapDocument::addVertices(const std::map<vm::vec3, std::vector<Model::BrushNode*>>& vertices) {
             const auto result = executeAndStore(AddBrushVerticesCommand::add(vertices));
             return result->success();
         }
 
-        bool MapDocument::removeVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices) {
+        bool MapDocument::removeVertices(const std::map<vm::vec3, std::vector<Model::BrushNode*>>& vertices) {
             const auto result = executeAndStore(RemoveBrushVerticesCommand::remove(vertices));
             return result->success();
         }
 
-        bool MapDocument::removeEdges(const std::map<vm::segment3, std::vector<Model::Brush*>>& edges) {
+        bool MapDocument::removeEdges(const std::map<vm::segment3, std::vector<Model::BrushNode*>>& edges) {
             const auto result = executeAndStore(RemoveBrushEdgesCommand::remove(edges));
             return result->success();
         }
 
-        bool MapDocument::removeFaces(const std::map<vm::polygon3, std::vector<Model::Brush*>>& faces) {
+        bool MapDocument::removeFaces(const std::map<vm::polygon3, std::vector<Model::BrushNode*>>& faces) {
             const auto result = executeAndStore(RemoveBrushFacesCommand::remove(faces));
             return result->success();
         }
 
         void MapDocument::printVertices() {
             if (hasSelectedBrushFaces()) {
-                for (const Model::BrushFace* face : m_selectedBrushFaces) {
+                for (const auto& handle : m_selectedBrushFaces) {
                     std::stringstream str;
                     str.precision(17);
-                    for (const Model::BrushVertex* vertex : face->vertices()) {
+                    for (const Model::BrushVertex* vertex : handle.face().vertices()) {
                         str << "(" << vertex->position() << ") ";
                     }
                     info(str.str());
                 }
             } else if (selectedNodes().hasBrushes()) {
-                for (const Model::Brush* brush : selectedNodes().brushes()) {
+                for (const Model::BrushNode* brushNode : selectedNodes().brushes()) {
+                    const Model::Brush& brush = brushNode->brush();
+
                     std::stringstream str;
                     str.precision(17);
-                    for (const Model::BrushVertex* vertex : brush->vertices()) {
+                    for (const Model::BrushVertex* vertex : brush.vertices()) {
                         str << vertex->position() << " ";
                     }
                     info(str.str());
@@ -1591,7 +1933,7 @@ namespace TrenchBroom {
             m_worldBounds = worldBounds;
             m_game = game;
             m_world = m_game->newMap(mapFormat, m_worldBounds, logger());
-            setCurrentLayer(m_world->defaultLayer());
+            performSetCurrentLayer(m_world->defaultLayer());
 
             updateGameSearchPaths();
             setPath(IO::Path(DefaultDocumentName));
@@ -1601,7 +1943,7 @@ namespace TrenchBroom {
             m_worldBounds = worldBounds;
             m_game = game;
             m_world = m_game->loadMap(mapFormat, m_worldBounds, path, logger());
-            setCurrentLayer(m_world->defaultLayer());
+            performSetCurrentLayer(m_world->defaultLayer());
 
             updateGameSearchPaths();
             setPath(path);
@@ -1732,29 +2074,33 @@ namespace TrenchBroom {
         private:
             Assets::TextureManager& m_manager;
         public:
-            SetTextures(Assets::TextureManager& manager) :
+            explicit SetTextures(Assets::TextureManager& manager) :
                 m_manager(manager) {}
         private:
-            void doVisit(Model::World*) override   {}
-            void doVisit(Model::Layer*) override   {}
-            void doVisit(Model::Group*) override   {}
-            void doVisit(Model::Entity*) override {}
-            void doVisit(Model::Brush* brush) override   {
-                for (Model::BrushFace* face : brush->faces()) {
-                    face->updateTexture(m_manager);
+            void doVisit(Model::WorldNode*) override   {}
+            void doVisit(Model::LayerNode*) override   {}
+            void doVisit(Model::GroupNode*) override   {}
+            void doVisit(Model::EntityNode*) override {}
+            void doVisit(Model::BrushNode* brushNode) override   {
+                const Model::Brush& brush = brushNode->brush();
+                for (size_t i = 0u; i < brush.faceCount(); ++i) {
+                    const Model::BrushFace& face = brush.face(i);
+                    Assets::Texture* texture = m_manager.texture(face.attributes().textureName());
+                    brushNode->setFaceTexture(i, texture);
                 }
             }
         };
 
         class MapDocument::UnsetTextures : public Model::NodeVisitor {
         private:
-            void doVisit(Model::World*) override   {}
-            void doVisit(Model::Layer*) override   {}
-            void doVisit(Model::Group*) override   {}
-            void doVisit(Model::Entity*) override {}
-            void doVisit(Model::Brush* brush) override   {
-                for (Model::BrushFace* face : brush->faces()) {
-                    face->setTexture(nullptr);
+            void doVisit(Model::WorldNode*) override   {}
+            void doVisit(Model::LayerNode*) override   {}
+            void doVisit(Model::GroupNode*) override   {}
+            void doVisit(Model::EntityNode*) override {}
+            void doVisit(Model::BrushNode* brushNode) override   {
+                const Model::Brush& brush = brushNode->brush();
+                for (size_t i = 0u; i < brush.faceCount(); ++i) {
+                    brushNode->setFaceTexture(i, nullptr);
                 }
             }
         };
@@ -1769,9 +2115,12 @@ namespace TrenchBroom {
             Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), visitor);
         }
 
-        void MapDocument::setTextures(const std::vector<Model::BrushFace*>& faces) {
-            for (Model::BrushFace* face : faces) {
-                face->updateTexture(*m_textureManager);
+        void MapDocument::setTextures(const std::vector<Model::BrushFaceHandle>& faceHandles) {
+            for (const auto& faceHandle : faceHandles) {
+                Model::BrushNode* node = faceHandle.node();
+                const Model::BrushFace& face = faceHandle.face();
+                Assets::Texture* texture = m_textureManager->texture(face.attributes().textureName());
+                node->setFaceTexture(faceHandle.faceIndex(), texture);
             }
         }
 
@@ -1792,11 +2141,11 @@ namespace TrenchBroom {
             explicit SetEntityDefinitions(Assets::EntityDefinitionManager& manager) :
             m_manager(manager) {}
         private:
-            void doVisit(Model::World* world) override   { handle(world); }
-            void doVisit(Model::Layer*) override         {}
-            void doVisit(Model::Group*) override         {}
-            void doVisit(Model::Entity* entity) override { handle(entity); }
-            void doVisit(Model::Brush*) override         {}
+            void doVisit(Model::WorldNode* world) override   { handle(world); }
+            void doVisit(Model::LayerNode*) override         {}
+            void doVisit(Model::GroupNode*) override         {}
+            void doVisit(Model::EntityNode* entity) override { handle(entity); }
+            void doVisit(Model::BrushNode*) override         {}
             void handle(Model::AttributableNode* attributable) {
                 Assets::EntityDefinition* definition = m_manager.definition(attributable);
                 attributable->setDefinition(definition);
@@ -1805,11 +2154,11 @@ namespace TrenchBroom {
 
         class MapDocument::UnsetEntityDefinitions : public Model::NodeVisitor {
         private:
-            void doVisit(Model::World* world) override   { world->setDefinition(nullptr); }
-            void doVisit(Model::Layer*) override         {}
-            void doVisit(Model::Group*) override         {}
-            void doVisit(Model::Entity* entity) override { entity->setDefinition(nullptr); }
-            void doVisit(Model::Brush*) override         {}
+            void doVisit(Model::WorldNode* world) override   { world->setDefinition(nullptr); }
+            void doVisit(Model::LayerNode*) override         {}
+            void doVisit(Model::GroupNode*) override         {}
+            void doVisit(Model::EntityNode* entity) override { entity->setDefinition(nullptr); }
+            void doVisit(Model::BrushNode*) override         {}
         };
 
         void MapDocument::setEntityDefinitions() {
@@ -1847,37 +2196,42 @@ namespace TrenchBroom {
 
         class MapDocument::SetEntityModels : public Model::NodeVisitor {
         private:
+            Logger& m_logger;
             Assets::EntityModelManager& m_manager;
         public:
-            explicit SetEntityModels(Assets::EntityModelManager& manager) :
+            explicit SetEntityModels(Logger& logger, Assets::EntityModelManager& manager) :
+            m_logger(logger),
             m_manager(manager) {}
         private:
-            void doVisit(Model::World*) override         {}
-            void doVisit(Model::Layer*) override         {}
-            void doVisit(Model::Group*) override         {}
-            void doVisit(Model::Entity* entity) override {
-                const auto* frame = m_manager.frame(entity->modelSpecification());
+            void doVisit(Model::WorldNode*) override         {}
+            void doVisit(Model::LayerNode*) override         {}
+            void doVisit(Model::GroupNode*) override         {}
+            void doVisit(Model::EntityNode* entity) override {
+                const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entity->classname(), [&]() {
+                    return entity->modelSpecification();
+                });
+                const auto* frame = m_manager.frame(modelSpec);
                 entity->setModelFrame(frame);
             }
-            void doVisit(Model::Brush*) override         {}
+            void doVisit(Model::BrushNode*) override         {}
         };
 
         class MapDocument::UnsetEntityModels : public Model::NodeVisitor {
         private:
-            void doVisit(Model::World*) override         {}
-            void doVisit(Model::Layer*) override         {}
-            void doVisit(Model::Group*) override         {}
-            void doVisit(Model::Entity* entity) override { entity->setModelFrame(nullptr); }
-            void doVisit(Model::Brush*) override         {}
+            void doVisit(Model::WorldNode*) override         {}
+            void doVisit(Model::LayerNode*) override         {}
+            void doVisit(Model::GroupNode*) override         {}
+            void doVisit(Model::EntityNode* entity) override { entity->setModelFrame(nullptr); }
+            void doVisit(Model::BrushNode*) override         {}
         };
 
         void MapDocument::setEntityModels() {
-            SetEntityModels visitor(*m_entityModelManager);
+            SetEntityModels visitor(*this, *m_entityModelManager);
             m_world->acceptAndRecurse(visitor);
         }
 
         void MapDocument::setEntityModels(const std::vector<Model::Node*>& nodes) {
-            SetEntityModels visitor(*m_entityModelManager);
+            SetEntityModels visitor(*this, *m_entityModelManager);
             Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), visitor);
         }
 
@@ -1923,6 +2277,35 @@ namespace TrenchBroom {
             return m_game->defaultMod();
         }
 
+        /**
+         * Note if bounds.source is SoftMapBoundsType::Game, bounds.bounds is ignored.
+         */
+        void MapDocument::setSoftMapBounds(const Model::Game::SoftMapBounds& bounds) {
+            switch (bounds.source) {
+                case Model::Game::SoftMapBoundsType::Map:
+                    if (!bounds.bounds.has_value()) {
+                        // Set the worldspawn key AttributeNames::SoftMaxMapSize's value to the empty string
+                        // to indicate that we are overriding the Game's bounds with unlimited.
+                        executeAndStore(ChangeEntityAttributesCommand::setForNodes({world()}, Model::AttributeNames::SoftMapBounds, Model::AttributeValues::NoSoftMapBounds));
+                    } else {
+                        executeAndStore(ChangeEntityAttributesCommand::setForNodes({world()}, Model::AttributeNames::SoftMapBounds, IO::serializeSoftMapBoundsString(*bounds.bounds)));
+                    }
+                    break;
+                case Model::Game::SoftMapBoundsType::Game:
+                    // Unset the map's setting
+                    executeAndStore(ChangeEntityAttributesCommand::removeForNodes({world()}, Model::AttributeNames::SoftMapBounds));
+                    break;
+                switchDefault()
+            }
+        }
+
+        Model::Game::SoftMapBounds MapDocument::softMapBounds() const {
+            if (!m_world) {
+                return {Model::Game::SoftMapBoundsType::Game, std::nullopt};
+            }
+            return m_game->extractSoftMapBounds(*m_world);
+        }
+
         void MapDocument::setIssueHidden(Model::Issue* issue, const bool hidden) {
             doSetIssueHidden(issue, hidden);
         }
@@ -1942,7 +2325,8 @@ namespace TrenchBroom {
             m_world->registerIssueGenerator(new Model::NonIntegerPlanePointsIssueGenerator());
             m_world->registerIssueGenerator(new Model::NonIntegerVerticesIssueGenerator());
             m_world->registerIssueGenerator(new Model::MixedBrushContentsIssueGenerator());
-            m_world->registerIssueGenerator(new Model::WorldBoundsIssueGenerator(m_worldBounds));
+            m_world->registerIssueGenerator(new Model::WorldBoundsIssueGenerator(worldBounds()));
+            m_world->registerIssueGenerator(new Model::SoftMapBoundsIssueGenerator(m_game, m_world.get()));
             m_world->registerIssueGenerator(new Model::EmptyAttributeNameIssueGenerator());
             m_world->registerIssueGenerator(new Model::EmptyAttributeValueIssueGenerator());
             m_world->registerIssueGenerator(new Model::LongAttributeNameIssueGenerator(m_game->maxPropertyLength()));
@@ -1981,11 +2365,11 @@ namespace TrenchBroom {
 
         class MapDocument::ClearNodeTagsVisitor : public Model::NodeVisitor {
         private:
-            void doVisit(Model::World* world)   override { initializeNodeTags(world); }
-            void doVisit(Model::Layer* layer)   override { initializeNodeTags(layer); }
-            void doVisit(Model::Group* group)   override { initializeNodeTags(group); }
-            void doVisit(Model::Entity* entity) override { initializeNodeTags(entity); }
-            void doVisit(Model::Brush* brush)   override { initializeNodeTags(brush); }
+            void doVisit(Model::WorldNode* world)   override { initializeNodeTags(world); }
+            void doVisit(Model::LayerNode* layer)   override { initializeNodeTags(layer); }
+            void doVisit(Model::GroupNode* group)   override { initializeNodeTags(group); }
+            void doVisit(Model::EntityNode* entity) override { initializeNodeTags(entity); }
+            void doVisit(Model::BrushNode* brush)   override { initializeNodeTags(brush); }
 
             void initializeNodeTags(Model::Node* node) {
                 node->clearTags();
@@ -1999,11 +2383,11 @@ namespace TrenchBroom {
             explicit InitializeNodeTagsVisitor(Model::TagManager& tagManager) :
             m_tagManager(tagManager) {}
         private:
-            void doVisit(Model::World* world)   override { initializeNodeTags(world); }
-            void doVisit(Model::Layer* layer)   override { initializeNodeTags(layer); }
-            void doVisit(Model::Group* group)   override { initializeNodeTags(group); }
-            void doVisit(Model::Entity* entity) override { initializeNodeTags(entity); }
-            void doVisit(Model::Brush* brush)   override { initializeNodeTags(brush); }
+            void doVisit(Model::WorldNode* world)   override { initializeNodeTags(world); }
+            void doVisit(Model::LayerNode* layer)   override { initializeNodeTags(layer); }
+            void doVisit(Model::GroupNode* group)   override { initializeNodeTags(group); }
+            void doVisit(Model::EntityNode* entity) override { initializeNodeTags(entity); }
+            void doVisit(Model::BrushNode* brush)   override { initializeNodeTags(brush); }
 
             void initializeNodeTags(Model::Node* node) {
                 node->initializeTags(m_tagManager);
@@ -2032,9 +2416,10 @@ namespace TrenchBroom {
             }
         }
 
-        void MapDocument::updateFaceTags(const std::vector<Model::BrushFace*>& faces) {
-            for (auto* face : faces) {
-                face->updateTags(*m_tagManager);
+        void MapDocument::updateFaceTags(const std::vector<Model::BrushFaceHandle>& faceHandles) {
+            for (const auto& faceHandle : faceHandles) {
+                Model::BrushNode* node = faceHandle.node();
+                node->updateFaceTags(faceHandle.faceIndex(), *m_tagManager);
             }
         }
 
@@ -2046,11 +2431,11 @@ namespace TrenchBroom {
             explicit InitializeFaceTagsVisitor(Model::TagManager& tagManager) :
                 m_tagManager(tagManager) {}
         private:
-            void doVisit(Model::World*) override         {}
-            void doVisit(Model::Layer*) override         {}
-            void doVisit(Model::Group*) override         {}
-            void doVisit(Model::Entity*) override        {}
-            void doVisit(Model::Brush* brush)   override { brush->initializeTags(m_tagManager); }
+            void doVisit(Model::WorldNode*) override         {}
+            void doVisit(Model::LayerNode*) override         {}
+            void doVisit(Model::GroupNode*) override         {}
+            void doVisit(Model::EntityNode*) override        {}
+            void doVisit(Model::BrushNode* brush)   override { brush->initializeTags(m_tagManager); }
         };
 
         void MapDocument::updateAllFaceTags() {

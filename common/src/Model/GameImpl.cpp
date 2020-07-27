@@ -36,10 +36,12 @@
 #include "IO/FgdParser.h"
 #include "IO/File.h"
 #include "IO/FileMatcher.h"
+#include "IO/GameConfigParser.h"
 #include "IO/IOUtils.h"
 #include "IO/MdlParser.h"
 #include "IO/Md2Parser.h"
 #include "IO/Md3Parser.h"
+#include "IO/MdxParser.h"
 #include "IO/NodeReader.h"
 #include "IO/NodeWriter.h"
 #include "IO/ObjParser.h"
@@ -48,19 +50,20 @@
 #include "IO/SimpleParserStatus.h"
 #include "IO/SystemPaths.h"
 #include "IO/TextureLoader.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/BrushFace.h"
 #include "Model/EntityAttributes.h"
 #include "Model/ExportFormat.h"
 #include "Model/GameConfig.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 
 #include <kdl/string_compare.h>
 #include <kdl/string_format.h>
 #include <kdl/string_utils.h>
 #include <kdl/vector_utils.h>
+
+#include <vecmath/vec_io.h>
 
 #include <string>
 #include <vector>
@@ -118,22 +121,40 @@ namespace TrenchBroom {
             return m_config.maxPropertyLength();
         }
 
+        std::optional<vm::bbox3> GameImpl::doSoftMapBounds() const {
+            return m_config.softMapBounds();
+        }
+
+        Game::SoftMapBounds GameImpl::doExtractSoftMapBounds(const AttributableNode& node) const {
+            if (!node.hasAttribute(AttributeNames::SoftMapBounds)) {
+                // Not set in map -> use Game value
+                return {SoftMapBoundsType::Game, doSoftMapBounds()};
+            }
+
+            const std::string& mapValue = node.attribute(AttributeNames::SoftMapBounds);
+            if (mapValue == AttributeValues::NoSoftMapBounds) {
+                return {SoftMapBoundsType::Map, std::nullopt};
+            }
+            const std::optional<vm::bbox3> mapBounds = IO::parseSoftMapBoundsString(mapValue);
+            return {SoftMapBoundsType::Map, mapBounds};
+        }
+
         const std::vector<SmartTag>& GameImpl::doSmartTags() const {
             return m_config.smartTags();
         }
 
-        std::unique_ptr<World> GameImpl::doNewMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::unique_ptr<WorldNode> GameImpl::doNewMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
             const auto initialMapFilePath = m_config.findInitialMap(formatName(format));
             if (!initialMapFilePath.isEmpty() && IO::Disk::fileExists(initialMapFilePath)) {
                 return doLoadMap(format, worldBounds, initialMapFilePath, logger);
             } else {
-                auto world = std::make_unique<World>(format);
+                auto world = std::make_unique<WorldNode>(format);
 
-                const Model::BrushBuilder builder(world.get(), worldBounds);
-                auto* brush = builder.createCuboid(vm::vec3(128.0, 128.0, 32.0), Model::BrushFace::NoTextureName);
+                const Model::BrushBuilder builder(world.get(), worldBounds, defaultFaceAttribs());
+                auto* brush = world->createBrush(builder.createCuboid(vm::vec3(128.0, 128.0, 32.0), Model::BrushFaceAttributes::NoTextureName));
                 world->defaultLayer()->addChild(brush);
 
-                if (format == MapFormat::Valve) {
+                if (format == MapFormat::Valve || format == MapFormat::Quake2_Valve || format == MapFormat::Quake3_Valve) {
                     world->addOrUpdateAttribute(AttributeNames::ValveVersion, "220");
                 }
 
@@ -141,7 +162,7 @@ namespace TrenchBroom {
             }
         }
 
-        std::unique_ptr<World> GameImpl::doLoadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
+        std::unique_ptr<WorldNode> GameImpl::doLoadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
             IO::SimpleParserStatus parserStatus(logger);
             auto file = IO::Disk::openFile(IO::Disk::fixPath(path));
             auto fileReader = file->reader().buffer();
@@ -149,7 +170,7 @@ namespace TrenchBroom {
             return worldReader.read(format, worldBounds, parserStatus);
         }
 
-        void GameImpl::doWriteMap(World& world, const IO::Path& path) const {
+        void GameImpl::doWriteMap(WorldNode& world, const IO::Path& path) const {
             const auto mapFormatName = formatName(world.format());
 
             IO::OpenFile open(path, true);
@@ -159,7 +180,7 @@ namespace TrenchBroom {
             writer.writeMap();
         }
 
-        void GameImpl::doExportMap(World& world, const Model::ExportFormat format, const IO::Path& path) const {
+        void GameImpl::doExportMap(WorldNode& world, const Model::ExportFormat format, const IO::Path& path) const {
             switch (format) {
                 case Model::ExportFormat::WavefrontObj:
                     IO::NodeWriter(world, new IO::ObjFileSerializer(path)).writeMap();
@@ -167,24 +188,24 @@ namespace TrenchBroom {
             }
         }
 
-        std::vector<Node*> GameImpl::doParseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::vector<Node*> GameImpl::doParseNodes(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const {
             IO::SimpleParserStatus parserStatus(logger);
             IO::NodeReader reader(str, world);
             return reader.read(worldBounds, parserStatus);
         }
 
-        std::vector<BrushFace*> GameImpl::doParseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::vector<BrushFace> GameImpl::doParseBrushFaces(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const {
             IO::SimpleParserStatus parserStatus(logger);
             IO::BrushFaceReader reader(str, world);
             return reader.read(worldBounds, parserStatus);
         }
 
-        void GameImpl::doWriteNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
+        void GameImpl::doWriteNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeNodes(nodes);
         }
 
-        void GameImpl::doWriteBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const {
+        void GameImpl::doWriteBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeBrushFaces(faces);
         }
@@ -241,12 +262,16 @@ namespace TrenchBroom {
             try {
                 const auto& searchPath = m_config.textureConfig().package.rootDirectory;
                 if (!searchPath.isEmpty() && m_fs.directoryExists(searchPath)) {
-                    return m_fs.findItems(searchPath, IO::FileTypeMatcher(false, true));
+                    return kdl::vec_concat(std::vector<IO::Path>({searchPath}), m_fs.findItemsRecursively(searchPath, IO::FileTypeMatcher(false, true)));
                 }
                 return std::vector<IO::Path>();
             } catch (FileSystemException& e) {
                 throw GameException("Could not find texture collections: " + std::string(e.what()));
             }
+        }
+
+        std::vector<std::string> GameImpl::doFileTextureCollectionExtensions() const {
+            return m_config.textureConfig().package.fileFormat.extensions;
         }
 
         std::vector<IO::Path> GameImpl::doExtractTextureCollections(const AttributableNode& node) const {
@@ -386,10 +411,14 @@ namespace TrenchBroom {
                     auto reader = file->reader().buffer();
                     IO::Md3Parser parser(modelName, std::begin(reader), std::end(reader), m_fs);
                     return parser.initializeModel(logger);
+                } else if (extension == "mdx" && kdl::vec_contains(supported, "mdx")) {
+                    auto reader = file->reader().buffer();
+                    IO::MdxParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    return parser.initializeModel(logger);
                 } else if (extension == "bsp" && kdl::vec_contains(supported, "bsp")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
-                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette);
+                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette, m_fs);
                     return parser.initializeModel(logger);
                 } else if (extension == "dkm" && kdl::vec_contains(supported, "dkm")) {
                     auto reader = file->reader().buffer();
@@ -442,10 +471,14 @@ namespace TrenchBroom {
                     auto reader = file->reader().buffer();
                     IO::Md3Parser parser(modelName, std::begin(reader), std::end(reader), m_fs);
                     parser.loadFrame(frameIndex, model, logger);
+                } else if (extension == "mdx" && kdl::vec_contains(supported, "mdx")) {
+                    auto reader = file->reader().buffer();
+                    IO::MdxParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "bsp" && kdl::vec_contains(supported, "bsp")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
-                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette);
+                    IO::Bsp29Parser parser(modelName, std::begin(reader), std::end(reader), palette, m_fs);
                     parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "dkm" && kdl::vec_contains(supported, "dkm")) {
                     auto reader = file->reader().buffer();
@@ -513,6 +546,10 @@ namespace TrenchBroom {
 
         const FlagsConfig& GameImpl::doContentFlags() const {
             return m_config.faceAttribsConfig().contentFlags;
+        }
+
+        const BrushFaceAttributes& GameImpl::doDefaultFaceAttribs() const {
+            return m_config.faceAttribsConfig().defaults;
         }
 
         void GameImpl::writeLongAttribute(AttributableNode& node, const std::string& baseName, const std::string& value, const size_t maxLength) const {

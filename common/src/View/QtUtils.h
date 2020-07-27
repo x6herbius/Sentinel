@@ -17,8 +17,8 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_wxUtils
-#define TrenchBroom_wxUtils
+#ifndef TrenchBroom_QtUtils
+#define TrenchBroom_QtUtils
 
 #undef CursorShape
 
@@ -29,7 +29,9 @@
 
 #include <QBoxLayout>
 #include <QObject>
+#include <QPointer>
 #include <QSettings>
+#include <QString>
 #include <QStringList>
 #include <QWidget>
 
@@ -37,7 +39,9 @@ class QAbstractButton;
 class QButtonGroup;
 class QColor;
 class QCompleter;
+class QDialog;
 class QDialogButtonBox;
+class QEvent;
 class QFont;
 class QLayout;
 class QLineEdit;
@@ -47,11 +51,15 @@ class QSlider;
 class QSplitter;
 class QString;
 class QTableView;
+class QVBoxLayout;
+class QWidget;
 
 namespace TrenchBroom {
     class Color;
 
     namespace View {
+        enum class MapTextEncoding;
+
         class DisableWindowUpdates {
         private:
             QWidget* m_widget;
@@ -60,6 +68,17 @@ namespace TrenchBroom {
             ~DisableWindowUpdates();
         };
 
+        class SyncHeightEventFilter : public QObject {
+        private:
+            QPointer<QWidget> m_primary;
+            QPointer<QWidget> m_secondary;
+        public:
+            SyncHeightEventFilter(QWidget* primary, QWidget* secondary, QObject* parent = nullptr);
+            ~SyncHeightEventFilter();
+            
+            bool eventFilter(QObject* target, QEvent* event) override;
+        };
+        
         enum class FileDialogDir {
             Map,
             TextureCollection,
@@ -68,6 +87,7 @@ namespace TrenchBroom {
             EntityDefinition,
             GamePath
         };
+
         /**
          * Gets the default directory from QSettings to use for the given type of file chooser.
          */
@@ -95,10 +115,15 @@ namespace TrenchBroom {
             ensure(window != nullptr, "window must not be null");
 
             const auto path = windowSettingsPath(window, "State");
-            QSettings settings;
+            const QSettings settings;
             window->restoreState(settings.value(path).toByteArray());
         }
 
+        /**
+         * Return true if the given widget or any of its children currently has focus.
+         */
+        bool widgetOrChildHasFocus(const QWidget* widget);
+        
         class MapFrame;
         MapFrame* findMapFrame(QWidget* widget);
 
@@ -149,13 +174,13 @@ namespace TrenchBroom {
         QWidget* makeEmphasized(QWidget* widget);
         QWidget* makeUnemphasized(QWidget* widget);
         QWidget* makeInfo(QWidget* widget);
+        QWidget* makeSmall(QWidget* widget);
         QWidget* makeHeader(QWidget* widget);
         QWidget* makeError(QWidget* widget);
 
-        QWidget* makeSelected(QWidget* widget);
-        QWidget* makeUnselected(QWidget* widget);
+        QWidget* makeSelected(QWidget* widget, const QPalette& defaultPalette);
+        QWidget* makeUnselected(QWidget* widget, const QPalette& defaultPalette);
 
-        QSettings& getSettings();
         Color fromQColor(const QColor& color);
         QColor toQColor(const Color& color);
         void setWindowIconTB(QWidget* window);
@@ -163,10 +188,17 @@ namespace TrenchBroom {
 
         void setDefaultWindowColor(QWidget* widget);
         void setBaseWindowColor(QWidget* widget);
+        void setHighlightWindowColor(QWidget* widget);
 
         QLineEdit* createSearchBox();
 
         void checkButtonInGroup(QButtonGroup* group, int id, bool checked);
+
+        /**
+         * Insert a separating line as the first item in the given layout on platforms where
+         * this is necessary.
+         */
+        void insertTitleBarSeparator(QVBoxLayout* layout);
 
         template <typename I>
         QStringList toQStringList(I cur, I end) {
@@ -189,8 +221,13 @@ namespace TrenchBroom {
         };
 
         void autoResizeRows(QTableView* tableView);
-        void deleteChildWidgetsAndLayout(QWidget* widget);
+        void deleteChildWidgetsLaterAndDeleteLayout(QWidget* widget);
+
+        void showModelessDialog(QDialog* dialog);
+
+        QString mapStringToUnicode(MapTextEncoding encoding, const std::string& string);
+        std::string mapStringFromUnicode(MapTextEncoding encoding, const QString& string);
     }
 }
 
-#endif /* defined(TrenchBroom_wxUtils) */
+#endif /* defined(TrenchBroom_QtUtils) */

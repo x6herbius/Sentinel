@@ -8,9 +8,11 @@ set(COMMON_BENCHMARK_SOURCE
         "${COMMON_BENCHMARK_SOURCE_DIR}/Renderer/BrushRendererBenchmark.cpp"
 )
 
+set_property(SOURCE "${COMMON_BENCHMARK_SOURCE_DIR}/Main.cpp" PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+
 add_executable(common-benchmark ${COMMON_BENCHMARK_SOURCE})
 target_include_directories(common-benchmark PRIVATE ${COMMON_BENCHMARK_SOURCE_DIR})
-target_link_libraries(common-benchmark PRIVATE common gtest)
+target_link_libraries(common-benchmark PRIVATE common Catch2::Catch2)
 
 set_compiler_config(common-benchmark)
 
@@ -28,10 +30,10 @@ if(WIN32)
     add_custom_command(TARGET common-benchmark POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:freeimage>" "$<TARGET_FILE_DIR:common-benchmark>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:freetype>" "$<TARGET_FILE_DIR:common-benchmark>"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:z>" "$<TARGET_FILE_DIR:common-benchmark>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Widgets>" "$<TARGET_FILE_DIR:common-benchmark>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Gui>" "$<TARGET_FILE_DIR:common-benchmark>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Core>" "$<TARGET_FILE_DIR:common-benchmark>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::Svg>" "$<TARGET_FILE_DIR:common-benchmark>"
         COMMAND ${CMAKE_COMMAND} -E make_directory    "$<TARGET_FILE_DIR:common-benchmark>/platforms"
         COMMAND ${CMAKE_COMMAND} -E make_directory    "$<TARGET_FILE_DIR:common-benchmark>/styles"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt5::QWindowsIntegrationPlugin>" "$<TARGET_FILE_DIR:common-benchmark>/platforms"

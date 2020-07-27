@@ -44,6 +44,7 @@
 
 #include <QCompleter>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QLabel>
 #include <QMessageBox>
 #include <QProcess>
@@ -129,6 +130,7 @@ namespace TrenchBroom {
             outerLayout->addWidget(new BorderLine(BorderLine::Direction::Horizontal));
             outerLayout->addWidget(midPanel, 1);
             outerLayout->addLayout(wrapDialogButtonBox(buttonBox));
+
             setLayout(outerLayout);
 
             m_parameterText->setEnabled(false);
@@ -200,24 +202,34 @@ namespace TrenchBroom {
                 const std::string& parameterSpec = profile->parameterSpec();
                 const std::string parameters = EL::interpolate(parameterSpec, EL::EvaluationContext(variables()));
 
-                QString program;
-                QStringList arguments;
+                const auto workDir = IO::pathAsQString(executablePath.deleteLastComponent());
+
 #ifdef __APPLE__
                 // We have to launch apps via the 'open' command so that we can properly pass parameters.
-                program = "/usr/bin/open";
+                QStringList arguments;
                 arguments.append("-a");
                 arguments.append(IO::pathAsQString(executablePath));
                 arguments.append("--args");
-#else
-                program = IO::pathAsQString(executablePath);
-#endif
                 arguments.append(QString::fromStdString(parameters));
 
-                const auto workDir = IO::pathAsQString(executablePath.deleteLastComponent());
-
-                if (!QProcess::startDetached(program, arguments, workDir)) {
+                if (!QProcess::startDetached("/usr/bin/open", arguments, workDir)) {
                     throw Exception("Unknown error");
                 }
+#else
+                const QString commandAndArgs = QString::fromLatin1("\"%1\" %2")
+                    .arg(IO::pathAsQString(executablePath))
+                    .arg(QString::fromStdString(parameters));
+
+                const QString oldWorkDir = QDir::currentPath();
+                QDir::setCurrent(workDir);
+                const bool success = QProcess::startDetached(commandAndArgs);
+                QDir::setCurrent(oldWorkDir);
+
+                if (!success) {
+                    throw Exception("Unknown error");
+                }
+#endif
+
                 accept();
             } catch (const Exception& e) {
                 const auto message = kdl::str_to_string("Could not launch game engine: ", e.what());

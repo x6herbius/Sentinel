@@ -19,14 +19,16 @@
 
 #include <stdio.h>
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
 
-#include "Model/Brush.h"
+#include "GTestCompat.h"
+
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/Entity.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
 
@@ -34,8 +36,8 @@ namespace TrenchBroom {
     namespace View {
         class RemoveNodesTest : public MapDocumentTest {};
 
-        TEST_F(RemoveNodesTest, removeLayer) {
-            Model::Layer* layer = new Model::Layer("Layer 1");
+        TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeLayer") {
+            Model::LayerNode* layer = new Model::LayerNode("Layer 1");
             document->addNode(layer, document->world());
 
             document->removeNode(layer);
@@ -45,14 +47,14 @@ namespace TrenchBroom {
             ASSERT_EQ(document->world(), layer->parent());
         }
 
-        TEST_F(RemoveNodesTest, removeEmptyBrushEntity) {
-            Model::Layer* layer = new Model::Layer("Layer 1");
+        TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeEmptyBrushEntity") {
+            Model::LayerNode* layer = new Model::LayerNode("Layer 1");
             document->addNode(layer, document->world());
 
-            Model::Entity* entity = new Model::Entity();
+            Model::EntityNode* entity = new Model::EntityNode();
             document->addNode(entity, layer);
 
-            Model::Brush* brush = createBrush();
+            Model::BrushNode* brush = createBrushNode();
             document->addNode(brush, entity);
 
             document->removeNode(brush);
@@ -64,14 +66,14 @@ namespace TrenchBroom {
             ASSERT_EQ(layer, entity->parent());
         }
 
-        TEST_F(RemoveNodesTest, removeEmptyGroup) {
-            Model::Group* group = new Model::Group("group");
-            document->addNode(group, document->currentParent());
+        TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeEmptyGroup") {
+            Model::GroupNode* group = new Model::GroupNode("group");
+            document->addNode(group, document->parentForNodes());
 
             document->openGroup(group);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, document->currentParent());
+            Model::BrushNode* brush = createBrushNode();
+            document->addNode(brush, document->parentForNodes());
 
             document->removeNode(brush);
             ASSERT_TRUE(document->currentGroup() == nullptr);
@@ -84,19 +86,19 @@ namespace TrenchBroom {
             ASSERT_EQ(document->world()->defaultLayer(), group->parent());
         }
 
-        TEST_F(RemoveNodesTest, recursivelyRemoveEmptyGroups) {
-            Model::Group* outer = new Model::Group("outer");
-            document->addNode(outer, document->currentParent());
+        TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.recursivelyRemoveEmptyGroups") {
+            Model::GroupNode* outer = new Model::GroupNode("outer");
+            document->addNode(outer, document->parentForNodes());
 
             document->openGroup(outer);
 
-            Model::Group* inner = new Model::Group("inner");
-            document->addNode(inner, document->currentParent());
+            Model::GroupNode* inner = new Model::GroupNode("inner");
+            document->addNode(inner, document->parentForNodes());
 
             document->openGroup(inner);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, document->currentParent());
+            Model::BrushNode* brush = createBrushNode();
+            document->addNode(brush, document->parentForNodes());
 
             document->removeNode(brush);
             ASSERT_TRUE(document->currentGroup() == nullptr);

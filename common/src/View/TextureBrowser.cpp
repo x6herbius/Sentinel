@@ -69,6 +69,10 @@ namespace TrenchBroom {
             m_view->setSelectedTexture(selectedTexture);
         }
 
+        void TextureBrowser::revealTexture(Assets::Texture* texture) {
+            m_view->revealTexture(texture);
+        }
+
         void TextureBrowser::setSortOrder(const TextureSortOrder sortOrder) {
             m_view->setSortOrder(sortOrder);
             switch (sortOrder) {
@@ -220,7 +224,7 @@ namespace TrenchBroom {
             reload();
         }
 
-        void TextureBrowser::brushFacesDidChange(const std::vector<Model::BrushFace*>&) {
+        void TextureBrowser::brushFacesDidChange(const std::vector<Model::BrushFaceHandle>&) {
             reload();
         }
 

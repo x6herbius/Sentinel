@@ -17,12 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "Exceptions.h"
 #include "Macros.h"
 #include "IO/DiskFileSystem.h"
 #include "IO/DiskIO.h"
+#include "IO/File.h"
 #include "IO/FileMatcher.h"
 #include "IO/Path.h"
 #include "IO/PathQt.h"
@@ -54,7 +57,7 @@ namespace TrenchBroom {
             }
         };
 
-        TEST(FileSystemTest, makeAbsolute) {
+        TEST_CASE("FileSystemTest.makeAbsolute", "[FileSystemTest]") {
             FSTestEnvironment env;
 
             auto fs = std::make_shared<DiskFileSystem>(env.dir() + Path("anotherDir"));
@@ -69,27 +72,42 @@ namespace TrenchBroom {
             ASSERT_EQ(env.dir() + Path("dir1/asdf.map"), absPathNotExisting);
         }
 
-        TEST(DiskTest, fixPath) {
+        TEST_CASE("DiskTest.fixPath", "[DiskTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(Disk::fixPath(Path("asdf/blah")), FileSystemException);
             ASSERT_THROW(Disk::fixPath(Path("/../../test")), FileSystemException);
+            if (Disk::isCaseSensitive()) {
+                // FIXME: behaviour should be made consistent between case-sensitive/case-insensitive filesystems
+                // fixPath should probably also never throw?
+                ASSERT_THROW(Disk::fixPath(env.dir() + Path("anotherDir/test3.map/asdf")), FileSystemException);
+                CHECK(env.dir() + Path("anotherDir/test3.map") == Disk::fixPath(env.dir() + Path("ANOTHERdir/TEST3.MAP")));
+            }
+
+            CHECK(env.dir() + Path("anotherDir/test3.map") == Disk::fixPath(env.dir() + Path("anotherDir/subDirTest/../test3.map")));
 
             // on case sensitive file systems, this should also work
             ASSERT_TRUE(QFileInfo::exists(IO::pathAsQString(Disk::fixPath(env.dir() + Path("TEST.txt")))));
             ASSERT_TRUE(QFileInfo::exists(IO::pathAsQString(Disk::fixPath(env.dir() + Path("anotHERDIR/./SUBdirTEST/../SubdirTesT/TesT2.MAP")))));
         }
 
-        TEST(DiskTest, directoryExists) {
+        TEST_CASE("DiskTest.directoryExists", "[DiskTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(Disk::directoryExists(Path("asdf/bleh")), FileSystemException);
+            if (Disk::isCaseSensitive()) {
+                // FIXME: behaviour should be made consistent between case-sensitive/case-insensitive filesystems
+                // directoryExists should probably also never throw?
+                ASSERT_THROW(Disk::directoryExists(env.dir() + Path("anotherDir/test3.map/asdf")), FileSystemException); // test3.map is a file
+            }
 
             ASSERT_TRUE(Disk::directoryExists(env.dir() + Path("anotherDir")));
             ASSERT_TRUE(Disk::directoryExists(env.dir() + Path("anotherDir/subDirTest")));
+            CHECK(!Disk::directoryExists(env.dir() + Path("anotherDir/test3.map"))); // not a directory
+            CHECK(!Disk::directoryExists(env.dir() + Path("anotherDir/asdf"))); // asdf directory doesn't exist
         }
 
-        TEST(DiskTest, fileExists) {
+        TEST_CASE("DiskTest.fileExists", "[DiskTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(Disk::fileExists(Path("asdf/bleh")), FileSystemException);
@@ -98,7 +116,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(Disk::fileExists(env.dir() + Path("anotherDir/subDirTest/test2.map")));
         }
 
-        TEST(DiskTest, getDirectoryContents) {
+        TEST_CASE("DiskTest.getDirectoryContents", "[DiskTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(Disk::getDirectoryContents(Path("asdf/bleh")), FileSystemException);
@@ -113,7 +131,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(std::find(std::begin(contents), std::end(contents), Path("test2.map")) != std::end(contents));
         }
 
-        TEST(DiskTest, openFile) {
+        TEST_CASE("DiskTest.openFile", "[DiskTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(Disk::openFile(Path("asdf/bleh")), FileSystemException);
@@ -124,7 +142,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(Disk::openFile(env.dir() + Path("anotherDir/subDirTest/test2.map")) != nullptr);
         }
 
-        TEST(DiskTest, resolvePath) {
+        TEST_CASE("DiskTest.resolvePath", "[DiskTest]") {
             FSTestEnvironment env;
 
             std::vector<Path> rootPaths;
@@ -145,7 +163,7 @@ namespace TrenchBroom {
             ASSERT_EQ(Path(""), Disk::resolvePath(rootPaths, paths[4]));
         }
 
-        TEST(DiskFileSystemTest, createDiskFileSystem) {
+        TEST_CASE("DiskFileSystemTest.createDiskFileSystem", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(DiskFileSystem(env.dir() + Path("asdf"), true), FileSystemException);
@@ -159,7 +177,7 @@ namespace TrenchBroom {
             ASSERT_EQ(fs.root(), fs.makeAbsolute(Path("")));
         }
 
-        TEST(DiskFileSystemTest, directoryExists) {
+        TEST_CASE("DiskFileSystemTest.directoryExists", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
             const DiskFileSystem fs(env.dir());
 
@@ -179,7 +197,7 @@ namespace TrenchBroom {
             ASSERT_FALSE(fs.directoryExists(Path("fasdf")));
         }
 
-        TEST(DiskFileSystemTest, fileExists) {
+        TEST_CASE("DiskFileSystemTest.fileExists", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
             const DiskFileSystem fs(env.dir());
 
@@ -199,7 +217,19 @@ namespace TrenchBroom {
             ASSERT_FALSE(fs.fileExists(Path("fdfdf.blah")));
         }
 
-        TEST(DiskFileSystemTest, findItems) {
+        TEST_CASE("DiskFileSystemTest.getDirectoryContents", "[DiskFileSystemTest]") {
+            FSTestEnvironment env;
+            const DiskFileSystem fs(env.dir());
+
+            ASSERT_THROW(fs.getDirectoryContents(Path("asdf/bleh")), FileSystemException);
+
+            const std::vector<Path> contents = fs.getDirectoryContents(Path("anotherDir"));
+            ASSERT_EQ(2u, contents.size());
+            ASSERT_TRUE(std::find(std::begin(contents), std::end(contents), Path("subDirTest")) != std::end(contents));
+            ASSERT_TRUE(std::find(std::begin(contents), std::end(contents), Path("test3.map")) != std::end(contents));
+        }
+
+        TEST_CASE("DiskFileSystemTest.findItems", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
             const DiskFileSystem fs(env.dir());
 
@@ -228,7 +258,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(std::find(std::begin(items), std::end(items), Path("anotherDir/test3.map")) != std::end(items));
         }
 
-        TEST(DiskFileSystemTest, findItemsRecursively) {
+        TEST_CASE("DiskFileSystemTest.findItemsRecursively", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
             const DiskFileSystem fs(env.dir());
 
@@ -265,7 +295,7 @@ namespace TrenchBroom {
 
         // getDirectoryContents gets tested thoroughly by the tests for the find* methods
 
-        TEST(DiskFileSystemTest, openFile) {
+        TEST_CASE("DiskFileSystemTest.openFile", "[DiskFileSystemTest]") {
             FSTestEnvironment env;
             const DiskFileSystem fs(env.dir());
 
@@ -278,12 +308,18 @@ namespace TrenchBroom {
             ASSERT_THROW(fs.openFile(Path(".")), FileSystemException);
             ASSERT_THROW(fs.openFile(Path("anotherDir")), FileSystemException);
 
-            ASSERT_TRUE(fs.openFile(Path("test.txt")) != nullptr);
-            ASSERT_TRUE(fs.openFile(Path("anotherDir/test3.map")) != nullptr);
-            ASSERT_TRUE(fs.openFile(Path("anotherDir/../anotherDir/./test3.map")) != nullptr);
+            const auto checkOpenFile = [&](const auto& path) {
+                const auto file = fs.openFile(path);
+                CHECK(file != nullptr);
+                CHECK(file->path() == path);
+            };
+
+            checkOpenFile(Path("test.txt"));
+            checkOpenFile(Path("anotherDir/test3.map"));
+            checkOpenFile(Path("anotherDir/../anotherDir/./test3.map"));
         }
 
-        TEST(WritableDiskFileSystemTest, createWritableDiskFileSystem) {
+        TEST_CASE("WritableDiskFileSystemTest.createWritableDiskFileSystem", "[WritableDiskFileSystemTest]") {
             FSTestEnvironment env;
 
             ASSERT_THROW(WritableDiskFileSystem(env.dir() + Path("asdf"), false), FileSystemException);
@@ -297,7 +333,7 @@ namespace TrenchBroom {
             ASSERT_EQ(env.dir(), fs.makeAbsolute(Path("")));
         }
 
-        TEST(WritableDiskFileSystemTest, createDirectory) {
+        TEST_CASE("WritableDiskFileSystemTest.createDirectory", "[WritableDiskFileSystemTest]") {
             FSTestEnvironment env;
             WritableDiskFileSystem fs(env.dir(), false);
 
@@ -322,7 +358,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(fs.directoryExists(Path("newDir/yetAnotherDir")));
         }
 
-        TEST(WritableDiskFileSystemTest, deleteFile) {
+        TEST_CASE("WritableDiskFileSystemTest.deleteFile", "[WritableDiskFileSystemTest]") {
             FSTestEnvironment env;
             WritableDiskFileSystem fs(env.dir(), false);
 
@@ -348,7 +384,7 @@ namespace TrenchBroom {
             ASSERT_FALSE(fs.fileExists(Path("anotherDir/subDirTest/test2.map")));
         }
 
-        TEST(WritableDiskFileSystemTest, moveFile) {
+        TEST_CASE("WritableDiskFileSystemTest.moveFile", "[WritableDiskFileSystemTest]") {
             FSTestEnvironment env;
             WritableDiskFileSystem fs(env.dir(), false);
 
@@ -388,7 +424,7 @@ namespace TrenchBroom {
             ASSERT_TRUE(fs.fileExists(Path("dir1/test2.map")));
         }
 
-        TEST(WritableDiskFileSystemTest, copyFile) {
+        TEST_CASE("WritableDiskFileSystemTest.copyFile", "[WritableDiskFileSystemTest]") {
             FSTestEnvironment env;
             WritableDiskFileSystem fs(env.dir(), false);
 

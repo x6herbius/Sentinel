@@ -26,15 +26,14 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Entity;
+        class EntityNode;
 
         class EntitySnapshot : public NodeSnapshot {
         private:
-            Entity* m_entity;
-            EntityAttribute m_origin;
-            EntityAttribute m_rotation;
+            EntityNode* m_entity;
+            std::vector<EntityAttribute> m_attributesSnapshot;
         public:
-            EntitySnapshot(Entity* entity, const EntityAttribute& origin, const EntityAttribute& rotation);
+            EntitySnapshot(EntityNode* entity);
         private:
             void doRestore(const vm::bbox3& worldBounds) override;
         };

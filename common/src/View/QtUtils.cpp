@@ -27,16 +27,17 @@
 #include "IO/ResourceUtils.h"
 #include "View/BorderLine.h"
 #include "View/MapFrame.h"
+#include "View/MapTextEncoding.h"
 #include "View/ViewConstants.h"
-
-#include <string>
 
 #include <QtGlobal>
 #include <QAbstractButton>
+#include <QApplication>
 #include <QBoxLayout>
 #include <QButtonGroup>
 #include <QColor>
 #include <QDebug>
+#include <QDialog>
 #include <QDir>
 #include <QFont>
 #include <QHeaderView>
@@ -44,12 +45,15 @@
 #include <QLineEdit>
 #include <QPalette>
 #include <QSettings>
+#include <QResizeEvent>
 #include <QScreen>
 #include <QString>
 #include <QStringBuilder>
 #include <QStandardPaths>
 #include <QTableView>
+#include <QTextCodec>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QWindow>
 
 // QDesktopWidget was deprecated in Qt 5.10 and we should use QGuiApplication::screenAt in 5.10 and above
@@ -71,6 +75,35 @@ namespace TrenchBroom {
 
         DisableWindowUpdates::~DisableWindowUpdates() {
             m_widget->setUpdatesEnabled(true);
+        }
+
+        SyncHeightEventFilter::SyncHeightEventFilter(QWidget* primary, QWidget* secondary, QObject* parent) :
+        QObject(parent),
+        m_primary(primary),
+        m_secondary(secondary) {
+            ensure(m_primary != nullptr, "primary is not null");
+            ensure(m_secondary != nullptr, "secondary is not null");
+            
+            m_primary->installEventFilter(this);
+        }
+        
+        SyncHeightEventFilter::~SyncHeightEventFilter() {
+            if (m_primary) {
+                m_primary->removeEventFilter(this);
+            }
+        }
+
+        bool SyncHeightEventFilter::eventFilter(QObject* target, QEvent* event) {
+            if (target == m_primary && event->type() == QEvent::Resize) {
+                const auto* sizeEvent = static_cast<QResizeEvent*>(event);
+                const auto height = sizeEvent->size().height();
+                if (m_secondary->height() != height) {
+                    m_secondary->setFixedHeight(height);
+                }
+                return false;
+            } else {
+                return QObject::eventFilter(target, event);
+            }
         }
 
         static QString fileDialogDirToString(const FileDialogDir dir) {
@@ -130,8 +163,21 @@ namespace TrenchBroom {
             ensure(window != nullptr, "window must not be null");
 
             const auto path = windowSettingsPath(window, "Geometry");
-            QSettings settings;
+            const QSettings settings;
             window->restoreGeometry(settings.value(path).toByteArray());
+        }
+
+        bool widgetOrChildHasFocus(const QWidget* widget) {
+            ensure(widget != nullptr, "widget must not be null");
+            
+            const QObject* currentWidget = QApplication::focusWidget();
+            while (currentWidget != nullptr) {
+                if (currentWidget == widget) {
+                    return true;
+                }
+                currentWidget = currentWidget->parent();
+            }
+            return false;
         }
 
         MapFrame* findMapFrame(QWidget* widget) {
@@ -181,13 +227,19 @@ namespace TrenchBroom {
         QWidget* makeInfo(QWidget* widget) {
             makeDefault(widget);
 
-            widget->setAttribute(Qt::WA_MacSmallSize);
+            widget = makeSmall(widget);
 
             const auto defaultPalette = QPalette();
             auto palette = widget->palette();
-            palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Disabled, QPalette::WindowText));
-            palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Disabled, QPalette::WindowText));
+            // Set all color groups (active, inactive, disabled) to use the disabled color, so it's dimmer
+            palette.setColor(QPalette::WindowText, defaultPalette.color(QPalette::Disabled, QPalette::WindowText));
+            palette.setColor(QPalette::Text, defaultPalette.color(QPalette::Disabled, QPalette::Text));
             widget->setPalette(palette);
+            return widget;
+        }
+
+        QWidget* makeSmall(QWidget* widget) {
+            widget->setAttribute(Qt::WA_MacSmallSize);
             return widget;
         }
 
@@ -209,8 +261,7 @@ namespace TrenchBroom {
             return widget;
         }
 
-        QWidget* makeSelected(QWidget* widget) {
-            const auto defaultPalette = QPalette();
+        QWidget* makeSelected(QWidget* widget, const QPalette& defaultPalette) {
             auto palette = widget->palette();
             palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Normal, QPalette::HighlightedText));
             palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Normal, QPalette::HighlightedText));
@@ -218,27 +269,12 @@ namespace TrenchBroom {
             return widget;
         }
 
-        QWidget* makeUnselected(QWidget* widget) {
-            const auto defaultPalette = QPalette();
+        QWidget* makeUnselected(QWidget* widget, const QPalette& defaultPalette) {
             auto palette = widget->palette();
             palette.setColor(QPalette::Normal, QPalette::WindowText, defaultPalette.color(QPalette::Normal, QPalette::WindowText));
             palette.setColor(QPalette::Normal, QPalette::Text, defaultPalette.color(QPalette::Normal, QPalette::Text));
             widget->setPalette(palette);
             return widget;
-        }
-
-        QSettings& getSettings() {
-            static auto settings =
-#if defined __linux__ || defined __FreeBSD__
-                QSettings(QDir::homePath() % QString::fromLocal8Bit("/.TrenchBroom/.preferences"), QSettings::Format::IniFormat);
-#elif defined __APPLE__
-                QSettings(QStandardPaths::locate(QStandardPaths::ConfigLocation,
-                                                 QString::fromLocal8Bit("TrenchBroom Preferences"),
-                                                 QStandardPaths::LocateOption::LocateFile), QSettings::Format::IniFormat);
-#else
-                QSettings();
-#endif
-            return settings;
         }
 
         Color fromQColor(const QColor& color) {
@@ -253,10 +289,13 @@ namespace TrenchBroom {
         }
 
         QAbstractButton* createBitmapButton(const std::string& image, const QString& tooltip, QWidget* parent) {
-            return createBitmapButton(loadIconResourceQt(IO::Path(image)), tooltip, parent);
+            return createBitmapButton(loadSVGIcon(IO::Path(image)), tooltip, parent);
         }
 
         QAbstractButton* createBitmapButton(const QIcon& icon, const QString& tooltip, QWidget* parent) {
+            // NOTE: QIcon::availableSizes() is not high-dpi friendly, it returns pixels when we want logical sizes.
+            // We rely on the fact that loadIconResourceQt inserts pixmaps in the order 1x then 2x, so the first
+            // pixmap has the logical size.
             ensure(!icon.availableSizes().empty(), "expected a non-empty icon. Fails when the image file couldn't be found.");
 
             // NOTE: according to http://doc.qt.io/qt-5/qpushbutton.html this would be more correctly
@@ -267,7 +306,7 @@ namespace TrenchBroom {
             button->setToolTip(tooltip);
             button->setIcon(icon);
             // button->setFlat(true);
-            button->setStyleSheet("QToolButton { border: none; }");
+            button->setObjectName("toolButton_borderless");
 
             return button;
         }
@@ -351,7 +390,7 @@ namespace TrenchBroom {
 
         void setWindowIconTB(QWidget* window) {
             ensure(window != nullptr, "window is null");
-            window->setWindowIcon(IO::loadIconResourceQt(IO::Path("AppIcon.png")));
+            window->setWindowIcon(QIcon(IO::loadPixmapResource(IO::Path("AppIcon.png"))));
         }
 
         void setDebugBackgroundColor(QWidget* widget, const QColor& color) {
@@ -363,17 +402,18 @@ namespace TrenchBroom {
         }
 
         void setDefaultWindowColor(QWidget* widget) {
-            auto palette = QPalette();
-            palette.setColor(QPalette::Window, palette.color(QPalette::Normal, QPalette::Window));
             widget->setAutoFillBackground(true);
-            widget->setPalette(palette);
+            widget->setBackgroundRole(QPalette::Window);
         }
 
         void setBaseWindowColor(QWidget* widget) {
-            auto palette = QPalette();
-            palette.setColor(QPalette::Window, palette.color(QPalette::Normal, QPalette::Base));
             widget->setAutoFillBackground(true);
-            widget->setPalette(palette);
+            widget->setBackgroundRole(QPalette::Base);
+        }
+
+        void setHighlightWindowColor(QWidget* widget) {
+            widget->setAutoFillBackground(true);
+            widget->setBackgroundRole(QPalette::Highlight);
         }
 
         QLineEdit* createSearchBox() {
@@ -381,7 +421,7 @@ namespace TrenchBroom {
             widget->setClearButtonEnabled(true);
             widget->setPlaceholderText(QLineEdit::tr("Search..."));
 
-            QIcon icon = loadIconResourceQt(IO::Path("Search.png"));
+            QIcon icon = loadSVGIcon(IO::Path("Search.svg"));
             widget->addAction(icon, QLineEdit::LeadingPosition);
             return widget;
         }
@@ -392,6 +432,13 @@ namespace TrenchBroom {
                 return;
             }
             button->setChecked(checked);
+        }
+
+        void insertTitleBarSeparator(QVBoxLayout* layout) {
+#ifdef _WIN32
+            layout->insertWidget(0, new BorderLine(), 1);
+#endif
+            unused(layout);
         }
 
         AutoResizeRowsEventFilter::AutoResizeRowsEventFilter(QTableView* tableView) :
@@ -414,10 +461,49 @@ namespace TrenchBroom {
             tableView->resizeRowsToContents();
         }
 
-        void deleteChildWidgetsAndLayout(QWidget* widget) {
-            qDeleteAll(widget->findChildren<QWidget*>("", Qt::FindDirectChildrenOnly));
+        void deleteChildWidgetsLaterAndDeleteLayout(QWidget* widget) {
+            const QList<QWidget*> children = widget->findChildren<QWidget*>("", Qt::FindDirectChildrenOnly);
+            for (QWidget* childWidget : children) {
+                childWidget->deleteLater();
+            }
 
             delete widget->layout();
+        }
+
+        void showModelessDialog(QDialog* dialog) {
+            // https://doc.qt.io/qt-5/qdialog.html#code-examples
+            dialog->show();
+            dialog->raise();
+            dialog->activateWindow();
+        }
+
+        static QTextCodec* codecForEncoding(const MapTextEncoding encoding) {
+            switch (encoding) {
+            case MapTextEncoding::Quake:
+                // Quake uses the full 1-255 range for its bitmap font.
+                // So using a "just assume UTF-8" approach would not work here.
+                // See: https://github.com/kduske/TrenchBroom/issues/3122
+                return QTextCodec::codecForLocale();
+            case MapTextEncoding::Iso88591:
+                return QTextCodec::codecForName("ISO 8859-1");
+            case MapTextEncoding::Utf8:
+                return QTextCodec::codecForName("UTF-8");
+            switchDefault()
+            }
+        }
+
+        QString mapStringToUnicode(const MapTextEncoding encoding, const std::string& string) {
+            QTextCodec* codec = codecForEncoding(encoding);
+            ensure(codec != nullptr, "null codec");
+
+            return codec->toUnicode(QByteArray::fromStdString(string));
+        }
+
+        std::string mapStringFromUnicode(const MapTextEncoding encoding, const QString& string) {
+            QTextCodec* codec = codecForEncoding(encoding);
+            ensure(codec != nullptr, "null codec");
+
+            return codec->fromUnicode(string).toStdString();
         }
     }
 }

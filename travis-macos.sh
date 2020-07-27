@@ -2,7 +2,7 @@
 
 set -o verbose
 
-brew update
+brew update > /dev/null # Discard stdout, otherwise this spams ~3000 lines to the log
 brew install cmake p7zip pandoc cppcheck qt5 ninja
 
 # Sometimes homebrew complains that cmake is already installed, but we need the latest version.
@@ -49,11 +49,18 @@ BUILD_DIR=$(pwd)
 cd "$BUILD_DIR/lib/vecmath/test"
 ./vecmath-test || exit 1
 
+cd "$BUILD_DIR/lib/kdl/test"
+./kdl-test || exit 1
+
 cd "$BUILD_DIR/common/test"
 ./common-test || exit 1
 
-cd "$BUILD_DIR/common/benchmark"
-./common-benchmark || exit 1
+if [[ $TB_DEBUG_BUILD != "true" ]] ; then
+    cd "$BUILD_DIR/common/benchmark"
+    ./common-benchmark || exit 1
+else
+    echo "Skipping common-benmchark because this is a debug build"
+fi
 
 cd "$BUILD_DIR"
 

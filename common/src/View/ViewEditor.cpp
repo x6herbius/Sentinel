@@ -26,6 +26,8 @@
 #include "Model/Game.h"
 #include "Model/Tag.h"
 #include "Model/TagType.h"
+#include "PreferenceManager.h"
+#include "Preferences.h"
 #include "View/BorderPanel.h"
 #include "View/MapDocument.h"
 #include "View/MapViewConfig.h"
@@ -152,7 +154,7 @@ namespace TrenchBroom {
                     const std::string defName = definition->name();
 
                     auto* defCB = new QCheckBox(QString::fromStdString(defName));
-                    defCB->setStyleSheet("margin-left: 11px");
+                    defCB->setObjectName("entityDefinition_checkboxWidget");
 
                     connect(defCB, &QAbstractButton::clicked, this, [this, definition](bool checked){
                         this->defCheckBoxChanged(definition, checked);
@@ -169,6 +171,8 @@ namespace TrenchBroom {
             scrollWidget->setLayout(scrollWidgetLayout);
 
             auto* scrollArea = new QScrollArea();
+            scrollArea->setBackgroundRole(QPalette::Base);
+            scrollArea->setAutoFillBackground(true);
             scrollArea->setWidget(scrollWidget);
 
             auto* showAllButton = new QPushButton(tr("Show all"));
@@ -212,7 +216,8 @@ namespace TrenchBroom {
         m_shadeFacesCheckBox(nullptr),
         m_showFogCheckBox(nullptr),
         m_showEdgesCheckBox(nullptr),
-        m_entityLinkRadioGroup(nullptr) {
+        m_entityLinkRadioGroup(nullptr),
+        m_showSoftBoundsCheckBox(nullptr) {
             bindObservers();
         }
 
@@ -259,7 +264,7 @@ namespace TrenchBroom {
         }
 
         void ViewEditor::createGui() {
-            deleteChildWidgetsAndLayout(this);
+            deleteChildWidgetsLaterAndDeleteLayout(this);
 
             auto* sizer = new QGridLayout();
             sizer->setContentsMargins(
@@ -278,7 +283,7 @@ namespace TrenchBroom {
         }
 
         QWidget* ViewEditor::createEntityDefinitionsPanel(QWidget* parent) {
-            TitledPanel* panel = new TitledPanel("Entity Definitions", parent);
+            TitledPanel* panel = new TitledPanel("Entity Definitions", parent, false);
 
             auto document = kdl::mem_lock(m_document);
             Assets::EntityDefinitionManager& entityDefinitionManager = document->entityDefinitionManager();
@@ -297,7 +302,7 @@ namespace TrenchBroom {
         }
 
         QWidget* ViewEditor::createEntitiesPanel(QWidget* parent) {
-            TitledPanel* panel = new TitledPanel("Entities", parent);
+            TitledPanel* panel = new TitledPanel("Entities", parent, false);
 
             m_showEntityClassnamesCheckBox = new QCheckBox(tr("Show entity classnames"));
             m_showGroupBoundsCheckBox = new QCheckBox(tr("Show group bounds"));
@@ -333,7 +338,7 @@ namespace TrenchBroom {
         }
 
         QWidget* ViewEditor::createBrushesPanel(QWidget* parent) {
-            TitledPanel* panel = new TitledPanel("Brushes", parent);
+            TitledPanel* panel = new TitledPanel("Brushes", parent, false);
             auto* inner = panel->getPanel();
             createTagFilter(inner);
 
@@ -382,16 +387,20 @@ namespace TrenchBroom {
                 const QString label = QString::fromLatin1("Show %1").arg(QString::fromStdString(tag.name()).toLower());
 
                 auto* checkBox = new QCheckBox(label);
-                m_tagCheckBoxes.push_back(checkBox);
+                const Model::TagType::Type tagType = tag.type();
 
-                layout->addWidget(checkBox);
-                connect(checkBox, &QAbstractButton::clicked, this, &ViewEditor::showTagChanged);
+                m_tagCheckBoxes.emplace_back(tagType, checkBox);
+
+                layout->addWidget(checkBox);                
+                connect(checkBox, &QAbstractButton::clicked, this, [this, tagType](const bool checked) {
+                    showTagChanged(checked, tagType);
+                });
             }
             parent->setLayout(layout);
         }
 
         QWidget* ViewEditor::createRendererPanel(QWidget* parent) {
-            TitledPanel* panel = new TitledPanel("Renderer", parent);
+            TitledPanel* panel = new TitledPanel("Renderer", parent, false);
             QWidget* inner = panel->getPanel();
 
             const QList<QString> FaceRenderModes = { "Show textures", "Hide textures", "Hide faces" };
@@ -416,6 +425,8 @@ namespace TrenchBroom {
                 m_entityLinkRadioGroup->addButton(radio, i);
             }
 
+            m_showSoftBoundsCheckBox = new QCheckBox(tr("Show soft bounds"));
+
             connect(m_shadeFacesCheckBox, &QAbstractButton::clicked, this, &ViewEditor::shadeFacesChanged);
             connect(m_showFogCheckBox, &QAbstractButton::clicked, this, &ViewEditor::showFogChanged);
             connect(m_showEdgesCheckBox, &QAbstractButton::clicked, this, &ViewEditor::showEdgesChanged);
@@ -424,6 +435,8 @@ namespace TrenchBroom {
                 &ViewEditor::faceRenderModeChanged);
             connect(m_entityLinkRadioGroup, static_cast<void(QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), this,
                 &ViewEditor::entityLinkModeChanged);
+
+            connect(m_showSoftBoundsCheckBox, &QAbstractButton::clicked, this, &ViewEditor::showSoftMapBoundsChanged);
 
             auto* layout = new QVBoxLayout();
             layout->setContentsMargins(0, 0, 0, 0);
@@ -440,6 +453,8 @@ namespace TrenchBroom {
             for (auto* button : m_entityLinkRadioGroup->buttons()) {
                 layout->addWidget(button);
             }
+            
+            layout->addWidget(m_showSoftBoundsCheckBox);
 
             inner->setLayout(layout);
             return panel;
@@ -477,14 +492,8 @@ namespace TrenchBroom {
             Model::EditorContext& editorContext = document->editorContext();
             const Model::TagType::Type hiddenTags = editorContext.hiddenTags();
 
-            const auto& tags = document->smartTags();
-            auto tagIt = std::begin(tags);
-            auto boxIt = std::begin(m_tagCheckBoxes);
-            while (tagIt != std::end(tags) && boxIt != std::end(m_tagCheckBoxes)) {
-                const Model::Tag& tag = *tagIt;
-                QCheckBox* checkBox = *boxIt;
-                checkBox->setChecked((tag.type() & hiddenTags) == 0);
-                ++tagIt; ++boxIt;
+            for (const auto& [tagType, checkBox] : m_tagCheckBoxes) {
+                checkBox->setChecked((tagType & hiddenTags) == 0);
             }
         }
 
@@ -498,6 +507,7 @@ namespace TrenchBroom {
             m_showFogCheckBox->setChecked(config.showFog());
             m_showEdgesCheckBox->setChecked(config.showEdges());
             checkButtonInGroup(m_entityLinkRadioGroup, static_cast<int>(editorContext.entityLinkMode()), true);
+            m_showSoftBoundsCheckBox->setChecked(config.showSoftMapBounds());
         }
 
         void ViewEditor::showEntityClassnamesChanged(const bool checked) {
@@ -542,24 +552,19 @@ namespace TrenchBroom {
             editorContext.setShowBrushes(checked);
         }
 
-        void ViewEditor::showTagChanged(const bool /* checked */) {
+        void ViewEditor::showTagChanged(const bool checked, const Model::TagType::Type tagType) {
             auto document = kdl::mem_lock(m_document);
+            auto& editorContext = document->editorContext();
 
-            Model::TagType::Type hiddenTags = Model::TagType::NoType;
-            const auto& tags = document->smartTags();
-
-            auto tagIt = std::begin(tags);
-            auto boxIt = std::begin(m_tagCheckBoxes);
-            while (tagIt != std::end(tags) && boxIt != std::end(m_tagCheckBoxes)) {
-                const auto& tag = *tagIt;
-                QCheckBox* checkBox = *boxIt;
-                if (!checkBox->isChecked()) {
-                    hiddenTags |= tag.type();
-                }
-                ++tagIt; ++boxIt;
+            Model::TagType::Type hiddenTags = editorContext.hiddenTags();
+            if (checked) {
+                // Unhide tagType
+                hiddenTags &= ~tagType;
+            } else {
+                // Hide tagType
+                hiddenTags |= tagType;
             }
 
-            auto& editorContext = document->editorContext();
             editorContext.setHiddenTags(hiddenTags);
         }
 
@@ -616,6 +621,12 @@ namespace TrenchBroom {
                     editorContext.setEntityLinkMode(Model::EditorContext::EntityLinkMode_None);
                     break;
             }
+        }
+        
+        void ViewEditor::showSoftMapBoundsChanged(const bool checked) {
+            auto document = kdl::mem_lock(m_document);
+            MapViewConfig& config = document->mapViewConfig();
+            config.setShowSoftMapBounds(checked);
         }
 
         ViewPopupEditor::ViewPopupEditor(std::weak_ptr<MapDocument> document, QWidget* parent) :

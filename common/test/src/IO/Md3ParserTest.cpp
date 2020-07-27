@@ -19,7 +19,9 @@
 
 #include <stdio.h>
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "Logger.h"
 #include "Assets/EntityModel.h"
@@ -39,7 +41,7 @@
 
 namespace TrenchBroom {
     namespace IO {
-        TEST(Md3ParserTest, loadValidMd3) {
+        TEST_CASE("Md3ParserTest.loadValidMd3", "[Md3ParserTest]") {
             NullLogger logger;
             const auto shaderSearchPath = Path("scripts");
             const auto textureSearchPaths = std::vector<Path> { Path("models") };
@@ -69,7 +71,7 @@ namespace TrenchBroom {
             ASSERT_EQ(1u, surface1->frameCount());
             ASSERT_EQ(1u, surface1->skinCount());
 
-            const auto* skin1 = surface1->skin("bfg/LDAbfg");
+            const auto* skin1 = surface1->skin("models/weapons2/bfg/LDAbfg");
             ASSERT_NE(nullptr, skin1);
 
             const auto* surface2 = model->surface("x_fx");
@@ -77,11 +79,11 @@ namespace TrenchBroom {
             ASSERT_EQ(1u, surface2->frameCount());
             ASSERT_EQ(1u, surface2->skinCount());
 
-            const auto* skin2 = surface2->skin("bfg/LDAbfg_z");
+            const auto* skin2 = surface2->skin("models/weapons2/bfg/LDAbfg_z");
             ASSERT_NE(nullptr, skin2);
         }
 
-        TEST(Md3ParserTest, loadFailure_2659) {
+        TEST_CASE("Md3ParserTest.loadFailure_2659", "[Md3ParserTest]") {
             // see https://github.com/kduske/TrenchBroom/issues/2659
 
             NullLogger logger;
@@ -95,7 +97,7 @@ namespace TrenchBroom {
             ASSERT_NE(nullptr, md3File);
 
             auto reader = md3File->reader().buffer();
-            auto parser = Md3Parser("bfg", std::begin(reader), std::end(reader), *fs);
+            auto parser = Md3Parser("armor_red", std::begin(reader), std::end(reader), *fs);
             auto model = std::unique_ptr<Assets::EntityModel>(parser.initializeModel(logger));
 
             ASSERT_NE(nullptr, model);

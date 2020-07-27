@@ -35,6 +35,8 @@ namespace TrenchBroom {
     namespace Model {
         class Brush;
         class BrushFace;
+        class BrushFaceHandle;
+        class BrushNode;
         class Hit;
         class Node;
         class PickResult;
@@ -50,15 +52,26 @@ namespace TrenchBroom {
 
         class ResizeBrushesTool : public Tool {
         private:
-            static const Model::HitType::Type ResizeHit3D;
-            static const Model::HitType::Type ResizeHit2D;
+            static const Model::HitType::Type Resize3DHitType;
+            static const Model::HitType::Type Resize2DHitType;
 
-            using FaceHandle = std::tuple<Model::Brush*, vm::vec3>;
+            using Resize2DHitData = std::vector<Model::BrushFaceHandle>;
+            using Resize3DHitData = Model::BrushFaceHandle;
+
+            /**
+             * Brush and face normal pair.
+             */
+            using FaceHandle = std::tuple<Model::BrushNode*, vm::vec3>;
 
             std::weak_ptr<MapDocument> m_document;
             std::vector<FaceHandle> m_dragHandles;
             vm::vec3 m_dragOrigin;
             vm::vec3 m_lastPoint;
+            /**
+             * This is temporarily set to true when a drag is started with Ctrl,
+             * to signal that new brushes need to be split off. After the split brushes have been
+             * created, it's set back to false, in `resize()`.
+             */
             bool m_splitBrushes;
             vm::vec3 m_totalDelta;
             bool m_dragging;
@@ -75,14 +88,13 @@ namespace TrenchBroom {
             Model::Hit pickProximateFace(Model::HitType::Type hitType, const vm::ray3& pickRay) const;
         public:
             bool hasDragFaces() const;
-            std::vector<Model::BrushFace*> dragFaces() const;
+            std::vector<Model::BrushFaceHandle> dragFaces() const;
             void updateDragFaces(const Model::PickResult& pickResult);
         private:
             std::vector<FaceHandle> getDragHandles(const Model::Hit& hit) const;
             class MatchFaceBoundary;
             std::vector<FaceHandle> collectDragHandles(const Model::Hit& hit) const;
-            std::vector<Model::BrushFace*> collectDragFaces(Model::BrushFace* face) const;
-            std::vector<FaceHandle> getDragHandles(const std::vector<Model::BrushFace*>& faces) const;
+            std::vector<Model::BrushFaceHandle> collectDragFaces(const Model::BrushFaceHandle& faceHandle) const;
         public:
             bool beginResize(const Model::PickResult& pickResult, bool split);
             bool resize(const vm::ray3& pickRay, const Renderer::Camera& camera);
@@ -94,8 +106,8 @@ namespace TrenchBroom {
             void commit();
             void cancel();
         private:
-            bool splitBrushes(const vm::vec3& delta);
-            Model::BrushFace* findMatchingFace(Model::Brush* brush, const Model::BrushFace* reference) const;
+            bool splitBrushesOutward(const vm::vec3& delta);
+            bool splitBrushesInward(const vm::vec3& delta);
             std::vector<vm::polygon3> dragFaceDescriptors() const;
         private:
             void bindObservers();

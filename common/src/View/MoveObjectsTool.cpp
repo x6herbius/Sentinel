@@ -20,7 +20,7 @@
 #include "MoveObjectsTool.h"
 
 #include "FloatType.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "View/Grid.h"
 #include "View/InputState.h"
 #include "View/MapDocument.h"
@@ -45,6 +45,11 @@ namespace TrenchBroom {
 
         bool MoveObjectsTool::startMove(const InputState& inputState) {
             auto document = kdl::mem_lock(m_document);
+
+            if (!document->selectedBrushFaces().empty()) {
+                return false;
+            }
+
             document->startTransaction(duplicateObjects(inputState) ? "Duplicate Objects" : "Move Objects");
             m_duplicateObjects = duplicateObjects(inputState);
             return true;

@@ -17,7 +17,9 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "../../test/src/GTestCompat.h"
 
 #include "BenchmarkUtils.h"
 
@@ -28,11 +30,11 @@
 #include "IO/Reader.h"
 #include "IO/TestParserStatus.h"
 #include "IO/WorldReader.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Model/NodeVisitor.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 
 #include <vecmath/bbox.h>
 
@@ -46,13 +48,13 @@ namespace TrenchBroom {
     public:
         explicit TreeBuilder(AABB& tree) : m_tree(tree) {}
     private:
-        void doVisit(Model::World*) override {}
-        void doVisit(Model::Layer*) override {}
-        void doVisit(Model::Group*) override {}
-        void doVisit(Model::Entity* entity) override {
+        void doVisit(Model::WorldNode*) override {}
+        void doVisit(Model::LayerNode*) override {}
+        void doVisit(Model::GroupNode*) override {}
+        void doVisit(Model::EntityNode* entity) override {
             doInsert(entity);
         }
-        void doVisit(Model::Brush* brush) override {
+        void doVisit(Model::BrushNode* brush) override {
             doInsert(brush);
         }
 
@@ -61,8 +63,7 @@ namespace TrenchBroom {
         }
     };
 
-    TEST(AABBTreeBenchmark, benchBuildTree) {
-
+    TEST_CASE("AABBTreeBenchmark.benchBuildTree", "[AABBTreeBenchmark]") {
         const auto mapPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/benchmark/AABBTree/ne_ruins.map");
         const auto file = IO::Disk::openFile(mapPath);
         auto fileReader = file->reader().buffer();

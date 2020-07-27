@@ -133,8 +133,9 @@ namespace TrenchBroom {
         FgdParser::FgdParser(const char* begin, const char* end, const Color& defaultEntityColor, const Path& path) :
         m_defaultEntityColor(defaultEntityColor),
         m_tokenizer(FgdTokenizer(begin, end)) {
-            if (!path.isEmpty()) {
-                pushIncludePath(path);
+            if (!path.isEmpty() && path.isAbsolute()) {
+                m_fs = std::make_shared<DiskFileSystem>(path.deleteLastComponent());
+                pushIncludePath(path.lastComponent());
             }
         }
 
@@ -179,18 +180,22 @@ namespace TrenchBroom {
         };
 
         void FgdParser::pushIncludePath(const Path& path) {
-            ensure(path.isAbsolute(), "include path must be absolute");
             assert(!isRecursiveInclude(path));
-
-            const auto folder = path.deleteLastComponent();
-            m_fs = std::make_shared<DiskFileSystem>(m_fs, folder);
             m_paths.push_back(path);
         }
 
         void FgdParser::popIncludePath() {
             assert(!m_paths.empty());
-            m_fs = m_fs->releaseNext();
             m_paths.pop_back();
+        }
+
+        Path FgdParser::currentRoot() const {
+            if (!m_paths.empty()) {
+                assert(!m_paths.back().isEmpty());
+                return m_paths.back().deleteLastComponent();
+            } else {
+                return Path();
+            }
         }
 
         bool FgdParser::isRecursiveInclude(const Path& path) const {
@@ -455,7 +460,7 @@ namespace TrenchBroom {
             const auto shortDescription = parseAttributeDescription(status);
             parseDefaultStringValue(status);
             const auto longDescription = parseAttributeDescription(status);
-            return std::make_shared<Assets::AttributeDefinition>(name, Assets::AttributeDefinition::Type_TargetSourceAttribute, shortDescription, longDescription, readOnly);
+            return std::make_shared<Assets::AttributeDefinition>(name, Assets::AttributeDefinitionType::TargetSourceAttribute, shortDescription, longDescription, readOnly);
         }
 
         FgdParser::AttributeDefinitionPtr FgdParser::parseTargetDestinationAttribute(ParserStatus& status, const std::string& name) {
@@ -463,7 +468,7 @@ namespace TrenchBroom {
             const auto shortDescription = parseAttributeDescription(status);
             parseDefaultStringValue(status);
             const auto longDescription = parseAttributeDescription(status);
-            return std::make_shared<Assets::AttributeDefinition>(name, Assets::AttributeDefinition::Type_TargetDestinationAttribute, shortDescription, longDescription, readOnly);
+            return std::make_shared<Assets::AttributeDefinition>(name, Assets::AttributeDefinitionType::TargetDestinationAttribute, shortDescription, longDescription, readOnly);
         }
 
         FgdParser::AttributeDefinitionPtr FgdParser::parseStringAttribute(ParserStatus& status, const std::string& name) {
@@ -580,7 +585,7 @@ namespace TrenchBroom {
             return "";
         }
 
-        nonstd::optional<std::string> FgdParser::parseDefaultStringValue(ParserStatus& status) {
+        std::optional<std::string> FgdParser::parseDefaultStringValue(ParserStatus& status) {
             auto token = m_tokenizer.peekToken();
             if (token.type() == FgdToken::Colon) {
                 m_tokenizer.nextToken();
@@ -594,10 +599,10 @@ namespace TrenchBroom {
                     return token.data();
                 }
             }
-            return nonstd::nullopt;
+            return std::nullopt;
         }
 
-        nonstd::optional<int> FgdParser::parseDefaultIntegerValue(ParserStatus& status) {
+        std::optional<int> FgdParser::parseDefaultIntegerValue(ParserStatus& status) {
             auto token = m_tokenizer.peekToken();
             if (token.type() == FgdToken::Colon) {
                 m_tokenizer.nextToken();
@@ -611,10 +616,10 @@ namespace TrenchBroom {
                     return static_cast<int>(token.toFloat<float>());
                 }
             }
-            return nonstd::nullopt;
+            return std::nullopt;
         }
 
-        nonstd::optional<float> FgdParser::parseDefaultFloatValue(ParserStatus& status) {
+        std::optional<float> FgdParser::parseDefaultFloatValue(ParserStatus& status) {
             auto token = m_tokenizer.peekToken();
             if (token.type() == FgdToken::Colon) {
                 m_tokenizer.nextToken();
@@ -628,10 +633,10 @@ namespace TrenchBroom {
                     return token.toFloat<float>();
                 }
             }
-            return nonstd::nullopt;
+            return std::nullopt;
         }
 
-        nonstd::optional<std::string> FgdParser::parseDefaultChoiceValue(ParserStatus& status) {
+        std::optional<std::string> FgdParser::parseDefaultChoiceValue(ParserStatus& status) {
             auto token = m_tokenizer.peekToken();
             if (token.type() == FgdToken::Colon) {
                 m_tokenizer.nextToken();
@@ -641,7 +646,7 @@ namespace TrenchBroom {
                     return token.data();
                 }
             }
-            return nonstd::nullopt;
+            return std::nullopt;
         }
 
         vm::vec3 FgdParser::parseVector(ParserStatus& status) {
@@ -711,11 +716,16 @@ namespace TrenchBroom {
         }
 
         FgdParser::EntityDefinitionList FgdParser::handleInclude(ParserStatus& status, const Path& path) {
+            if (m_fs == nullptr) {
+                status.error(m_tokenizer.line(), kdl::str_to_string("Cannot include file without host file path"));
+                return {};
+            }
+        
             const auto snapshot = m_tokenizer.snapshot();
             auto result = EntityDefinitionList{};
             try {
                 status.debug(m_tokenizer.line(), "Parsing included file '" + path.asString() + "'");
-                const auto file = m_fs->openFile(path);
+                const auto file = m_fs->openFile(currentRoot() + path);
                 const auto filePath = file->path();
                 status.debug(m_tokenizer.line(), "Resolved '" + path.asString() + "' to '" + filePath.asString() + "'");
 

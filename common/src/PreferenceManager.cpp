@@ -37,6 +37,7 @@
 #endif
 #include <QStandardPaths>
 #include <QStringBuilder>
+#include <QMessageBox>
 
 #include <string>
 #include <vector>
@@ -44,11 +45,16 @@
 namespace TrenchBroom {
     // PreferenceSerializerV1
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, bool* out) const {
-        if (in == QStringLiteral("1")) {
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, bool* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        const QString inString = in.toString();
+
+        if (inString == QStringLiteral("1")) {
             *out = true;
             return true;
-        } else if (in == QStringLiteral("0")) {
+        } else if (inString == QStringLiteral("0")) {
             *out = false;
             return true;
         } else {
@@ -56,8 +62,11 @@ namespace TrenchBroom {
         }
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, Color* out) const {
-        const std::string inStdString = in.toStdString();
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, Color* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        const std::string inStdString = in.toString().toStdString();
 
         if (!Color::canParse(inStdString)) {
             return false;
@@ -67,8 +76,11 @@ namespace TrenchBroom {
         return true;
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, float* out) const {
-        auto inCopy = QString(in);
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, float* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        QString inCopy = in.toString();
         auto inStream = QTextStream(&inCopy);
 
         inStream >> *out;
@@ -76,8 +88,11 @@ namespace TrenchBroom {
         return (inStream.status() == QTextStream::Ok);
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, int* out) const {
-        auto inCopy = QString(in);
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, int* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        QString inCopy = in.toString();
         auto inStream = QTextStream(&inCopy);
 
         inStream >> *out;
@@ -85,14 +100,20 @@ namespace TrenchBroom {
         return (inStream.status() == QTextStream::Ok);
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, IO::Path* out) const {
-        *out = IO::pathFromQString(in);
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, IO::Path* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        *out = IO::pathFromQString(in.toString());
         return true;
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, QKeySequence* out) const {
-        nonstd::optional<QKeySequence> result =
-            View::keySequenceFromV1Settings(in);
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, QKeySequence* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        std::optional<QKeySequence> result =
+            View::keySequenceFromV1Settings(in.toString());
 
         if (!result.has_value()) {
             return false;
@@ -101,57 +122,123 @@ namespace TrenchBroom {
         return true;
     }
 
-    bool PreferenceSerializerV1::readFromString(const QString& in, QString* out) const {
-        *out = in;
+    bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, QString* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        *out = in.toString();
         return true;
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const bool in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const bool in) const {
         if (in) {
-            stream << "1";
+            return QJsonValue("1");
         } else {
-            stream << "0";
+            return QJsonValue("0");
         }
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const Color& in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const Color& in) const {
         // NOTE: QTextStream's default locale is C, unlike QString::arg()
+        QString string;
+        QTextStream stream(&string);
         stream << in.r() << " "
                << in.g() << " "
                << in.b() << " "
                << in.a();
+
+        return QJsonValue(string);
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const float in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const float in) const {
+        QString string;
+        QTextStream stream(&string);
         stream << in;
+
+        return QJsonValue(string);
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const int in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const int in) const {
+        QString string;
+        QTextStream stream(&string);
         stream << in;
+
+        return QJsonValue(string);
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const IO::Path& in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const IO::Path& in) const {
+        QString string;
+        QTextStream stream(&string);
         // NOTE: this serializes with "\" separators on Windows and "/" elsewhere!
         stream << IO::pathAsQString(in);
+
+        return QJsonValue(string);
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const QKeySequence& in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const QKeySequence& in) const {
+        QString string;
+        QTextStream stream(&string);
         stream << View::keySequenceToV1Settings(in);
+
+        return QJsonValue(string);
     }
 
-    void PreferenceSerializerV1::writeToString(QTextStream& stream, const QString& in) const {
+    QJsonValue PreferenceSerializerV1::writeToJSON(const QString& in) const {
+        QString string;
+        QTextStream stream(&string);
         stream << in;
+
+        return QJsonValue(string);
     }
 
     // PreferenceSerializerV2
 
-    bool PreferenceSerializerV2::readFromString(const QString& in, QKeySequence* out) const {
-        *out = QKeySequence(in, QKeySequence::PortableText);
+    bool PreferenceSerializerV2::readFromJSON(const QJsonValue& in, bool* out) const {
+        if (!in.isBool()) {
+            return false;
+        }
+        *out = in.toBool();
         return true;
     }
 
-    void PreferenceSerializerV2::writeToString(QTextStream& stream, const QKeySequence& in) const {
-        stream << in.toString(QKeySequence::PortableText);
+    bool PreferenceSerializerV2::readFromJSON(const QJsonValue& in, float* out) const {
+        if (!in.isDouble()) {
+            return false;
+        }
+        *out = static_cast<float>(in.toDouble());
+        return true;
+    }
+
+    bool PreferenceSerializerV2::readFromJSON(const QJsonValue& in, int* out) const {
+        if (!in.isDouble()) {
+            return false;
+        }
+        *out = static_cast<int>(in.toDouble());
+        return true;
+    }
+
+    bool PreferenceSerializerV2::readFromJSON(const QJsonValue& in, QKeySequence* out) const {
+        if (!in.isString()) {
+            return false;
+        }
+        *out = QKeySequence(in.toString(), QKeySequence::PortableText);
+        return true;
+    }
+
+    QJsonValue PreferenceSerializerV2::writeToJSON(const bool in) const {
+        return QJsonValue(in);
+    }
+
+    QJsonValue PreferenceSerializerV2::writeToJSON(const float in) const {
+        return QJsonValue(static_cast<double>(in));
+    }
+
+    QJsonValue PreferenceSerializerV2::writeToJSON(const int in) const {
+        return QJsonValue(in);
+    }
+
+    QJsonValue PreferenceSerializerV2::writeToJSON(const QKeySequence& in) const {
+        return QJsonValue(in.toString(QKeySequence::PortableText));
     }
 
     // PreferenceManager
@@ -163,14 +250,17 @@ namespace TrenchBroom {
     PreferenceManager::PreferenceManager()
     : QObject(),
     m_preferencesFilePath(v2SettingsPath()),
-    m_fileSystemWatcher(nullptr) {
+    m_fileSystemWatcher(nullptr),
+    m_fileReadWriteDisabled(false) {
 #if defined __APPLE__
         m_saveInstantly = true;
 #else
         m_saveInstantly = false;
 #endif
 
-        migrateSettingsFromV1IfPathDoesNotExist(m_preferencesFilePath);
+        if (!migrateSettingsFromV1IfPathDoesNotExist(m_preferencesFilePath)) {
+            showErrorAndDisableFileReadWrite(tr("An error occurrend while attempting to migrate the preferences to:"), tr("ensure the directory is writable"));
+        }
 
         this->loadCacheFromDisk();
 
@@ -200,7 +290,13 @@ namespace TrenchBroom {
         }
         m_unsavedPreferences.clear();
 
-        assertResult(writeV2SettingsToPath(m_preferencesFilePath, m_cache))
+        if (m_fileReadWriteDisabled) {
+            return;
+        }
+
+        if (!writeV2SettingsToPath(m_preferencesFilePath, m_cache)) {
+            showErrorAndDisableFileReadWrite(tr("An error occurrend while attempting to save the preferences file:"), tr("ensure the directory is writable"));
+        }
     }
 
     void PreferenceManager::discardChanges() {
@@ -209,8 +305,8 @@ namespace TrenchBroom {
     }
 
     static std::vector<IO::Path>
-    changedKeysForMapDiff(const std::map<IO::Path, QString>& before,
-                          const std::map<IO::Path, QString>& after) {
+    changedKeysForMapDiff(const std::map<IO::Path, QJsonValue>& before,
+                          const std::map<IO::Path, QJsonValue>& after) {
         kdl::vector_set<IO::Path> result;
 
         // removes
@@ -239,16 +335,52 @@ namespace TrenchBroom {
         return result.release_data();
     }
 
+    void PreferenceManager::showErrorAndDisableFileReadWrite(const QString& reason, const QString& suggestion) {
+        m_fileReadWriteDisabled = true;
+
+        const QString message = tr("%1\n\n"
+                                   "%2\n\nPlease correct the problem (%3) and restart TrenchBroom.\n"
+                                   "Further settings changes will not be saved this session.")
+                                .arg(reason)
+                                .arg(m_preferencesFilePath)
+                                .arg(suggestion);
+
+        auto dialog = QMessageBox(QMessageBox::Icon::Critical, tr("TrenchBroom"),
+                                   message,
+                                   QMessageBox::Ok);
+        dialog.exec();
+    }
+
     /**
      * Reloads m_cache from the .json file,
      * marks all Preference<T> objects as needing deserialization next time they're accessed, and emits
      * preferenceDidChangeNotifier as needed.
      */
     void PreferenceManager::loadCacheFromDisk() {
-        const std::map<IO::Path, QString> oldPrefs = m_cache;
+        if (m_fileReadWriteDisabled) {
+            return;
+        }
+
+        const std::map<IO::Path, QJsonValue> oldPrefs = m_cache;
 
         // Reload m_cache
-        m_cache = readV2SettingsFromPath(m_preferencesFilePath);
+        readV2SettingsFromPath(m_preferencesFilePath)
+            .visit(kdl::overload {
+                [&](std::map<IO::Path, QJsonValue>&& prefs) {
+                    m_cache = std::move(prefs);
+                },
+                [&] (const PreferenceErrors::FileReadError&) {
+                    // This happens e.g. if you don't have read permissions for m_preferencesFilePath
+                    showErrorAndDisableFileReadWrite(tr("A file IO error occurred while attempting to read the preference file:"), tr("ensure the file is readable"));
+                },
+                [&] (const PreferenceErrors::JsonParseError&) {
+                    showErrorAndDisableFileReadWrite(tr("A JSON parsing error occurred while reading the preference file:"), tr("fix the JSON, or backup and delete the file"));
+                },
+                [&] (const PreferenceErrors::NoFilePresent&) {
+                    m_cache = {};
+                }
+            });
+
         invalidatePreferences();
 
         // Emit preferenceDidChangeNotifier for any changed preferences
@@ -285,23 +417,44 @@ namespace TrenchBroom {
             return;
         }
 
-        const QString stringValue = it->second;
-        assertResult(pref->loadFromString(format, stringValue))
+        const QJsonValue jsonValue = it->second;
+        if (!pref->loadFromJSON(format, jsonValue)) {
+            // FIXME: Log to TB console
+            const QVariant variantValue = jsonValue.toVariant();
+            qDebug() << "Failed to load preference " << IO::pathAsQString(pref->path(), "/")
+                     << " from JSON value: " << variantValue.toString() << " (" << variantValue.typeName() << ")";
+
+            pref->resetToDefault();
+
+            // Replace the invalid value in the cache with the default
+            savePreferenceToCache(pref);
+
+            // FIXME: trigger writing to disk
+        }
         pref->setValid(true);
     }
 
     void PreferenceManager::savePreferenceToCache(PreferenceBase* pref) {
-        PreferenceSerializerV2 format;
-        const QString stringValue = pref->writeToString(format);
+        if (pref->isDefault()) {
+            // Just remove the key/value from the cache if it's already at the default value
+            auto it = m_cache.find(pref->path());
+            if (it != m_cache.end()) {
+                m_cache.erase(it);
+            }
+            return;
+        }
 
-        m_cache[pref->path()] = stringValue;
+        PreferenceSerializerV2 format;
+        const QJsonValue jsonValue = pref->writeToJSON(format);
+
+        m_cache[pref->path()] = jsonValue;
     }
 
     // V1 settings
 
-    std::map<IO::Path, QString> parseINI(QTextStream* iniStream) {
+    std::map<IO::Path, QJsonValue> parseINI(QTextStream* iniStream) {
         IO::Path section;
-        std::map<IO::Path, QString> result;
+        std::map<IO::Path, QJsonValue> result;
 
         while (!iniStream->atEnd()) {
             QString line = iniStream->readLine();
@@ -331,7 +484,7 @@ namespace TrenchBroom {
                 QString key = line.left(eqIndex);
                 QString value = line.mid(eqIndex + 1);
 
-                result[section + IO::pathFromQString(key)] = value;
+                result[section + IO::pathFromQString(key)] = QJsonValue(value);
                 continue;
             }
 
@@ -342,14 +495,14 @@ namespace TrenchBroom {
 
 #if defined(Q_OS_WIN)
     /**
-     * Helper for reading the Windows registry QSettings into a std::map<IO::Path, QString>
+     * Helper for reading the Windows registry QSettings into a std::map<IO::Path, QJsonValue>
      */
-    static void visitNode(std::map<IO::Path, QString>& result, QSettings& settings, const IO::Path& currentPath) {
+    static void visitNode(std::map<IO::Path, QJsonValue>& result, QSettings& settings, const IO::Path& currentPath) {
         // Process key/value pairs at this node
         for (const QString& key : settings.childKeys()) {
             const QString value = settings.value(key).toString();
             const IO::Path keyPath = currentPath + IO::pathFromQString(key);
-            result[keyPath] = value;
+            result[keyPath] = QJsonValue(value);
         }
 
         // Vist children
@@ -360,8 +513,8 @@ namespace TrenchBroom {
         }
     }
 
-    static std::map<IO::Path, QString> getRegistrySettingsV1() {
-        std::map<IO::Path, QString> result;
+    static std::map<IO::Path, QJsonValue> getRegistrySettingsV1() {
+        std::map<IO::Path, QJsonValue> result;
 
         QSettings settings("HKEY_CURRENT_USER\\Software\\Kristian Duske\\TrenchBroom", QSettings::Registry32Format);
         visitNode(result, settings, IO::Path());
@@ -370,19 +523,19 @@ namespace TrenchBroom {
     }
 #endif
 
-    std::map<IO::Path, QString> getINISettingsV1(const QString& path) {
+    std::map<IO::Path, QJsonValue> getINISettingsV1(const QString& path) {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             return {};
         }
 
         QTextStream in(&file);
-        const std::map<IO::Path, QString> result = parseINI(&in);
+        const std::map<IO::Path, QJsonValue> result = parseINI(&in);
 
         return result;
     }
 
-    std::map<IO::Path, QString> readV1Settings() {
+    std::map<IO::Path, QJsonValue> readV1Settings() {
         [[maybe_unused]]
         const QString linuxPath = QDir::homePath() % QLatin1String("/.TrenchBroom/.preferences");
 
@@ -426,7 +579,7 @@ namespace TrenchBroom {
         return true;
     }
 
-    std::map<IO::Path, QString> migrateV1ToV2(const std::map<IO::Path, QString>& v1Prefs) {
+    std::map<IO::Path, QJsonValue> migrateV1ToV2(const std::map<IO::Path, QJsonValue>& v1Prefs) {
         auto& map = Preferences::staticPreferencesMap();
         auto& actionsMap = View::ActionManager::instance().actionsMap();
         auto& dynaimcPrefPatterns = Preferences::dynaimcPreferencePatterns();
@@ -434,7 +587,7 @@ namespace TrenchBroom {
         const PreferenceSerializerV1 v1;
         const PreferenceSerializerV2 v2;
 
-        std::map<IO::Path, QString> result;
+        std::map<IO::Path, QJsonValue> result;
 
         for (auto [key, val] : v1Prefs) {
 
@@ -473,7 +626,7 @@ namespace TrenchBroom {
                     if (matches(key, dynPref->pathPattern())) {
                         found = true;
 
-                        const auto strMaybe = dynPref->migratePreferenceForThisType(v1, v2, val);
+                        const std::optional<QJsonValue> strMaybe = dynPref->migratePreferenceForThisType(v1, v2, val);
                         if (strMaybe.has_value()) {
                             result[key] = *strMaybe;
                         }
@@ -495,17 +648,25 @@ namespace TrenchBroom {
         return IO::pathAsQString(IO::SystemPaths::userDataDirectory() + IO::Path("Preferences.json"));
     }
 
-    std::map<IO::Path, QString> readV2SettingsFromPath(const QString& path) {
+    PreferencesResult readV2SettingsFromPath(const QString& path) {
         QFile file(path);
+        if (!file.exists()) {
+            return PreferencesResult::error(PreferenceErrors::NoFilePresent{});
+        }
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return {};
+            return PreferencesResult::error(PreferenceErrors::FileReadError{});
         }
 
         return parseV2SettingsFromJSON(file.readAll());
     }
 
-    bool writeV2SettingsToPath(const QString& path, const std::map<IO::Path, QString>& v2Prefs) {
+    bool writeV2SettingsToPath(const QString& path, const std::map<IO::Path, QJsonValue>& v2Prefs) {
         const QByteArray serialized = writeV2SettingsToJSON(v2Prefs);
+
+        const QString settingsDir = QFileInfo(path).path();
+        if (!QDir().mkpath(settingsDir)) {
+            return false;
+        }
 
         QSaveFile saveFile(path);
         if (!saveFile.open(QIODevice::WriteOnly)) {
@@ -520,31 +681,31 @@ namespace TrenchBroom {
         return saveFile.commit();
     }
 
-    std::map<IO::Path, QString> readV2Settings() {
+    PreferencesResult readV2Settings() {
         const QString path = v2SettingsPath();
         return readV2SettingsFromPath(path);
     }
 
-    std::map<IO::Path, QString> parseV2SettingsFromJSON(const QByteArray& jsonData) {
-        QJsonParseError error;
+    PreferencesResult parseV2SettingsFromJSON(const QByteArray& jsonData) {
+        auto error = QJsonParseError();
         const QJsonDocument document = QJsonDocument::fromJson(jsonData, &error);
 
         if (error.error != QJsonParseError::NoError || !document.isObject()) {
-            return {};
+            return PreferencesResult::error(PreferenceErrors::JsonParseError{error});
         }
 
         const QJsonObject object = document.object();
-        std::map<IO::Path, QString> result;
+        std::map<IO::Path, QJsonValue> result;
         for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
             const QString key = it.key();
             const QJsonValue value = it.value();
 
-            result[IO::pathFromQString(key)] = value.toString();
+            result[IO::pathFromQString(key)] = value;
         }
-        return result;
+        return PreferencesResult::success(result);
     }
 
-    QByteArray writeV2SettingsToJSON(const std::map<IO::Path, QString>& v2Prefs) {
+    QByteArray writeV2SettingsToJSON(const std::map<IO::Path, QJsonValue>& v2Prefs) {
         QJsonObject rootObject;
         for (auto [key, val] : v2Prefs) {
             rootObject[IO::pathAsQString(key, "/")] = val;
@@ -554,15 +715,16 @@ namespace TrenchBroom {
         return document.toJson(QJsonDocument::Indented);
     }
 
-    void migrateSettingsFromV1IfPathDoesNotExist(const QString& destinationPath) {
+    bool migrateSettingsFromV1IfPathDoesNotExist(const QString& destinationPath) {
         // Check if the Preferences.json exists, migrate if not
 
         QFileInfo prefsFileInfo(destinationPath);
         if (prefsFileInfo.exists()) {
-            return;
+            return true;
         }
 
-        const std::map<IO::Path, QString> v2Prefs = migrateV1ToV2(readV1Settings());
-        writeV2SettingsToPath(destinationPath, v2Prefs);
+        const std::map<IO::Path, QJsonValue> v2Prefs = migrateV1ToV2(readV1Settings());
+
+        return writeV2SettingsToPath(destinationPath, v2Prefs);
     }
 }

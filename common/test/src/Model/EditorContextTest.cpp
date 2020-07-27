@@ -17,76 +17,78 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "Model/BrushBuilder.h"
 #include "Model/EditorContext.h"
 #include "Model/LockState.h"
 #include "Model/VisibilityState.h"
-#include "Model/World.h"
-#include "Model/Layer.h"
-#include "Model/Group.h"
-#include "Model/Entity.h"
-#include "Model/Brush.h"
+#include "Model/WorldNode.h"
+#include "Model/LayerNode.h"
+#include "Model/GroupNode.h"
+#include "Model/EntityNode.h"
+#include "Model/BrushNode.h"
 
 namespace TrenchBroom {
     namespace Model {
-        class EditorContextTest : public ::testing::Test {
+        class EditorContextTest {
         protected:
             vm::bbox3d worldBounds;
-            World* world;
+            WorldNode* world;
             EditorContext context;
 
-            void SetUp() override {
+            EditorContextTest() {
                 worldBounds = vm::bbox3d(8192.0);
-                world = new World(MapFormat::Standard);
+                world = new WorldNode(MapFormat::Standard);
             }
 
-            void TearDown() override {
+            virtual ~EditorContextTest() {
                 context.reset();
                 delete world;
                 world = nullptr;
             }
 
-            Group* createTopLevelGroup() {
-                Group* group;
+            GroupNode* createTopLevelGroup() {
+                GroupNode* group;
                 std::tie(group, std::ignore) = createGroupedBrush();
                 return group;
             }
 
-            Entity* createTopLevelPointEntity() {
+            EntityNode* createTopLevelPointEntity() {
                 auto* entity = world->createEntity();
                 world->defaultLayer()->addChild(entity);
                 return entity;
             }
 
-            std::tuple<Entity*, Brush*> createTopLevelBrushEntity() {
+            std::tuple<EntityNode*, BrushNode*> createTopLevelBrushEntity() {
                 BrushBuilder builder(world, worldBounds);
-                auto* brush = builder.createCube(32.0, "sometex");
+                auto* brush = world->createBrush(builder.createCube(32.0, "sometex"));
                 auto* entity = world->createEntity();
                 entity->addChild(brush);
                 world->defaultLayer()->addChild(entity);
                 return std::make_tuple(entity, brush);
             }
 
-            Brush* createTopLevelBrush() {
+            BrushNode* createTopLevelBrush() {
                 BrushBuilder builder(world, worldBounds);
-                auto* brush = builder.createCube(32.0, "sometex");
+                auto* brush = world->createBrush(builder.createCube(32.0, "sometex"));
                 world->defaultLayer()->addChild(brush);
                 return brush;
             }
 
-            std::tuple<Group*, Group*> createNestedGroup() {
-                Group* outerGroup;
-                Group* innerGroup;
+            std::tuple<GroupNode*, GroupNode*> createNestedGroup() {
+                GroupNode* outerGroup;
+                GroupNode* innerGroup;
                 std::tie(outerGroup, innerGroup, std::ignore) = createdNestedGroupedBrush();
 
                 return std::make_tuple(outerGroup, innerGroup);
             }
 
-            std::tuple<Group*, Brush*> createGroupedBrush() {
+            std::tuple<GroupNode*, BrushNode*> createGroupedBrush() {
                 BrushBuilder builder(world, worldBounds);
-                auto* brush = builder.createCube(32.0, "sometex");
+                auto* brush = world->createBrush(builder.createCube(32.0, "sometex"));
                 auto* group = world->createGroup("somegroup");
 
                 group->addChild(brush);
@@ -95,7 +97,7 @@ namespace TrenchBroom {
                 return std::make_tuple(group, brush);
             }
 
-            std::tuple<Group*, Entity*> createGroupedPointEntity() {
+            std::tuple<GroupNode*, EntityNode*> createGroupedPointEntity() {
                 BrushBuilder builder(world, worldBounds);
                 auto* entity = world->createEntity();
                 auto* group = world->createGroup("somegroup");
@@ -106,9 +108,9 @@ namespace TrenchBroom {
                 return std::make_tuple(group, entity);
             }
 
-            std::tuple<Group*, Entity*, Brush*> createGroupedBrushEntity() {
+            std::tuple<GroupNode*, EntityNode*, BrushNode*> createGroupedBrushEntity() {
                 BrushBuilder builder(world, worldBounds);
-                auto* brush = builder.createCube(32.0, "sometex");
+                auto* brush = world->createBrush(builder.createCube(32.0, "sometex"));
                 auto* entity = world->createEntity();
                 auto* group = world->createGroup("somegroup");
 
@@ -119,9 +121,9 @@ namespace TrenchBroom {
                 return std::make_tuple(group, entity, brush);
             }
 
-            std::tuple<Group*, Group*, Brush*> createdNestedGroupedBrush() {
+            std::tuple<GroupNode*, GroupNode*, BrushNode*> createdNestedGroupedBrush() {
                 BrushBuilder builder(world, worldBounds);
-                auto* innerBrush = builder.createCube(32.0, "sometex");
+                auto* innerBrush = world->createBrush(builder.createCube(32.0, "sometex"));
                 auto* innerGroup = world->createGroup("inner");
                 auto* outerGroup = world->createGroup("outer");
 
@@ -160,28 +162,28 @@ namespace TrenchBroom {
 
         /************* World Tests *************/
 
-        TEST_F(EditorContextTest, testWorldVisible) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testWorldVisible") {
             assertVisible(true, world, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertVisible(true, world, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
             assertVisible(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
             assertVisible(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testWorldEditable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testWorldEditable") {
             assertEditable(true, world, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertEditable(false, world, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
             assertEditable(true, world, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
             assertEditable(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testWorldPickable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testWorldPickable") {
             assertPickable(false, world, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertPickable(false, world, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
             assertPickable(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
             assertPickable(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testWorldSelectable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testWorldSelectable") {
             assertSelectable(false, world, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertSelectable(false, world, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
             assertSelectable(false, world, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
@@ -190,7 +192,7 @@ namespace TrenchBroom {
 
         /************* Default Layer Tests *************/
 
-        TEST_F(EditorContextTest, testDefaultLayerVisible) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testDefaultLayerVisible") {
             auto* layer = world->defaultLayer();
             assertVisible(true, layer, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertVisible(true, layer, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -198,7 +200,7 @@ namespace TrenchBroom {
             assertVisible(false, layer, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testDefaultLayerEditable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testDefaultLayerEditable") {
             auto* layer = world->defaultLayer();
             assertEditable(true, layer, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertEditable(false, layer, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -206,7 +208,7 @@ namespace TrenchBroom {
             assertEditable(false, layer, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testDefaultLayerPickable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testDefaultLayerPickable") {
             auto* layer = world->defaultLayer();
             assertPickable(false, layer, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertPickable(false, layer, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -214,7 +216,7 @@ namespace TrenchBroom {
             assertPickable(false, layer, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testDefaultLayerSelectable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testDefaultLayerSelectable") {
             auto* layer = world->defaultLayer();
             assertSelectable(false, layer, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertSelectable(false, layer, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -224,7 +226,7 @@ namespace TrenchBroom {
 
         /************* Top Level Group Tests *************/
 
-        TEST_F(EditorContextTest, testTopLevelGroupVisible) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelGroupVisible") {
             auto* group = createTopLevelGroup();
             assertVisible(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertVisible(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -239,7 +241,7 @@ namespace TrenchBroom {
             assertVisible(true, group, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelGroupEditable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelGroupEditable") {
             auto* group = createTopLevelGroup();
             assertEditable(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertEditable(false, group, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -252,7 +254,7 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testTopLevelGroupPickable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelGroupPickable") {
             auto* group = createTopLevelGroup();
             assertPickable(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertPickable(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -265,7 +267,7 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testTopLevelGroupSelectable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelGroupSelectable") {
             auto* group = createTopLevelGroup();
             assertSelectable(true, group, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertSelectable(false, group, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -280,7 +282,7 @@ namespace TrenchBroom {
 
         /************* Top Level Point Entity Tests *************/
 
-        TEST_F(EditorContextTest, testTopLevelPointEntityVisible) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelPointEntityVisible") {
             auto* entity = createTopLevelPointEntity();
             assertVisible(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertVisible(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -296,7 +298,7 @@ namespace TrenchBroom {
             assertVisible(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelPointEntityEditable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelPointEntityEditable") {
             auto* entity = createTopLevelPointEntity();
             assertEditable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertEditable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -304,7 +306,7 @@ namespace TrenchBroom {
             assertEditable(false, entity, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelPointEntityPickable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelPointEntityPickable") {
             auto* entity = createTopLevelPointEntity();
             assertPickable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertPickable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -312,7 +314,7 @@ namespace TrenchBroom {
             assertPickable(false, entity, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelPointEntitySelectable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelPointEntitySelectable") {
             auto* entity = createTopLevelPointEntity();
             assertSelectable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertSelectable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -322,9 +324,9 @@ namespace TrenchBroom {
 
         /************* Top Level Brush Entity Tests *************/
 
-        TEST_F(EditorContextTest, testTopLevelBrushEntityVisible) {
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushEntityVisible") {
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(entity, brush) = createTopLevelBrushEntity();
 
             assertVisible(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -343,9 +345,9 @@ namespace TrenchBroom {
             assertVisible(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushEntityEditable) {
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushEntityEditable") {
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(entity, brush) = createTopLevelBrushEntity();
 
             assertEditable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -359,9 +361,9 @@ namespace TrenchBroom {
             assertEditable(false, brush, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushEntityPickable) {
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushEntityPickable") {
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(entity, brush) = createTopLevelBrushEntity();
 
             assertPickable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -375,9 +377,9 @@ namespace TrenchBroom {
             assertPickable(false, brush, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushEntitySelectable) {
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushEntitySelectable") {
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(entity, brush) = createTopLevelBrushEntity();
 
             assertSelectable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -393,7 +395,7 @@ namespace TrenchBroom {
 
         /************* Top Level Brush Tests *************/
 
-        TEST_F(EditorContextTest, testTopLevelBrushVisible) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushVisible") {
             auto* brush = createTopLevelBrush();
             assertVisible(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertVisible(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -404,7 +406,7 @@ namespace TrenchBroom {
             assertVisible(true, brush, VisibilityState::Visibility_Hidden, LockState::Lock_Unlocked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushEditable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushEditable") {
             auto* brush = createTopLevelBrush();
             assertEditable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertEditable(false, brush, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -412,7 +414,7 @@ namespace TrenchBroom {
             assertEditable(false, brush, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushPickable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushPickable") {
             auto* brush = createTopLevelBrush();
             assertPickable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertPickable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -420,7 +422,7 @@ namespace TrenchBroom {
             assertPickable(false, brush, VisibilityState::Visibility_Hidden, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testTopLevelBrushSelectable) {
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testTopLevelBrushSelectable") {
             auto* brush = createTopLevelBrush();
             assertSelectable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
             assertSelectable(false, brush, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
@@ -430,8 +432,8 @@ namespace TrenchBroom {
 
         /************* Nested Group Tests *************/
 
-        TEST_F(EditorContextTest, testNestedGroupVisible) {
-            Group *outer, *inner;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testNestedGroupVisible") {
+            GroupNode *outer, *inner;
             std::tie(outer, inner) = createNestedGroup();
 
             assertVisible(true, inner, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -450,8 +452,8 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testNestedGroupEditable) {
-            Group *outer, *inner;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testNestedGroupEditable") {
+            GroupNode *outer, *inner;
             std::tie(outer, inner) = createNestedGroup();
 
             assertEditable(true, inner, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -469,8 +471,8 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testNestedGroupPickable) {
-            Group *outer, *inner;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testNestedGroupPickable") {
+            GroupNode *outer, *inner;
             std::tie(outer, inner) = createNestedGroup();
 
             assertPickable(false, inner, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -488,8 +490,8 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testNestedGroupSelectable) {
-            Group *outer, *inner;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testNestedGroupSelectable") {
+            GroupNode *outer, *inner;
             std::tie(outer, inner) = createNestedGroup();
 
             assertSelectable(false, inner, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -509,9 +511,9 @@ namespace TrenchBroom {
 
         /************* Grouped Brush Tests *************/
 
-        TEST_F(EditorContextTest, testGroupedBrushVisible) {
-            Group* group;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushVisible") {
+            GroupNode* group;
+            BrushNode* brush;
             std::tie(group, brush) = createGroupedBrush();
 
             assertVisible(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -527,9 +529,9 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushEditable) {
-            Group* group;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushEditable") {
+            GroupNode* group;
+            BrushNode* brush;
             std::tie(group, brush) = createGroupedBrush();
 
             assertEditable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -543,9 +545,9 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushPickable) {
-            Group* group;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushPickable") {
+            GroupNode* group;
+            BrushNode* brush;
             std::tie(group, brush) = createGroupedBrush();
 
             assertPickable(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -559,9 +561,9 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushSelectable) {
-            Group* group;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushSelectable") {
+            GroupNode* group;
+            BrushNode* brush;
             std::tie(group, brush) = createGroupedBrush();
 
             assertSelectable(false, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -577,9 +579,9 @@ namespace TrenchBroom {
 
         /************* Grouped Point Entity Tests *************/
 
-        TEST_F(EditorContextTest, testGroupedPointEntityVisible) {
-            Group* group;
-            Entity* entity;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedPointEntityVisible") {
+            GroupNode* group;
+            EntityNode* entity;
             std::tie(group, entity) = createGroupedPointEntity();
 
             assertVisible(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -603,9 +605,9 @@ namespace TrenchBroom {
             assertVisible(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Locked);
         }
 
-        TEST_F(EditorContextTest, testGroupedPointEntityEditable) {
-            Group* group;
-            Entity* entity;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedPointEntityEditable") {
+            GroupNode* group;
+            EntityNode* entity;
             std::tie(group, entity) = createGroupedPointEntity();
 
             assertEditable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -619,9 +621,9 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedPointEntityPickable) {
-            Group* group;
-            Entity* entity;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedPointEntityPickable") {
+            GroupNode* group;
+            EntityNode* entity;
             std::tie(group, entity) = createGroupedPointEntity();
 
             assertPickable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -635,9 +637,9 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedPointEntitySelectable) {
-            Group* group;
-            Entity* entity;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedPointEntitySelectable") {
+            GroupNode* group;
+            EntityNode* entity;
             std::tie(group, entity) = createGroupedPointEntity();
 
             assertSelectable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -653,10 +655,10 @@ namespace TrenchBroom {
 
         /************* Grouped Brush Entity Tests *************/
 
-        TEST_F(EditorContextTest, testGroupedBrushEntityVisible) {
-            Group* group;
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushEntityVisible") {
+            GroupNode* group;
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(group, entity, brush) = createGroupedBrushEntity();
 
             assertVisible(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -676,10 +678,10 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushEntityEditable) {
-            Group* group;
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushEntityEditable") {
+            GroupNode* group;
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(group, entity, brush) = createGroupedBrushEntity();
 
             assertEditable(true, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -700,10 +702,10 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushEntityPickable) {
-            Group* group;
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushEntityPickable") {
+            GroupNode* group;
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(group, entity, brush) = createGroupedBrushEntity();
 
             assertPickable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -724,10 +726,10 @@ namespace TrenchBroom {
             context.popGroup();
         }
 
-        TEST_F(EditorContextTest, testGroupedBrushEntitySelectable) {
-            Group* group;
-            Entity* entity;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testGroupedBrushEntitySelectable") {
+            GroupNode* group;
+            EntityNode* entity;
+            BrushNode* brush;
             std::tie(group, entity, brush) = createGroupedBrushEntity();
 
             assertSelectable(false, entity, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);
@@ -750,10 +752,10 @@ namespace TrenchBroom {
 
         /************* Special Case Tests *************/
 
-        TEST_F(EditorContextTest, testNestedGroupedBrushVisible) {
-            Group* outerGroup;
-            Group* innerGroup;
-            Brush* brush;
+        TEST_CASE_METHOD(EditorContextTest, "EditorContextTest.testNestedGroupedBrushVisible") {
+            GroupNode* outerGroup;
+            GroupNode* innerGroup;
+            BrushNode* brush;
             std::tie(outerGroup, innerGroup, brush) = createdNestedGroupedBrush();
 
             assertVisible(true, brush, VisibilityState::Visibility_Shown, LockState::Lock_Unlocked);

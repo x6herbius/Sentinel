@@ -23,10 +23,11 @@
 #include "View/CellLayout.h"
 #include "View/RenderView.h"
 
-#include <QScrollBar>
-#include <QToolTip>
 #include <QDrag>
 #include <QMimeData>
+#include <QPropertyAnimation>
+#include <QScrollBar>
+#include <QToolTip>
 
 #include <algorithm>
 
@@ -90,6 +91,26 @@ namespace TrenchBroom {
             updateScrollBar();
 
             RenderView::resizeEvent(event);
+        }
+
+        void CellView::scrollToCellInternal(const Cell& cell) {
+            const auto visibleRect = this->visibleRect();
+            const int top = static_cast<int>(cell.cellBounds().top());
+            const int bottom = static_cast<int>(cell.cellBounds().bottom());
+
+            if (top >= visibleRect.top() && bottom <= visibleRect.bottom()) {
+                return;
+            }
+
+            const int rowMargin = static_cast<int>(m_layout.rowMargin());
+            const auto newPosition = top < visibleRect.top() ? top - rowMargin : visibleRect.top() + bottom - visibleRect.bottom();
+            
+            QPropertyAnimation* animation = new QPropertyAnimation(m_scrollBar, "sliderPosition");
+            animation->setDuration(300);
+            animation->setEasingCurve(QEasingCurve::InOutQuad);
+            animation->setStartValue(m_scrollBar->sliderPosition());
+            animation->setEndValue(newPosition);
+            animation->start();
         }
 
         void CellView::onScrollBarValueChanged() {
@@ -163,20 +184,15 @@ namespace TrenchBroom {
         }
 
         void CellView::wheelEvent(QWheelEvent* event) {
-            validate();
-            if (m_scrollBar != nullptr) {
-                QPoint pixelDelta = event->pixelDelta();
-                if (pixelDelta.isNull()) {
-                    QPoint degreeDelta = event->angleDelta() / 8;
-                    pixelDelta = degreeDelta;
-                }
-
-                const int top = m_scrollBar->value();
-                const int height = static_cast<int>(m_layout.height());
-                const int newTop = std::min(std::max(0, top - pixelDelta.y()), height);
-                m_scrollBar->setValue(newTop);
-                update();
-            }
+            const QPoint pixelDelta = event->pixelDelta();
+            const QPoint angleDelta = event->angleDelta();
+                
+            if (!pixelDelta.isNull()) {
+                scrollBy(pixelDelta.y());
+            } else if (!angleDelta.isNull()) {
+                scrollBy(angleDelta.y());
+            }                
+            event->accept();
         }
 
         bool CellView::event(QEvent* event) {
@@ -222,11 +238,16 @@ namespace TrenchBroom {
         }
 
         void CellView::scroll(const QMouseEvent* event) {
+            const QPoint mousePosition = event->pos();
+            const int delta = mousePosition.y() - m_lastMousePos.y();
+
+            scrollBy(delta);
+        }
+
+        void CellView::scrollBy(const int deltaY) {
             validate();
             if (m_scrollBar != nullptr) {
-                const QPoint mousePosition = event->pos();
-                const int delta = mousePosition.y() - m_lastMousePos.y();
-                const int newThumbPosition = m_scrollBar->value() - delta;
+                const int newThumbPosition = m_scrollBar->value() - deltaY;
                 m_scrollBar->setValue(newThumbPosition);
                 update();
             }
@@ -249,6 +270,11 @@ namespace TrenchBroom {
             return true;
         }
 
+        QRect CellView::visibleRect() const {
+            const int top = m_scrollBar != nullptr ? m_scrollBar->value() : 0;
+            return QRect(QPoint(0, top), size());
+        }
+
         void CellView::doRender() {
             validate();
             if (!m_layoutInitialized) {
@@ -264,8 +290,7 @@ namespace TrenchBroom {
 
             // NOTE: These are in points, while the glViewport call above is
             // in pixels
-            const int top = m_scrollBar != nullptr ? m_scrollBar->value() : 0;
-            const QRect visibleRect = QRect(QPoint(0, top), size());
+            const QRect visibleRect = this->visibleRect();
 
             const float y = static_cast<float>(visibleRect.y());
             const float h = static_cast<float>(visibleRect.height());

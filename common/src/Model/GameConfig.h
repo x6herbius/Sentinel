@@ -21,11 +21,16 @@
 #define TrenchBroom_GameConfig
 
 #include "Color.h"
+#include "FloatType.h"
 #include "IO/Path.h"
+#include "Model/BrushFaceAttributes.h"
 #include "Model/CompilationConfig.h"
 #include "Model/GameEngineConfig.h"
 #include "Model/Tag.h"
 
+#include <vecmath/bbox.h>
+
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -87,8 +92,9 @@ namespace TrenchBroom {
             IO::Path palette;
             std::string attribute;
             IO::Path shaderSearchPath;
+            std::vector<std::string> excludes; // Glob patterns used to match texture names for exclusion
 
-            TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath);
+            TextureConfig(const TexturePackageConfig& i_package, const PackageFormatConfig& i_format, const IO::Path& i_palette, const std::string& i_attribute, const IO::Path& i_shaderSearchPath, const std::vector<std::string>& i_excludes);
             TextureConfig();
 
             bool operator==(const TextureConfig& other) const;
@@ -109,8 +115,9 @@ namespace TrenchBroom {
         struct FlagConfig {
             std::string name;
             std::string description;
+            int value;
 
-            FlagConfig(const std::string& i_name, const std::string& i_description);
+            FlagConfig(const std::string& i_name, const std::string& i_description, const int i_value);
             FlagConfig();
 
             bool operator==(const FlagConfig& other) const;
@@ -132,9 +139,11 @@ namespace TrenchBroom {
         struct FaceAttribsConfig {
             FlagsConfig surfaceFlags;
             FlagsConfig contentFlags;
+            BrushFaceAttributes defaults;
 
             FaceAttribsConfig();
-            FaceAttribsConfig(const std::vector<FlagConfig>& i_surfaceFlags, const std::vector<FlagConfig>& i_contentFlags);
+            FaceAttribsConfig(const std::vector<FlagConfig>& i_surfaceFlags, const std::vector<FlagConfig>& i_contentFlags, const BrushFaceAttributes& i_defaults);
+            FaceAttribsConfig(const FlagsConfig& i_surfaceFlags, const FlagsConfig& i_contentFlags, const BrushFaceAttributes& i_defaults);
 
             bool operator==(const FaceAttribsConfig& other) const;
         };
@@ -154,6 +163,7 @@ namespace TrenchBroom {
             CompilationConfig m_compilationConfig;
             GameEngineConfig m_gameEngineConfig;
             size_t m_maxPropertyLength;
+            std::optional<vm::bbox3> m_softMapBounds;
         public:
             GameConfig();
             GameConfig(
@@ -166,7 +176,8 @@ namespace TrenchBroom {
                 TextureConfig textureConfig,
                 EntityConfig entityConfig,
                 FaceAttribsConfig faceAttribsConfig,
-                std::vector<SmartTag> smartTags);
+                std::vector<SmartTag> smartTags,
+                std::optional<vm::bbox3> softMapBounds);
 
             const std::string& name() const;
             const IO::Path& path() const;
@@ -178,6 +189,7 @@ namespace TrenchBroom {
             const EntityConfig& entityConfig() const;
             const FaceAttribsConfig& faceAttribsConfig() const;
             const std::vector<SmartTag>& smartTags() const;
+            const std::optional<vm::bbox3>& softMapBounds() const;
 
             CompilationConfig& compilationConfig();
             const CompilationConfig& compilationConfig() const;

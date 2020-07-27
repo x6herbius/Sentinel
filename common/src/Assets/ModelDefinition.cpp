@@ -19,7 +19,6 @@
 
 #include "ModelDefinition.h"
 
-#include "EL/ELExceptions.h"
 #include "EL/EvaluationContext.h"
 #include "EL/Types.h"
 #include "EL/Value.h"
@@ -84,22 +83,22 @@ namespace TrenchBroom {
         }
 
         ModelDefinition::ModelDefinition() :
-        m_expression(EL::LiteralExpression::create(EL::Value::Undefined, 0, 0)) {}
+        m_expression(EL::LiteralExpression(EL::Value::Undefined), 0, 0) {}
 
         ModelDefinition::ModelDefinition(const size_t line, const size_t column) :
-        m_expression(EL::LiteralExpression::create(EL::Value::Undefined, line, column)) {}
+        m_expression(EL::LiteralExpression(EL::Value::Undefined), line, column) {}
 
         ModelDefinition::ModelDefinition(const EL::Expression& expression) :
         m_expression(expression) {}
 
         void ModelDefinition::append(const ModelDefinition& other) {
-            EL::ExpressionBase::List cases;
-            cases.emplace_back(m_expression.clone());
-            cases.emplace_back(other.m_expression.clone());
-
+            std::vector<EL::Expression> cases;
+            cases.push_back(m_expression);
+            cases.push_back(other.m_expression);
+        
             const size_t line = m_expression.line();
             const size_t column = m_expression.column();
-            m_expression = EL::SwitchOperator::create(std::move(cases), line, column);
+            m_expression = EL::Expression(EL::SwitchExpression(std::move(cases)), line, column);
         }
 
         ModelSpecification ModelDefinition::modelSpecification(const Model::EntityAttributes& attributes) const {
@@ -111,12 +110,7 @@ namespace TrenchBroom {
         ModelSpecification ModelDefinition::defaultModelSpecification() const {
             const EL::NullVariableStore store;
             const EL::EvaluationContext context(store);
-            try {
-                const EL::Value result = m_expression.evaluate(context);
-                return convertToModel(result);
-            } catch (const EL::EvaluationError&) {
-                return ModelSpecification();
-            }
+            return convertToModel(m_expression.evaluate(context));
         }
 
         ModelSpecification ModelDefinition::convertToModel(const EL::Value& value) const {

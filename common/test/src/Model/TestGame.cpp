@@ -29,8 +29,9 @@
 #include "IO/NodeWriter.h"
 #include "IO/TestParserStatus.h"
 #include "IO/TextureLoader.h"
+#include "Model/BrushFace.h"
 #include "Model/GameConfig.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 
 #include <kdl/string_utils.h>
 
@@ -39,10 +40,15 @@
 
 namespace TrenchBroom {
     namespace Model {
-        TestGame::TestGame() = default;
+        TestGame::TestGame() :
+        m_defaultFaceAttributes(Model::BrushFaceAttributes::NoTextureName) {}
 
         void TestGame::setSmartTags(std::vector<SmartTag> smartTags) {
             m_smartTags = std::move(smartTags);
+        }
+
+        void TestGame::setDefaultFaceAttributes(const Model::BrushFaceAttributes& defaultFaceAttributes) {
+            m_defaultFaceAttributes = defaultFaceAttributes;
         }
 
         const std::string& TestGame::doGameName() const {
@@ -55,6 +61,15 @@ namespace TrenchBroom {
         }
 
         void TestGame::doSetGamePath(const IO::Path& /* gamePath */, Logger& /* logger */) {}
+
+        std::optional<vm::bbox3> TestGame::doSoftMapBounds() const {
+            return {vm::bbox3()};
+        }
+
+        Game::SoftMapBounds TestGame::doExtractSoftMapBounds(const AttributableNode&) const {
+            return {Game::SoftMapBoundsType::Game, vm::bbox3()};
+        }
+
         void TestGame::doSetAdditionalSearchPaths(const std::vector<IO::Path>& /* searchPaths */, Logger& /* logger */) {}
         Game::PathErrors TestGame::doCheckAdditionalSearchPaths(const std::vector<IO::Path>& /* searchPaths */) const { return PathErrors(); }
 
@@ -71,15 +86,15 @@ namespace TrenchBroom {
             return m_smartTags;
         }
 
-        std::unique_ptr<World> TestGame::doNewMap(const MapFormat format, const vm::bbox3& /* worldBounds */, Logger& /* logger */) const {
-            return std::make_unique<World>(format);
+        std::unique_ptr<WorldNode> TestGame::doNewMap(const MapFormat format, const vm::bbox3& /* worldBounds */, Logger& /* logger */) const {
+            return std::make_unique<WorldNode>(format);
         }
 
-        std::unique_ptr<World> TestGame::doLoadMap(const MapFormat format, const vm::bbox3& /* worldBounds */, const IO::Path& /* path */, Logger& /* logger */) const {
-            return std::make_unique<World>(format);
+        std::unique_ptr<WorldNode> TestGame::doLoadMap(const MapFormat format, const vm::bbox3& /* worldBounds */, const IO::Path& /* path */, Logger& /* logger */) const {
+            return std::make_unique<WorldNode>(format);
         }
 
-        void TestGame::doWriteMap(World& world, const IO::Path& path) const {
+        void TestGame::doWriteMap(WorldNode& world, const IO::Path& path) const {
             const auto mapFormatName = formatName(world.format());
 
             IO::OpenFile open(path, true);
@@ -89,26 +104,26 @@ namespace TrenchBroom {
             writer.writeMap();
         }
 
-        void TestGame::doExportMap(World& /* world */, const Model::ExportFormat /* format */, const IO::Path& /* path */) const {}
+        void TestGame::doExportMap(WorldNode& /* world */, const Model::ExportFormat /* format */, const IO::Path& /* path */) const {}
 
-        std::vector<Node*> TestGame::doParseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
+        std::vector<Node*> TestGame::doParseNodes(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
             IO::TestParserStatus status;
             IO::NodeReader reader(str, world);
             return reader.read(worldBounds, status);
         }
 
-        std::vector<BrushFace*> TestGame::doParseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
+        std::vector<BrushFace> TestGame::doParseBrushFaces(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
             IO::TestParserStatus status;
             IO::BrushFaceReader reader(str, world);
             return reader.read(worldBounds, status);
         }
 
-        void TestGame::doWriteNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
+        void TestGame::doWriteNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeNodes(nodes);
         }
 
-        void TestGame::doWriteBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const {
+        void TestGame::doWriteBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeBrushFaces(faces);
         }
@@ -130,7 +145,8 @@ namespace TrenchBroom {
                     Model::PackageFormatConfig("D", "idmip"),
                     IO::Path("data/palette.lmp"),
                     "wad",
-                    IO::Path());
+                    IO::Path(),
+                    {});
 
             IO::TextureLoader textureLoader(fileSystem, fileSearchPaths, textureConfig, logger);
             textureLoader.loadTextures(paths, textureManager);
@@ -138,6 +154,10 @@ namespace TrenchBroom {
 
         bool TestGame::doIsTextureCollection(const IO::Path& /* path */) const {
             return false;
+        }
+
+        std::vector<std::string> TestGame::doFileTextureCollectionExtensions() const {
+            return {};
         }
 
         std::vector<IO::Path> TestGame::doFindTextureCollections() const {
@@ -196,6 +216,10 @@ namespace TrenchBroom {
         const Model::FlagsConfig& TestGame::doContentFlags() const {
             static const Model::FlagsConfig config;
             return config;
+        }
+
+        const Model::BrushFaceAttributes& TestGame::doDefaultFaceAttribs() const {
+            return m_defaultFaceAttributes;
         }
 
         std::vector<Assets::EntityDefinition*> TestGame::doLoadEntityDefinitions(IO::ParserStatus& /* status */, const IO::Path& /* path */) const {

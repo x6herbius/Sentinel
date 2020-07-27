@@ -22,9 +22,8 @@
 #include "Logger.h"
 #include "Macros.h"
 #include "Assets/EntityDefinitionManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/BrushFace.h"
 #include "Model/CollectContainedNodesVisitor.h"
 #include "Model/HitAdapter.h"
 #include "Model/PickResult.h"
@@ -86,6 +85,8 @@ namespace TrenchBroom {
                 break;
             switchDefault()
             }
+
+            mapViewBaseVirtualInit();
         }
 
         MapView2D::~MapView2D() {
@@ -190,38 +191,40 @@ namespace TrenchBroom {
 
         void MapView2D::doSelectTall() {
             const auto document = kdl::mem_lock(m_document);
-            const vm::bbox3& worldBounds = document->worldBounds();
+            const vm::bbox3 tallBounds = document->worldBounds().expand(-1.0); // we can't make a brush that is exactly as large as worldBounds
 
-            const FloatType min = dot(worldBounds.min, vm::vec3(m_camera->direction()));
-            const FloatType max = dot(worldBounds.max, vm::vec3(m_camera->direction()));
+            const FloatType min = dot(tallBounds.min, vm::vec3(m_camera->direction()));
+            const FloatType max = dot(tallBounds.max, vm::vec3(m_camera->direction()));
 
             const vm::plane3 minPlane(min, vm::vec3(m_camera->direction()));
             const vm::plane3 maxPlane(max, vm::vec3(m_camera->direction()));
 
-            const std::vector<Model::Brush*>& selectionBrushes = document->selectedNodes().brushes();
-            assert(!selectionBrushes.empty());
+            const std::vector<Model::BrushNode*>& selectionBrushNodes = document->selectedNodes().brushes();
+            assert(!selectionBrushNodes.empty());
 
-            const Model::BrushBuilder brushBuilder(document->world(), worldBounds);
-            std::vector<Model::Brush*> tallBrushes;
-            tallBrushes.reserve(selectionBrushes.size());
+            const Model::BrushBuilder brushBuilder(document->world(), document->worldBounds());
+            std::vector<Model::BrushNode*> tallBrushes;
+            tallBrushes.reserve(selectionBrushNodes.size());
 
-            for (const Model::Brush* selectionBrush : selectionBrushes) {
+            for (const Model::BrushNode* selectionBrushNode : selectionBrushNodes) {
+                const Model::Brush& selectionBrush = selectionBrushNode->brush();
+                
                 std::vector<vm::vec3> tallVertices;
-                tallVertices.reserve(2 * selectionBrush->vertexCount());
+                tallVertices.reserve(2 * selectionBrush.vertexCount());
 
-                for (const Model::BrushVertex* vertex : selectionBrush->vertices()) {
+                for (const Model::BrushVertex* vertex : selectionBrush.vertices()) {
                     tallVertices.push_back(minPlane.project_point(vertex->position()));
                     tallVertices.push_back(maxPlane.project_point(vertex->position()));
                 }
 
-                Model::Brush* tallBrush = brushBuilder.createBrush(tallVertices, Model::BrushFace::NoTextureName);
+                Model::BrushNode* tallBrush = document->world()->createBrush(brushBuilder.createBrush(tallVertices, Model::BrushFaceAttributes::NoTextureName));
                 tallBrushes.push_back(tallBrush);
             }
 
             Transaction transaction(document, "Select Tall");
             document->deleteObjects();
 
-            Model::CollectContainedNodesVisitor<std::vector<Model::Brush*>::const_iterator> visitor(std::begin(tallBrushes), std::end(tallBrushes), document->editorContext());
+            Model::CollectContainedNodesVisitor<std::vector<Model::BrushNode*>::const_iterator> visitor(std::begin(tallBrushes), std::end(tallBrushes), document->editorContext());
             document->world()->acceptAndRecurse(visitor);
             document->select(visitor.nodes());
 
@@ -281,16 +284,34 @@ namespace TrenchBroom {
             }
         }
 
+        size_t MapView2D::doGetFlipAxis(const vm::direction direction) const {
+            switch (direction) {                
+                case vm::direction::forward:
+                case vm::direction::backward:
+                    // These are not currently used, but it would be a "forward flip"
+                    return vm::find_abs_max_component(m_camera->direction());                
+                case vm::direction::left:
+                case vm::direction::right:
+                    // Horizontal flip
+                    return vm::find_abs_max_component(m_camera->right());                
+                case vm::direction::up:
+                case vm::direction::down:
+                    // Vertical flip. In 2D views, this corresponds to the vertical axis of the viewport.
+                    return vm::find_abs_max_component(m_camera->up());
+                switchDefault()
+            }
+        }
+
         vm::vec3 MapView2D::doComputePointEntityPosition(const vm::bbox3& bounds) const {
             auto document = kdl::mem_lock(m_document);
 
             const auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::Brush::BrushHit).occluded().selected().first();
-            if (hit.isMatch()) {
-                const auto* face = Model::hitToFace(hit);
-                return grid.moveDeltaForBounds(face->boundary(), bounds, worldBounds, pickRay());
+            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().selected().first();
+            if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                const auto& face = faceHandle->face();
+                return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());
             } else {
                 const auto referenceBounds = document->referenceBounds();
                 const auto& pickRay = MapView2D::pickRay();
@@ -350,6 +371,16 @@ namespace TrenchBroom {
         }
 
         void MapView2D::doRenderExtras(Renderer::RenderContext&, Renderer::RenderBatch&) {}
+
+        void MapView2D::doRenderSoftWorldBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
+            if (!renderContext.softMapBounds().is_empty()) {
+                auto document = kdl::mem_lock(m_document);
+
+                Renderer::RenderService renderService(renderContext, renderBatch);
+                renderService.setForegroundColor(pref(Preferences::SoftMapBoundsColor));
+                renderService.renderBounds(renderContext.softMapBounds());
+            }
+        }
 
         void MapView2D::doLinkCamera(CameraLinkHelper& helper) {
             helper.addCamera(m_camera.get());

@@ -36,7 +36,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class Entity;
+        class EntityNode;
     }
 
     namespace Renderer {
@@ -84,9 +84,6 @@ namespace TrenchBroom {
             Renderer::TexturedRenderer* renderer(const ModelSpecification& spec) const;
 
             const EntityModelFrame* frame(const ModelSpecification& spec) const;
-
-            bool hasModel(const Model::Entity* entity) const;
-            bool hasModel(const ModelSpecification& spec) const;
         private:
             EntityModel* model(const IO::Path& path) const;
             EntityModel* safeGetModel(const IO::Path& path) const;

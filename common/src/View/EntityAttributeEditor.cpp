@@ -26,10 +26,11 @@
 #include "View/MapDocument.h"
 #include "View/SmartAttributeEditorManager.h"
 #include "View/Splitter.h"
-#include "View/ViewConstants.h"
 #include "View/QtUtils.h"
 
 #include <kdl/memory_utils.h>
+
+#include <algorithm>
 
 #include <QVBoxLayout>
 #include <QChar>
@@ -88,7 +89,6 @@ namespace TrenchBroom {
 
             if (entityDefinition != m_currentDefinition) {
                 m_currentDefinition = entityDefinition;
-
                 updateDocumentationAndSmartEditor();
             }
         }
@@ -104,13 +104,15 @@ namespace TrenchBroom {
             // collapse the splitter if needed
             m_documentationText->setHidden(m_documentationText->document()->isEmpty());
             m_smartEditorManager->setHidden(m_smartEditorManager->isDefaultEditorActive());
+
+            updateMinimumSize();
         }
 
         QString EntityAttributeEditor::optionDescriptions(const Assets::AttributeDefinition& definition) {
             const QString bullet = QString(" ") % QChar(0x2022) % QString(" ");
 
             switch (definition.type()) {
-                case Assets::AttributeDefinition::Type_ChoiceAttribute: {
+                case Assets::AttributeDefinitionType::ChoiceAttribute: {
                     const auto& choiceDef = dynamic_cast<const Assets::ChoiceAttributeDefinition&>(definition);
 
                     QString result;
@@ -124,7 +126,7 @@ namespace TrenchBroom {
                     }
                     return result;
                 }
-                case Assets::AttributeDefinition::Type_FlagsAttribute: {
+                case Assets::AttributeDefinitionType::FlagsAttribute: {
                     const auto& flagsDef = dynamic_cast<const Assets::FlagsAttributeDefinition&>(definition);
 
                     // The options are not necessarily sorted by value, so we sort the descriptions here by inserting
@@ -148,12 +150,12 @@ namespace TrenchBroom {
                     }
                     return result;
                 }
-                case Assets::AttributeDefinition::Type_StringAttribute:
-                case Assets::AttributeDefinition::Type_BooleanAttribute:
-                case Assets::AttributeDefinition::Type_IntegerAttribute:
-                case Assets::AttributeDefinition::Type_FloatAttribute:
-                case Assets::AttributeDefinition::Type_TargetSourceAttribute:
-                case Assets::AttributeDefinition::Type_TargetDestinationAttribute:
+                case Assets::AttributeDefinitionType::StringAttribute:
+                case Assets::AttributeDefinitionType::BooleanAttribute:
+                case Assets::AttributeDefinitionType::IntegerAttribute:
+                case Assets::AttributeDefinitionType::FloatAttribute:
+                case Assets::AttributeDefinitionType::TargetSourceAttribute:
+                case Assets::AttributeDefinitionType::TargetDestinationAttribute:
                     return QString();
                 switchDefault()
             }
@@ -252,9 +254,9 @@ namespace TrenchBroom {
             // otherwise it can override them.
             restoreWindowState(m_splitter);
 
-            m_attributeGrid->setMinimumSize(100, 50);
-            m_smartEditorManager->setMinimumSize(100, 50);
+            m_attributeGrid->setMinimumSize(100, 100); // should have enough vertical space for at least one row
             m_documentationText->setMinimumSize(100, 50);
+            updateMinimumSize();
 
             // don't allow the user to collapse the panels, it's hard to see them
             m_splitter->setChildrenCollapsible(false);
@@ -269,7 +271,22 @@ namespace TrenchBroom {
             layout->addWidget(m_splitter, 1);
             setLayout(layout);
 
-            connect(m_attributeGrid, &EntityAttributeGrid::selectedRow, this, &EntityAttributeEditor::OnCurrentRowChanged);
+            connect(m_attributeGrid, &EntityAttributeGrid::currentRowChanged, this, &EntityAttributeEditor::OnCurrentRowChanged);
+        }
+
+        void EntityAttributeEditor::updateMinimumSize() {
+            QSize size;
+            size.setWidth(m_attributeGrid->minimumWidth());
+            size.setHeight(m_attributeGrid->minimumHeight());
+
+            size.setWidth(std::max(size.width(), m_smartEditorManager->minimumSizeHint().width()));
+            size.setHeight(size.height() + m_smartEditorManager->minimumSizeHint().height());
+
+            size.setWidth(std::max(size.width(), m_documentationText->minimumSizeHint().width()));
+            size.setHeight(size.height() + m_documentationText->minimumSizeHint().height());
+
+            setMinimumSize(size);
+            updateGeometry();
         }
     }
 }

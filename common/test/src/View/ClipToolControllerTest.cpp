@@ -17,13 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "MapDocumentTest.h"
 
-#include "Model/Brush.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/BrushNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "Renderer/PerspectiveCamera.h"
 #include "View/ClipTool.h"
 #include "View/ClipToolController.h"
@@ -50,7 +52,7 @@ namespace TrenchBroom {
         }
 
         // https://github.com/kduske/TrenchBroom/issues/2602
-        TEST_F(ClipToolControllerTest, testTwoPointsCreateClipPlane) {
+        TEST_CASE_METHOD(ClipToolControllerTest, "ClipToolControllerTest.testTwoPointsCreateClipPlane") {
             const auto data = R"(
 // entity 0
 {
@@ -125,7 +127,7 @@ namespace TrenchBroom {
             const std::vector<Model::Node*>& objects = document->world()->defaultLayer()->children();
             ASSERT_EQ(1u, objects.size());
 
-            auto* brush = dynamic_cast<Model::Brush*>(objects.at(0));
+            auto* brush = dynamic_cast<Model::BrushNode*>(objects.at(0));
             ASSERT_NE(nullptr, brush);
 
             ASSERT_EQ(vm::bbox3(vm::vec3(-16, -16, 52), vm::vec3(20, 16, 72)), brush->logicalBounds());

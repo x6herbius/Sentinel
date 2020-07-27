@@ -19,7 +19,9 @@
 
 #include "UVEditor.h"
 
+#include "Model/BrushFaceHandle.h"
 #include "Model/ChangeBrushFaceAttributesRequest.h"
+#include "Model/Game.h"
 #include "View/MapDocument.h"
 #include "View/UVView.h"
 #include "View/ViewConstants.h"
@@ -37,10 +39,15 @@ namespace TrenchBroom {
     namespace View {
         UVEditor::UVEditor(std::weak_ptr<MapDocument> document, GLContextManager& contextManager, QWidget* parent) :
         QWidget(parent),
-        m_document(document),
+        m_document(std::move(document)),
         m_uvView(nullptr),
         m_xSubDivisionEditor(nullptr),
-        m_ySubDivisionEditor(nullptr) {
+        m_ySubDivisionEditor(nullptr),
+        m_resetTextureButton(nullptr),
+        m_flipTextureHButton(nullptr),
+        m_flipTextureVButton(nullptr),
+        m_rotateTextureCCWButton(nullptr),
+        m_rotateTextureCWButton(nullptr) {
             createGui(contextManager);
             bindObservers();
         }
@@ -67,12 +74,12 @@ namespace TrenchBroom {
         void UVEditor::createGui(GLContextManager& contextManager) {
             m_uvView = new UVView(m_document, contextManager);
 
-            m_resetTextureButton = createBitmapButton("ResetTexture.png", tr("Reset texture alignment"), this);
-            m_flipTextureHButton = createBitmapButton("FlipTextureH.png", tr("Flip texture X axis"), this);
-            m_flipTextureVButton = createBitmapButton("FlipTextureV.png", tr("Flip texture Y axis"), this);
-            m_rotateTextureCCWButton = createBitmapButton("RotateTextureCCW.png",
+            m_resetTextureButton = createBitmapButton("ResetTexture.svg", tr("Reset texture alignment"), this);
+            m_flipTextureHButton = createBitmapButton("FlipTextureH.svg", tr("Flip texture X axis"), this);
+            m_flipTextureVButton = createBitmapButton("FlipTextureV.svg", tr("Flip texture Y axis"), this);
+            m_rotateTextureCCWButton = createBitmapButton("RotateTextureCCW.svg",
                                                           tr("Rotate texture 90° counter-clockwise"), this);
-            m_rotateTextureCWButton = createBitmapButton("RotateTextureCW.png", tr("Rotate texture 90° clockwise"),
+            m_rotateTextureCWButton = createBitmapButton("RotateTextureCW.svg", tr("Rotate texture 90° clockwise"),
                                                          this);
 
             connect(m_resetTextureButton, &QAbstractButton::clicked, this, &UVEditor::resetTextureClicked);
@@ -142,9 +149,9 @@ namespace TrenchBroom {
 
         void UVEditor::resetTextureClicked() {
             Model::ChangeBrushFaceAttributesRequest request;
-            request.resetAll();
 
             auto document = kdl::mem_lock(m_document);
+            request.resetAll(document->game()->defaultFaceAttribs());
             document->setFaceAttributes(request);
         }
 

@@ -21,7 +21,7 @@
 
 #include "PreferenceManager.h"
 #include "Preferences.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Renderer/BrushRenderer.h"
 #include "Renderer/SelectionBoundsRenderer.h"
 #include "View/MapDocument.h"
@@ -50,7 +50,7 @@ namespace TrenchBroom {
                 auto document = kdl::mem_lock(m_document);
                 const Transaction transaction(document, "Create Brush");
                 document->deselectAll();
-                document->addNode(m_brush, document->currentParent());
+                document->addNode(m_brush, document->parentForNodes());
                 document->select(m_brush);
                 m_brush = nullptr;
                 doBrushWasCreated();
@@ -88,7 +88,7 @@ namespace TrenchBroom {
             boundsRenderer.render(renderContext, renderBatch);
         }
 
-        void CreateBrushToolBase::updateBrush(Model::Brush* brush) {
+        void CreateBrushToolBase::updateBrush(Model::BrushNode* brush) {
             delete m_brush;
             m_brush = brush;
         }

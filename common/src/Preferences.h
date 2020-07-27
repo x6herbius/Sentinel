@@ -33,9 +33,16 @@ namespace TrenchBroom {
         // NOTE: any QKeySequence preferences must be functions like CameraFly*
         // because QKeySequence docs specify that you can't create an instance before QApplication
 
+        // NOTE: When adding a new preference here, always update the staticPreferences() implementation 
+
         extern Preference<int> MapViewLayout;
 
+        QString systemTheme();
+        QString darkTheme();
+        extern Preference<QString> Theme;
+
         extern Preference<bool>  ShowAxes;
+        extern Preference<Color> SoftMapBoundsColor;
         extern Preference<Color> BackgroundColor;
         extern Preference<float> AxisLength;
         extern Preference<Color> XAxisColor;
@@ -44,6 +51,7 @@ namespace TrenchBroom {
         extern Preference<Color> PointFileColor;
         extern Preference<Color> PortalFileBorderColor;
         extern Preference<Color> PortalFileFillColor;
+        extern Preference<bool>  ShowFPS;
 
         Preference<Color>& axisColor(vm::axis::type axis);
 
@@ -163,6 +171,10 @@ namespace TrenchBroom {
          */
         const std::vector<PreferenceBase*>& staticPreferences();
         const std::map<IO::Path, PreferenceBase*>& staticPreferencesMap();
+        /**
+         * Returns the subset of staticPreferences() that are key sequences, used by dump-shortcuts.
+         */
+        std::vector<Preference<QKeySequence>*> keyPreferences();
 
         extern DynamicPreferencePattern<QString> GamesPath;
         extern DynamicPreferencePattern<QString> GamesDefaultEngine;

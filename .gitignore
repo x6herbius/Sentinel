@@ -7,10 +7,7 @@ Thumbs.db
 /cmake-build-debug
 /cmake-build-release
 /cmake-build-relwithdebinfo
-/build-debug
-/build-release
-/build
-/build-measure
+/build*
 /codeblocks
 /Xcode*
 /vs2010
@@ -18,6 +15,7 @@ Thumbs.db
 /vs2013
 /vs2015
 /vs2017
+/vs2019
 /.idea
 /.vscode
 /coverity

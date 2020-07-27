@@ -147,7 +147,7 @@ namespace TrenchBroom {
 
         class EntitySortFilterProxyModel : public QSortFilterProxyModel {
         public:
-            EntitySortFilterProxyModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
+            explicit EntitySortFilterProxyModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
 
         protected:
             bool lessThan(const QModelIndex& left, const QModelIndex& right) const {
@@ -172,19 +172,18 @@ namespace TrenchBroom {
 
             autoResizeRows(m_table);
 
-            m_table->setStyleSheet("QTableView { border: none; }");
             m_table->verticalHeader()->setVisible(false);
             m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
             m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
             m_table->horizontalHeader()->setSectionsClickable(false);
             m_table->setSelectionBehavior(QAbstractItemView::SelectItems);
 
-            m_addAttributeButton = createBitmapButton("Add.png", tr("Add a new property"), this);
+            m_addAttributeButton = createBitmapButton("Add.svg", tr("Add a new property (%1)").arg(EntityAttributeTable::insertRowShortcutString()), this);
             connect(m_addAttributeButton, &QAbstractButton::clicked, this, [=](const bool /* checked */){
                 addAttribute();
             });
 
-            m_removePropertiesButton = createBitmapButton("Remove.png", tr("Remove the selected properties"), this);
+            m_removePropertiesButton = createBitmapButton("Remove.svg", tr("Remove the selected properties (%1)").arg(EntityAttributeTable::removeRowShortcutString()), this);
             connect(m_removePropertiesButton, &QAbstractButton::clicked, this, [=](const bool /* checked */){
                 removeSelectedAttributes();
             });
@@ -203,8 +202,31 @@ namespace TrenchBroom {
             });
 
             connect(m_table->selectionModel(), &QItemSelectionModel::currentChanged, this, [=](const QModelIndex& current, const QModelIndex& previous){
+                // NOTE: when we get this signal, the selection hasn't been updated yet.
+                // So selectedRowsAndCursorRow() will return a mix of the new current row and old selection.
+                // Because of this, it's important to also call updateControlsEnabled() in response to QItemSelectionModel::selectionChanged
+                // as we do below. (#3165)
                 qDebug() << "current changed form " << previous << " to " << current;
-                emit selectedRow();
+                updateControlsEnabled();
+                ensureSelectionVisible();
+                emit currentRowChanged();
+            });
+
+            connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [=](){
+                updateControlsEnabled();
+                emit currentRowChanged();
+            });
+
+            // e.g. handles setting a value of a default attribute so it becomes non-default
+            connect(m_proxyModel, &QAbstractItemModel::dataChanged, this, [=]() {
+                updateControlsEnabled();
+                emit currentRowChanged();
+            });
+
+            // e.g. handles deleting 2 rows
+            connect(m_proxyModel, &QAbstractItemModel::modelReset, this, [=]() {
+                updateControlsEnabled();
+                emit currentRowChanged();
             });
 
             // Shortcuts
@@ -271,8 +293,15 @@ namespace TrenchBroom {
             // state. Everything is fine except you lose the selected row in the table, unless it's a key
             // name that exists in worldspawn. To avoid that problem, make a delayed call to update the table.
             QMetaObject::invokeMethod(m_model, "updateFromMapDocument", Qt::QueuedConnection);
+            updateControlsEnabled();
+            ensureSelectionVisible();
+        }
 
-            // Update buttons/checkboxes
+        void EntityAttributeGrid::ensureSelectionVisible() {
+            m_table->scrollTo(m_table->currentIndex());
+        }
+
+        void EntityAttributeGrid::updateControlsEnabled() {
             auto document = kdl::mem_lock(m_document);
             const auto nodes = document->allSelectedAttributableNodes();
             m_table->setEnabled(!nodes.empty());

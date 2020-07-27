@@ -17,7 +17,9 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
+
+#include "GTestCompat.h"
 
 #include "AABBTree.h"
 #include "IO/DiskIO.h"
@@ -25,13 +27,15 @@
 #include "IO/Path.h"
 #include "IO/TestParserStatus.h"
 #include "IO/WorldReader.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Model/NodeVisitor.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 
 #include <vecmath/bbox.h>
+
+#include <iostream>
 
 namespace TrenchBroom {
     namespace Model {
@@ -43,15 +47,15 @@ namespace TrenchBroom {
             AABB& m_tree;
             vm::bbox3 m_bounds;
         public:
-            TreeBuilder(AABB& tree) : m_tree(tree) {}
+            explicit TreeBuilder(AABB& tree) : m_tree(tree) {}
         private:
-            void doVisit(World* /* world */) override {}
-            void doVisit(Layer* /* layer */) override {}
-            void doVisit(Group* /* group */) override {}
-            void doVisit(Entity* entity) override {
+            void doVisit(WorldNode* /* world */) override {}
+            void doVisit(LayerNode* /* layer */) override {}
+            void doVisit(GroupNode* /* group */) override {}
+            void doVisit(EntityNode* entity) override {
                 doInsert(entity);
             }
-            void doVisit(Brush* brush) override {
+            void doVisit(BrushNode* brush) override {
                 doInsert(brush);
             }
 
@@ -64,7 +68,8 @@ namespace TrenchBroom {
 
                     if (!m_tree.bounds().contains(oldBounds)) {
                         cancel();
-                        ASSERT_TRUE(m_tree.bounds().contains(oldBounds)) << "Node at line " << node->lineNumber() << " decreased tree bounds: " << oldBounds << " -> " << m_tree.bounds();
+                        UNSCOPED_INFO("Node at line " << node->lineNumber() << " decreased tree bounds: " << oldBounds << " -> " << m_tree.bounds());
+                        ASSERT_TRUE(m_tree.bounds().contains(oldBounds));
                     }
                 } else {
                     m_tree.insert(node->physicalBounds(), node);
@@ -74,17 +79,19 @@ namespace TrenchBroom {
                 if (!m_tree.contains(node)) {
                     cancel();
                     m_tree.print(std::cout);
-                    ASSERT_TRUE(m_tree.contains(node)) << "Node " << node << " with bounds " << node->physicalBounds() << " at line " << node->lineNumber() << " not found in tree after insertion";
+                    UNSCOPED_INFO("Node " << node << " with bounds " << node->physicalBounds() << " at line " << node->lineNumber() << " not found in tree after insertion");
+                    ASSERT_TRUE(m_tree.contains(node));
                 }
 
                 if (m_bounds != m_tree.bounds()) {
                     cancel();
-                    ASSERT_TRUE(m_bounds == m_tree.bounds()) << "Node at line " << node->lineNumber() << " mangled tree bounds";
+                    UNSCOPED_INFO("Node at line " << node->lineNumber() << " mangled tree bounds");
+                    ASSERT_TRUE(m_bounds == m_tree.bounds());
                 }
             }
         };
 
-        TEST(AABBTreeStressTest, parseMapTest) {
+        TEST_CASE("AABBTreeStressTest.parseMapTest", "[AABBTreeStressTest]") {
             const auto mapPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/test/IO/Map/rtz_q1.map");
             const auto file = IO::Disk::openFile(mapPath);
             auto fileReader = file->reader().buffer();

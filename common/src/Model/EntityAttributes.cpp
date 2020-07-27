@@ -47,12 +47,17 @@ namespace TrenchBroom {
             const std::string GroupType         = "_tb_type";
             const std::string LayerId           = "_tb_id";
             const std::string LayerName         = "_tb_name";
+            const std::string LayerSortIndex    = "_tb_layer_sort_index";
+            const std::string LayerColor        = "_tb_layer_color";
+            const std::string LayerLocked       = "_tb_layer_locked";
+            const std::string LayerHidden       = "_tb_layer_hidden";
             const std::string Layer             = "_tb_layer";
             const std::string GroupId           = "_tb_id";
             const std::string GroupName         = "_tb_name";
             const std::string Group             = "_tb_group";
             const std::string Message           = "_tb_message";
             const std::string ValveVersion      = "mapversion";
+            const std::string SoftMapBounds     = "_tb_soft_map_bounds";
         }
 
         namespace AttributeValues {
@@ -62,6 +67,10 @@ namespace TrenchBroom {
             const std::string GroupClassname      = "func_group";
             const std::string GroupTypeLayer      = "_tb_layer";
             const std::string GroupTypeGroup      = "_tb_group";
+            const std::string DefaultValue        = "";
+            const std::string NoSoftMapBounds     = "none";
+            const std::string LayerLockedValue    = "1";
+            const std::string LayerHiddenValue    = "1";
         }
 
         bool isNumberedAttribute(const std::string_view prefix, const std::string_view name) {
@@ -170,6 +179,15 @@ namespace TrenchBroom {
         }
 
         // EntityAttributes
+        EntityAttributes::EntityAttributes() = default;
+
+        EntityAttributes::EntityAttributes(std::vector<EntityAttribute> attributes) :
+        m_attributes(std::move(attributes)) {}
+
+        std::vector<EntityAttribute> EntityAttributes::releaseAttributes() {
+            return std::move(m_attributes);
+        }
+
         const std::vector<EntityAttribute>& EntityAttributes::attributes() const {
             return m_attributes;
         }

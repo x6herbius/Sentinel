@@ -16,6 +16,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Assets/TextureBuffer.cpp
         ${COMMON_SOURCE_DIR}/Assets/TextureCollection.cpp
         ${COMMON_SOURCE_DIR}/Assets/TextureManager.cpp
+        ${COMMON_SOURCE_DIR}/Assets/TextureReference.cpp
         ${COMMON_SOURCE_DIR}/EL/ELExceptions.cpp
         ${COMMON_SOURCE_DIR}/EL/EvaluationContext.cpp
         ${COMMON_SOURCE_DIR}/EL/Expression.cpp
@@ -57,6 +58,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/IO/ImageLoaderImpl.cpp
         ${COMMON_SOURCE_DIR}/IO/IOUtils.cpp
         ${COMMON_SOURCE_DIR}/IO/LegacyModelDefinitionParser.cpp
+        ${COMMON_SOURCE_DIR}/IO/M8TextureReader.cpp
         ${COMMON_SOURCE_DIR}/IO/MapFileSerializer.cpp
         ${COMMON_SOURCE_DIR}/IO/MapParser.cpp
         ${COMMON_SOURCE_DIR}/IO/MapReader.cpp
@@ -64,6 +66,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/IO/Md2Parser.cpp
         ${COMMON_SOURCE_DIR}/IO/Md3Parser.cpp
         ${COMMON_SOURCE_DIR}/IO/MdlParser.cpp
+        ${COMMON_SOURCE_DIR}/IO/MdxParser.cpp
         ${COMMON_SOURCE_DIR}/IO/MipTextureReader.cpp
         ${COMMON_SOURCE_DIR}/IO/NodeReader.cpp
         ${COMMON_SOURCE_DIR}/IO/NodeSerializer.cpp
@@ -100,17 +103,17 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/BoundsIntersectsNodeVisitor.cpp
         ${COMMON_SOURCE_DIR}/Model/Brush.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushBuilder.cpp
+        ${COMMON_SOURCE_DIR}/Model/BrushError.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushFace.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushFaceAttributes.cpp
+        ${COMMON_SOURCE_DIR}/Model/BrushFaceHandle.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushFacePredicates.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushFaceReference.cpp
-        ${COMMON_SOURCE_DIR}/Model/BrushFaceSnapshot.cpp
+        ${COMMON_SOURCE_DIR}/Model/BrushNode.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushSnapshot.cpp
         ${COMMON_SOURCE_DIR}/Model/ChangeBrushFaceAttributesRequest.cpp
         ${COMMON_SOURCE_DIR}/Model/CollectAttributableNodesVisitor.cpp
         ${COMMON_SOURCE_DIR}/Model/CollectMatchingNodesVisitor.cpp
-        ${COMMON_SOURCE_DIR}/Model/CollectNodesWithDescendantSelectionCountVisitor.cpp
-        ${COMMON_SOURCE_DIR}/Model/CollectRecursivelySelectedNodesVisitor.cpp
         ${COMMON_SOURCE_DIR}/Model/CollectSelectableBrushFacesVisitor.cpp
         ${COMMON_SOURCE_DIR}/Model/CollectSelectableNodesWithFilePositionVisitor.cpp
         ${COMMON_SOURCE_DIR}/Model/CompareHits.cpp
@@ -123,11 +126,11 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/EmptyAttributeValueIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/EmptyBrushEntityIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/EmptyGroupIssueGenerator.cpp
-        ${COMMON_SOURCE_DIR}/Model/Entity.cpp
         ${COMMON_SOURCE_DIR}/Model/EntityAttributes.cpp
         ${COMMON_SOURCE_DIR}/Model/EntityAttributeSnapshot.cpp
         ${COMMON_SOURCE_DIR}/Model/EntityAttributesVariableStore.cpp
         ${COMMON_SOURCE_DIR}/Model/EntityColor.cpp
+        ${COMMON_SOURCE_DIR}/Model/EntityNode.cpp
         ${COMMON_SOURCE_DIR}/Model/EntityRotationPolicy.cpp
         ${COMMON_SOURCE_DIR}/Model/EntitySnapshot.cpp
         ${COMMON_SOURCE_DIR}/Model/FindContainerVisitor.cpp
@@ -140,7 +143,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/GameFactory.cpp
         ${COMMON_SOURCE_DIR}/Model/GameFileSystem.cpp
         ${COMMON_SOURCE_DIR}/Model/GameImpl.cpp
-        ${COMMON_SOURCE_DIR}/Model/Group.cpp
+        ${COMMON_SOURCE_DIR}/Model/GroupNode.cpp
         ${COMMON_SOURCE_DIR}/Model/GroupSnapshot.cpp
         ${COMMON_SOURCE_DIR}/Model/Hit.cpp
         ${COMMON_SOURCE_DIR}/Model/HitAdapter.cpp
@@ -152,7 +155,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/IssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/IssueGeneratorRegistry.cpp
         ${COMMON_SOURCE_DIR}/Model/IssueQuickFix.cpp
-        ${COMMON_SOURCE_DIR}/Model/Layer.cpp
+        ${COMMON_SOURCE_DIR}/Model/LayerNode.cpp
         ${COMMON_SOURCE_DIR}/Model/LinkSourceIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/LinkTargetIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/LongAttributeNameIssueGenerator.cpp
@@ -188,6 +191,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/PushSelection.cpp
         ${COMMON_SOURCE_DIR}/Model/RemoveEntityAttributesQuickFix.cpp
         ${COMMON_SOURCE_DIR}/Model/Snapshot.cpp
+        ${COMMON_SOURCE_DIR}/Model/SoftMapBoundsIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/Tag.cpp
         ${COMMON_SOURCE_DIR}/Model/TagAttribute.cpp
         ${COMMON_SOURCE_DIR}/Model/TagManager.cpp
@@ -197,8 +201,8 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/TexCoordSystem.cpp
         ${COMMON_SOURCE_DIR}/Model/TransformEntityAttributesQuickFix.cpp
         ${COMMON_SOURCE_DIR}/Model/TransformObjectVisitor.cpp
-        ${COMMON_SOURCE_DIR}/Model/World.cpp
         ${COMMON_SOURCE_DIR}/Model/WorldBoundsIssueGenerator.cpp
+        ${COMMON_SOURCE_DIR}/Model/WorldNode.cpp
         ${COMMON_SOURCE_DIR}/RecoverableExceptions.cpp
         ${COMMON_SOURCE_DIR}/Renderer/ActiveShader.cpp
         ${COMMON_SOURCE_DIR}/Renderer/AllocationTracker.cpp
@@ -279,6 +283,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/ChangeBrushFaceAttributesCommand.cpp
         ${COMMON_SOURCE_DIR}/View/ChangeEntityAttributesCommand.cpp
         ${COMMON_SOURCE_DIR}/View/ChoosePathTypeDialog.cpp
+        ${COMMON_SOURCE_DIR}/View/ClickableLabel.cpp
         ${COMMON_SOURCE_DIR}/View/ClipTool.cpp
         ${COMMON_SOURCE_DIR}/View/ClipToolController.cpp
         ${COMMON_SOURCE_DIR}/View/CollapsibleTitledPanel.cpp
@@ -407,7 +412,6 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/RemoveBrushElementsCommand.cpp
         ${COMMON_SOURCE_DIR}/View/RemoveBrushFacesCommand.cpp
         ${COMMON_SOURCE_DIR}/View/RemoveBrushVerticesCommand.cpp
-        ${COMMON_SOURCE_DIR}/View/RenameGroupsCommand.cpp
         ${COMMON_SOURCE_DIR}/View/RenderView.cpp
         ${COMMON_SOURCE_DIR}/View/ReparentNodesCommand.cpp
         ${COMMON_SOURCE_DIR}/View/ReplaceTextureDialog.cpp
@@ -426,6 +430,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/SelectionCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SelectionTool.cpp
         ${COMMON_SOURCE_DIR}/View/SetBrushFaceAttributesTool.cpp
+        ${COMMON_SOURCE_DIR}/View/SetCurrentLayerCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SetLockStateCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SetModsCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SetTextureCollectionsCommand.cpp
@@ -438,10 +443,10 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/SmartAttributeEditorManager.cpp
         ${COMMON_SOURCE_DIR}/View/SmartAttributeEditorMatcher.cpp
         ${COMMON_SOURCE_DIR}/View/SmartChoiceEditor.cpp
-        ${COMMON_SOURCE_DIR}/View/SmartChoiceEditorMatcher.cpp
+        ${COMMON_SOURCE_DIR}/View/SmartTypeEditorMatcher.cpp
         ${COMMON_SOURCE_DIR}/View/SmartColorEditor.cpp
         ${COMMON_SOURCE_DIR}/View/SmartDefaultAttributeEditor.cpp
-        ${COMMON_SOURCE_DIR}/View/SmartSpawnflagsEditor.cpp
+        ${COMMON_SOURCE_DIR}/View/SmartFlagsEditor.cpp
         ${COMMON_SOURCE_DIR}/View/SnapBrushVerticesCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SnapshotCommand.cpp
         ${COMMON_SOURCE_DIR}/View/SpinControl.cpp
@@ -500,6 +505,7 @@ set(COMMON_SOURCE
 
 set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/AABBTree.h
+        ${COMMON_SOURCE_DIR}/Assets/AssetUtils.h
         ${COMMON_SOURCE_DIR}/Assets/AttributeDefinition.h
         ${COMMON_SOURCE_DIR}/Assets/ColorRange.h
         ${COMMON_SOURCE_DIR}/Assets/EntityDefinition.h
@@ -516,6 +522,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Assets/TextureBuffer.h
         ${COMMON_SOURCE_DIR}/Assets/TextureCollection.h
         ${COMMON_SOURCE_DIR}/Assets/TextureManager.h
+        ${COMMON_SOURCE_DIR}/Assets/TextureReference.h
         ${COMMON_SOURCE_DIR}/EL/EL_Forward.h
         ${COMMON_SOURCE_DIR}/EL/ELExceptions.h
         ${COMMON_SOURCE_DIR}/EL/EvaluationContext.h
@@ -558,6 +565,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/IO/ImageLoaderImpl.h
         ${COMMON_SOURCE_DIR}/IO/IOUtils.h
         ${COMMON_SOURCE_DIR}/IO/LegacyModelDefinitionParser.h
+        ${COMMON_SOURCE_DIR}/IO/M8TextureReader.h
         ${COMMON_SOURCE_DIR}/IO/MapFileSerializer.h
         ${COMMON_SOURCE_DIR}/IO/MapParser.h
         ${COMMON_SOURCE_DIR}/IO/MapReader.h
@@ -565,6 +573,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/IO/Md2Parser.h
         ${COMMON_SOURCE_DIR}/IO/Md3Parser.h
         ${COMMON_SOURCE_DIR}/IO/MdlParser.h
+        ${COMMON_SOURCE_DIR}/IO/MdxParser.h
         ${COMMON_SOURCE_DIR}/IO/MipTextureReader.h
         ${COMMON_SOURCE_DIR}/IO/NodeReader.h
         ${COMMON_SOURCE_DIR}/IO/NodeSerializer.h
@@ -604,12 +613,14 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/BoundsIntersectsNodeVisitor.h
         ${COMMON_SOURCE_DIR}/Model/Brush.h
         ${COMMON_SOURCE_DIR}/Model/BrushBuilder.h
+        ${COMMON_SOURCE_DIR}/Model/BrushError.h
         ${COMMON_SOURCE_DIR}/Model/BrushFace.h
         ${COMMON_SOURCE_DIR}/Model/BrushFaceAttributes.h
+        ${COMMON_SOURCE_DIR}/Model/BrushFaceHandle.h
         ${COMMON_SOURCE_DIR}/Model/BrushFacePredicates.h
         ${COMMON_SOURCE_DIR}/Model/BrushFaceReference.h
-        ${COMMON_SOURCE_DIR}/Model/BrushFaceSnapshot.h
         ${COMMON_SOURCE_DIR}/Model/BrushGeometry.h
+        ${COMMON_SOURCE_DIR}/Model/BrushNode.h
         ${COMMON_SOURCE_DIR}/Model/BrushSnapshot.h
         ${COMMON_SOURCE_DIR}/Model/ChangeBrushFaceAttributesRequest.h
         ${COMMON_SOURCE_DIR}/Model/CollectAttributableNodesVisitor.h
@@ -619,8 +630,6 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/CollectMatchingNodesVisitor.h
         ${COMMON_SOURCE_DIR}/Model/CollectNodesByVisibilityVisitor.h
         ${COMMON_SOURCE_DIR}/Model/CollectNodesVisitor.h
-        ${COMMON_SOURCE_DIR}/Model/CollectNodesWithDescendantSelectionCountVisitor.h
-        ${COMMON_SOURCE_DIR}/Model/CollectRecursivelySelectedNodesVisitor.h
         ${COMMON_SOURCE_DIR}/Model/CollectSelectableBrushFacesVisitor.h
         ${COMMON_SOURCE_DIR}/Model/CollectSelectableNodesVisitor.h
         ${COMMON_SOURCE_DIR}/Model/CollectSelectableNodesWithFilePositionVisitor.h
@@ -637,11 +646,11 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/EmptyAttributeValueIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/EmptyBrushEntityIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/EmptyGroupIssueGenerator.h
-        ${COMMON_SOURCE_DIR}/Model/Entity.h
         ${COMMON_SOURCE_DIR}/Model/EntityAttributes.h
         ${COMMON_SOURCE_DIR}/Model/EntityAttributeSnapshot.h
         ${COMMON_SOURCE_DIR}/Model/EntityAttributesVariableStore.h
         ${COMMON_SOURCE_DIR}/Model/EntityColor.h
+        ${COMMON_SOURCE_DIR}/Model/EntityNode.h
         ${COMMON_SOURCE_DIR}/Model/EntityRotationPolicy.h
         ${COMMON_SOURCE_DIR}/Model/EntitySnapshot.h
         ${COMMON_SOURCE_DIR}/Model/ExportFormat.h
@@ -656,7 +665,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/GameFactory.h
         ${COMMON_SOURCE_DIR}/Model/GameFileSystem.h
         ${COMMON_SOURCE_DIR}/Model/GameImpl.h
-        ${COMMON_SOURCE_DIR}/Model/Group.h
+        ${COMMON_SOURCE_DIR}/Model/GroupNode.h
         ${COMMON_SOURCE_DIR}/Model/GroupSnapshot.h
         ${COMMON_SOURCE_DIR}/Model/Hit.h
         ${COMMON_SOURCE_DIR}/Model/HitAdapter.h
@@ -670,7 +679,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/IssueGeneratorRegistry.h
         ${COMMON_SOURCE_DIR}/Model/IssueQuickFix.h
         ${COMMON_SOURCE_DIR}/Model/IssueType.h
-        ${COMMON_SOURCE_DIR}/Model/Layer.h
+        ${COMMON_SOURCE_DIR}/Model/LayerNode.h
         ${COMMON_SOURCE_DIR}/Model/LinkSourceIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/LinkTargetIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/LockState.h
@@ -725,6 +734,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/PushSelection.h
         ${COMMON_SOURCE_DIR}/Model/RemoveEntityAttributesQuickFix.h
         ${COMMON_SOURCE_DIR}/Model/Snapshot.h
+        ${COMMON_SOURCE_DIR}/Model/SoftMapBoundsIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/Tag.h
         ${COMMON_SOURCE_DIR}/Model/TagAttribute.h
         ${COMMON_SOURCE_DIR}/Model/TagManager.h
@@ -736,8 +746,8 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/TransformEntityAttributesQuickFix.h
         ${COMMON_SOURCE_DIR}/Model/TransformObjectVisitor.h
         ${COMMON_SOURCE_DIR}/Model/VisibilityState.h
-        ${COMMON_SOURCE_DIR}/Model/World.h
         ${COMMON_SOURCE_DIR}/Model/WorldBoundsIssueGenerator.h
+        ${COMMON_SOURCE_DIR}/Model/WorldNode.h
         ${COMMON_SOURCE_DIR}/Renderer/ActiveShader.h
         ${COMMON_SOURCE_DIR}/Renderer/AllocationTracker.h
         ${COMMON_SOURCE_DIR}/Renderer/AttrString.h
@@ -825,6 +835,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/ChangeBrushFaceAttributesCommand.h
         ${COMMON_SOURCE_DIR}/View/ChangeEntityAttributesCommand.h
         ${COMMON_SOURCE_DIR}/View/ChoosePathTypeDialog.h
+        ${COMMON_SOURCE_DIR}/View/ClickableLabel.h
         ${COMMON_SOURCE_DIR}/View/ClipTool.h
         ${COMMON_SOURCE_DIR}/View/ClipToolController.h
         ${COMMON_SOURCE_DIR}/View/CollapsibleTitledPanel.h
@@ -955,7 +966,6 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/RemoveBrushElementsCommand.h
         ${COMMON_SOURCE_DIR}/View/RemoveBrushFacesCommand.h
         ${COMMON_SOURCE_DIR}/View/RemoveBrushVerticesCommand.h
-        ${COMMON_SOURCE_DIR}/View/RenameGroupsCommand.h
         ${COMMON_SOURCE_DIR}/View/RenderView.h
         ${COMMON_SOURCE_DIR}/View/ReparentNodesCommand.h
         ${COMMON_SOURCE_DIR}/View/ReplaceTextureDialog.h
@@ -974,6 +984,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/SelectionCommand.h
         ${COMMON_SOURCE_DIR}/View/SelectionTool.h
         ${COMMON_SOURCE_DIR}/View/SetBrushFaceAttributesTool.h
+        ${COMMON_SOURCE_DIR}/View/SetCurrentLayerCommand.h
         ${COMMON_SOURCE_DIR}/View/SetLockStateCommand.h
         ${COMMON_SOURCE_DIR}/View/SetModsCommand.h
         ${COMMON_SOURCE_DIR}/View/SetTextureCollectionsCommand.h
@@ -986,10 +997,10 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/SmartAttributeEditorManager.h
         ${COMMON_SOURCE_DIR}/View/SmartAttributeEditorMatcher.h
         ${COMMON_SOURCE_DIR}/View/SmartChoiceEditor.h
-        ${COMMON_SOURCE_DIR}/View/SmartChoiceEditorMatcher.h
+        ${COMMON_SOURCE_DIR}/View/SmartTypeEditorMatcher.h
         ${COMMON_SOURCE_DIR}/View/SmartColorEditor.h
         ${COMMON_SOURCE_DIR}/View/SmartDefaultAttributeEditor.h
-        ${COMMON_SOURCE_DIR}/View/SmartSpawnflagsEditor.h
+        ${COMMON_SOURCE_DIR}/View/SmartFlagsEditor.h
         ${COMMON_SOURCE_DIR}/View/SnapBrushVerticesCommand.h
         ${COMMON_SOURCE_DIR}/View/SnapshotCommand.h
         ${COMMON_SOURCE_DIR}/View/SpinControl.h
@@ -1057,13 +1068,14 @@ add_library(common OBJECT ${COMMON_SOURCE} ${COMMON_HEADER})
 set_target_properties(common PROPERTIES AUTOMOC TRUE)
 target_compile_features(common PRIVATE cxx_std_17)
 target_include_directories(common PUBLIC ${COMMON_SOURCE_DIR})
-target_link_libraries(common PUBLIC tinyxml2 kdl vecmath anylite optlite glew miniz freeimage freetype OpenGL::GL Qt5::Widgets)
+target_link_libraries(common PUBLIC tinyxml2 kdl vecmath glew miniz freeimage freetype OpenGL::GL Qt5::Widgets Qt5::Svg)
 
 # use precompiled headers on CMake 3.16 or later
 if (NOT TB_SUPPRESS_PCH AND ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16.0")
     message(STATUS "Using precompiled headers")
     target_precompile_headers(common PUBLIC
             <algorithm>
+            <any>
             <array>
             <cassert>
             <cstddef>
@@ -1079,6 +1091,7 @@ if (NOT TB_SUPPRESS_PCH AND ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16.0")
             <list>
             <map>
             <memory>
+            <optional>
             <ostream>
             <set>
             <string>
@@ -1086,6 +1099,7 @@ if (NOT TB_SUPPRESS_PCH AND ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16.0")
             <unordered_map>
             <unordered_set>
             <utility>
+            <variant>
             <vector>
 
             <QApplication>
@@ -1124,6 +1138,7 @@ endif()
 set_compiler_config(common)
 
 # Create the cmake script for generating the version information
+get_build_platform(COMMON_PLATFORM_NAME)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateVersion.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/GenerateVersion.cmake" @ONLY)
 target_include_directories(common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 add_custom_target(generate_version ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/GenerateVersion.cmake")

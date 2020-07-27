@@ -20,8 +20,9 @@
 #include "Game.h"
 
 #include "Assets/EntityDefinitionFileSpec.h"
+#include "Model/BrushFace.h"
 #include "Model/GameFactory.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 
 #include <string>
 #include <vector>
@@ -65,35 +66,43 @@ namespace TrenchBroom {
             return doSmartTags();
         }
 
-        std::unique_ptr<World> Game::newMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::optional<vm::bbox3> Game::softMapBounds() const {
+            return doSoftMapBounds();
+        }
+
+        Game::SoftMapBounds Game::extractSoftMapBounds(const AttributableNode& node) const {
+            return doExtractSoftMapBounds(node);
+        }
+
+        std::unique_ptr<WorldNode> Game::newMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
             return doNewMap(format, worldBounds, logger);
         }
 
-        std::unique_ptr<World> Game::loadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
+        std::unique_ptr<WorldNode> Game::loadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
             return doLoadMap(format, worldBounds, path, logger);
         }
 
-        void Game::writeMap(World& world, const IO::Path& path) const {
+        void Game::writeMap(WorldNode& world, const IO::Path& path) const {
             doWriteMap(world, path);
         }
 
-        void Game::exportMap(World& world, const Model::ExportFormat format, const IO::Path& path) const {
+        void Game::exportMap(WorldNode& world, const Model::ExportFormat format, const IO::Path& path) const {
             doExportMap(world, format, path);
         }
 
-        std::vector<Node*> Game::parseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::vector<Node*> Game::parseNodes(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const {
             return doParseNodes(str, world, worldBounds, logger);
         }
 
-        std::vector<BrushFace*> Game::parseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::vector<BrushFace> Game::parseBrushFaces(const std::string& str, WorldNode& world, const vm::bbox3& worldBounds, Logger& logger) const {
             return doParseBrushFaces(str, world, worldBounds, logger);
         }
 
-        void Game::writeNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
+        void Game::writeNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
             doWriteNodesToStream(world, nodes, stream);
         }
 
-        void Game::writeBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const {
+        void Game::writeBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const {
             doWriteBrushFacesToStream(world, faces, stream);
         }
 
@@ -107,6 +116,10 @@ namespace TrenchBroom {
 
         bool Game::isTextureCollection(const IO::Path& path) const {
             return doIsTextureCollection(path);
+        }
+
+        std::vector<std::string> Game::fileTextureCollectionExtensions() const {
+            return doFileTextureCollectionExtensions();
         }
 
         std::vector<IO::Path> Game::findTextureCollections() const {
@@ -159,6 +172,10 @@ namespace TrenchBroom {
 
         const FlagsConfig& Game::contentFlags() const {
             return doContentFlags();
+        }
+
+        const BrushFaceAttributes& Game::defaultFaceAttribs() const {
+            return doDefaultFaceAttribs();
         }
     }
 }

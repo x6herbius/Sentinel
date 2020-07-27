@@ -22,6 +22,7 @@
 #include "PreferenceManager.h"
 #include "Assets/TextureManager.h"
 #include "IO/PathQt.h"
+#include "Model/Game.h"
 #include "View/BorderLine.h"
 #include "View/MapDocument.h"
 #include "View/ViewConstants.h"
@@ -31,11 +32,15 @@
 #include <kdl/memory_utils.h>
 #include <kdl/vector_utils.h>
 
-#include <QListWidget>
-#include <QVBoxLayout>
 #include <QAbstractButton>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileDialog>
+#include <QListWidget>
+#include <QMimeData>
 #include <QSignalBlocker>
+#include <QStringList>
+#include <QVBoxLayout>
 
 namespace TrenchBroom {
     namespace View {
@@ -133,8 +138,18 @@ namespace TrenchBroom {
             return m_collections->count() != 0;
         }
 
+        static QString buildFilter(const std::vector<std::string>& extensions) {
+            QStringList strings;
+            for (const auto& extension : extensions) {
+                strings << QString::fromLatin1("*.%1").arg(QString::fromStdString(extension));
+            }
+            return QObject::tr("Texture collections (%1);;All files (*.*)").arg(strings.join(" "));
+        }
+
         void FileTextureCollectionEditor::addTextureCollections() {
-            const QString pathQStr = QFileDialog::getOpenFileName(nullptr, tr("Load Texture Collection"), fileDialogDefaultDirectory(FileDialogDir::TextureCollection), "");
+            auto document = kdl::mem_lock(m_document);
+            const QString filter = buildFilter(document->game()->fileTextureCollectionExtensions());
+            const QString pathQStr = QFileDialog::getOpenFileName(nullptr, tr("Load Texture Collection"), fileDialogDefaultDirectory(FileDialogDir::TextureCollection), filter);
             if (pathQStr.isEmpty()) {
                 return;
             }
@@ -210,14 +225,13 @@ namespace TrenchBroom {
 
         void FileTextureCollectionEditor::createGui() {
             m_collections = new QListWidget();
-            m_collections->setStyleSheet("QListWidget { border: none; }");
             m_collections->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
-            m_addTextureCollectionsButton = createBitmapButton("Add.png", "Add texture collections from the file system");
-            m_removeTextureCollectionsButton = createBitmapButton("Remove.png", "Remove the selected texture collections");
-            m_moveTextureCollectionUpButton = createBitmapButton("Up.png", "Move the selected texture collection up");
-            m_moveTextureCollectionDownButton = createBitmapButton("Down.png", "Move the selected texture collection down");
-            m_reloadTextureCollectionsButton = createBitmapButton("Refresh.png", "Reload all texture collections");
+            m_addTextureCollectionsButton = createBitmapButton("Add.svg", "Add texture collections from the file system");
+            m_removeTextureCollectionsButton = createBitmapButton("Remove.svg", "Remove the selected texture collections");
+            m_moveTextureCollectionUpButton = createBitmapButton("Up.svg", "Move the selected texture collection up");
+            m_moveTextureCollectionDownButton = createBitmapButton("Down.svg", "Move the selected texture collection down");
+            m_reloadTextureCollectionsButton = createBitmapButton("Refresh.svg", "Reload all texture collections");
 
             auto* toolBar = createMiniToolBarLayout(
                 m_addTextureCollectionsButton,
@@ -249,6 +263,8 @@ namespace TrenchBroom {
                 &FileTextureCollectionEditor::moveSelectedTextureCollectionsDown);
             connect(m_reloadTextureCollectionsButton, &QAbstractButton::clicked, this,
                 &FileTextureCollectionEditor::reloadTextureCollections);
+
+            setAcceptDrops(true);
         }
 
         void FileTextureCollectionEditor::updateButtons() {
@@ -304,6 +320,27 @@ namespace TrenchBroom {
 
             // Manually update the button states, since QSignalBlocker is blocking the automatic updates
             updateButtons();
+        }
+
+        void FileTextureCollectionEditor::dragEnterEvent(QDragEnterEvent* event) {
+            if (event->mimeData()->hasUrls()) {
+                event->acceptProposedAction();
+            }
+        }
+
+        void FileTextureCollectionEditor::dropEvent(QDropEvent* event) {
+            const QMimeData* mimeData = event->mimeData();
+            event->acceptProposedAction();
+
+            // Activate and bring the TB window to the front so the dialog
+            // box that's about to open can be seen (needed on macOS at least)
+            window()->activateWindow();
+            window()->raise();
+
+            for (const QUrl& url : mimeData->urls()) {
+               const QString path = url.toLocalFile();
+               loadTextureCollection(m_document, this, path);
+            }
         }
     }
 }

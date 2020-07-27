@@ -24,15 +24,15 @@
 #include "FloatType.h"
 #include "Polyhedron.h"
 #include "Assets/Texture.h"
-#include "Assets/TextureManager.h"
-#include "Model/TagMatcher.h"
-#include "Model/Brush.h"
-#include "Model/BrushFaceSnapshot.h"
+#include "Model/BrushError.h"
 #include "Model/PlanePointFinder.h"
-#include "Model/ParallelTexCoordSystem.h"
-#include "Model/ParaxialTexCoordSystem.h"
+#include "Model/TagMatcher.h"
 #include "Model/TagVisitor.h"
 #include "Model/TexCoordSystem.h"
+
+#include <kdl/overload.h>
+#include <kdl/result.h>
+#include <kdl/string_utils.h>
 
 #include <vecmath/bbox.h>
 #include <vecmath/intersection.h>
@@ -49,8 +49,6 @@
 
 namespace TrenchBroom {
     namespace Model {
-        const std::string BrushFace::NoTextureName = "__TB_empty";
-
         const BrushVertex* BrushFace::TransformHalfEdgeToVertex::operator()(const BrushHalfEdge* halfEdge) const {
             return halfEdge->origin();
         }
@@ -59,37 +57,106 @@ namespace TrenchBroom {
             return halfEdge->edge();
         }
 
-        BrushFace::BrushFace(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const BrushFaceAttributes& attribs, std::unique_ptr<TexCoordSystem> texCoordSystem) :
-        m_brush(nullptr),
+        BrushFace::BrushFace(const BrushFace& other) :
+        Taggable(other),
+        m_points(other.m_points),
+        m_boundary(other.m_boundary),
+        m_attributes(other.m_attributes),
+        m_textureReference(other.m_textureReference),
+        m_texCoordSystem(other.m_texCoordSystem ? other.m_texCoordSystem->clone() : nullptr),
+        m_geometry(nullptr),
+        m_lineNumber(other.m_lineNumber),
+        m_lineCount(other.m_lineCount),
+        m_selected(other.m_selected),
+        m_markedToRenderFace(false) {}
+        
+        BrushFace::BrushFace(BrushFace&& other) noexcept :
+        Taggable(other),
+        m_points(std::move(other.m_points)),
+        m_boundary(std::move(other.m_boundary)),
+        m_attributes(std::move(other.m_attributes)),
+        m_textureReference(std::move(other.m_textureReference)),
+        m_texCoordSystem(std::move(other.m_texCoordSystem)),
+        m_geometry(other.m_geometry),
+        m_lineNumber(other.m_lineNumber),
+        m_lineCount(other.m_lineCount),
+        m_selected(other.m_selected),
+        m_markedToRenderFace(false) {}
+        
+        BrushFace& BrushFace::operator=(BrushFace other) noexcept {
+            using std::swap;
+            swap(*this, other);
+            return *this;
+        }
+
+        void swap(BrushFace& lhs, BrushFace& rhs) noexcept {
+            using std::swap;
+            swap(static_cast<Taggable&>(lhs), static_cast<Taggable&>(rhs));
+            swap(lhs.m_points, rhs.m_points);
+            swap(lhs.m_boundary, rhs.m_boundary);
+            swap(lhs.m_attributes, rhs.m_attributes);
+            swap(lhs.m_textureReference, rhs.m_textureReference);
+            swap(lhs.m_texCoordSystem, rhs.m_texCoordSystem);
+            swap(lhs.m_geometry, rhs.m_geometry);
+            swap(lhs.m_lineNumber, rhs.m_lineNumber);
+            swap(lhs.m_lineCount, rhs.m_lineCount);
+            swap(lhs.m_selected, rhs.m_selected);
+            swap(lhs.m_markedToRenderFace, rhs.m_markedToRenderFace);
+        }
+
+        BrushFace::~BrushFace() = default;
+
+        kdl::result<BrushFace, BrushError> BrushFace::create(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const BrushFaceAttributes& attributes, std::unique_ptr<TexCoordSystem> texCoordSystem) {
+            Points points = {{ vm::correct(point0), vm::correct(point1), vm::correct(point2) }};
+            const auto [result, plane] = vm::from_points(points[0], points[1], points[2]);
+            if (result) {
+                return kdl::result<BrushFace, BrushError>::success(BrushFace(points, plane, attributes, std::move(texCoordSystem)));
+            } else {
+                return kdl::result<BrushFace, BrushError>::error(BrushError::InvalidFace);
+            }
+        }
+
+        BrushFace::BrushFace(const BrushFace::Points& points, const vm::plane3& boundary, const BrushFaceAttributes& attributes, std::unique_ptr<TexCoordSystem> texCoordSystem) :
+        m_points(points),
+        m_boundary(boundary),
+        m_attributes(attributes),
+        m_texCoordSystem(std::move(texCoordSystem)),
+        m_geometry(nullptr),
         m_lineNumber(0),
         m_lineCount(0),
         m_selected(false),
-        m_texCoordSystem(std::move(texCoordSystem)),
-        m_geometry(nullptr),
-        m_markedToRenderFace(false),
-        m_attribs(attribs) {
+        m_markedToRenderFace(false) {
             ensure(m_texCoordSystem != nullptr, "texCoordSystem is null");
-            setPoints(point0, point1, point2);
         }
 
-        BrushFace* BrushFace::createParaxial(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const std::string& textureName) {
-            const BrushFaceAttributes attribs(textureName);
-            return new BrushFace(point0, point1, point2, attribs, std::make_unique<ParaxialTexCoordSystem>(point0, point1, point2, attribs));
+        bool operator==(const BrushFace& lhs, const BrushFace& rhs) {
+            return lhs.m_points == rhs.m_points &&
+            lhs.m_boundary == rhs.m_boundary &&
+            lhs.m_attributes == rhs.m_attributes &&
+            *lhs.m_texCoordSystem == *rhs.m_texCoordSystem &&
+            lhs.m_lineNumber == rhs.m_lineNumber &&
+            lhs.m_lineCount == rhs.m_lineCount &&
+            lhs.m_selected == rhs.m_selected;
+                    
+        }
+        
+        bool operator!=(const BrushFace& lhs, const BrushFace& rhs) {
+            return !(lhs == rhs);
         }
 
-        BrushFace* BrushFace::createParallel(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const std::string& textureName) {
-            const BrushFaceAttributes attribs(textureName);
-            return new BrushFace(point0, point1, point2, attribs, std::make_unique<ParallelTexCoordSystem>(point0, point1, point2, attribs));
+        std::ostream& operator<<(std::ostream& str, const BrushFace& face) {
+            str << "{ " << face.m_points[0] << ", " << face.m_points[1] << ", " << face.m_points[2] << " }";
+            return str;
         }
 
-        void BrushFace::sortFaces(std::vector<BrushFace*>& faces) {
+        void BrushFace::sortFaces(std::vector<BrushFace>& faces) {
             // Originally, the idea to sort faces came from TxQBSP, but the sorting used there was not entirely clear to me.
             // But it is still desirable to have a deterministic order in which the faces are added to the brush, so I chose
             // to just sort the faces by their normals.
 
-            std::sort(std::begin(faces), std::end(faces), [](const auto* lhs, const auto* rhs) {
-                const auto& lhsBoundary = lhs->boundary();
-                const auto& rhsBoundary = rhs->boundary();
+            std::sort(std::begin(faces), std::end(faces), [](const auto& lhs, const auto& rhs) {
+                const auto& lhsBoundary = lhs.boundary();
+                const auto& rhsBoundary = rhs.boundary();
 
                 const auto cmp = vm::compare(lhsBoundary.normal, rhsBoundary.normal);
                 if (cmp < 0) {
@@ -103,80 +170,36 @@ namespace TrenchBroom {
             });
         }
 
-        BrushFace::~BrushFace() {
-            for (size_t i = 0; i < 3; ++i) {
-                m_points[i] = vm::vec3::zero();
-            }
-            m_brush = nullptr;
-            m_lineNumber = 0;
-            m_lineCount = 0;
-            m_selected = false;
-            m_texCoordSystem = nullptr;
-            m_geometry = nullptr;
-        }
-
-        BrushFace* BrushFace::clone() const {
-            BrushFace* result = new BrushFace(points()[0], points()[1], points()[2], textureName(), m_texCoordSystem->clone());
-            result->m_attribs = m_attribs;
-            result->setFilePosition(m_lineNumber, m_lineCount);
-            if (m_selected)
-                result->select();
-            return result;
-        }
-
-        BrushFaceSnapshot* BrushFace::takeSnapshot() {
-            return new BrushFaceSnapshot(this, *m_texCoordSystem);
-        }
-
         std::unique_ptr<TexCoordSystemSnapshot> BrushFace::takeTexCoordSystemSnapshot() const {
             return m_texCoordSystem->takeSnapshot();
         }
 
         void BrushFace::restoreTexCoordSystemSnapshot(const TexCoordSystemSnapshot& coordSystemSnapshot) {
             coordSystemSnapshot.restore(*m_texCoordSystem);
-            invalidateVertexCache();
         }
 
-        void BrushFace::copyTexCoordSystemFromFace(const TexCoordSystemSnapshot& coordSystemSnapshot, const BrushFaceAttributes& attribs, const vm::plane3& sourceFacePlane, const WrapStyle wrapStyle) {
+        void BrushFace::copyTexCoordSystemFromFace(const TexCoordSystemSnapshot& coordSystemSnapshot, const BrushFaceAttributes& attributes, const vm::plane3& sourceFacePlane, const WrapStyle wrapStyle) {
             // Get a line, and a reference point, that are on both the source face's plane and our plane
             const auto seam = vm::intersect_plane_plane(sourceFacePlane, m_boundary);
             const auto refPoint = vm::project_point(seam, center());
 
             coordSystemSnapshot.restore(*m_texCoordSystem);
 
-            // Get the texcoords at the refPoint using the source face's attribs and tex coord system
-            const auto desriedCoords = m_texCoordSystem->getTexCoords(refPoint, attribs) * attribs.textureSize();
+            // Get the texcoords at the refPoint using the source face's attributes and tex coord system
+            const auto desriedCoords = m_texCoordSystem->getTexCoords(refPoint, attributes, vm::vec2f::one());
 
-            m_texCoordSystem->updateNormal(sourceFacePlane.normal, m_boundary.normal, m_attribs, wrapStyle);
+            m_texCoordSystem->updateNormal(sourceFacePlane.normal, m_boundary.normal, m_attributes, wrapStyle);
 
             // Adjust the offset on this face so that the texture coordinates at the refPoint stay the same
             if (!vm::is_zero(seam.direction, vm::C::almost_zero())) {
-                const auto currentCoords = m_texCoordSystem->getTexCoords(refPoint, m_attribs) * m_attribs.textureSize();
+                const auto currentCoords = m_texCoordSystem->getTexCoords(refPoint, m_attributes, vm::vec2f::one());
                 const auto offsetChange = desriedCoords - currentCoords;
-                m_attribs.setOffset(correct(m_attribs.modOffset(m_attribs.offset() + offsetChange), 4));
+                m_attributes.setOffset(correct(modOffset(m_attributes.offset() + offsetChange), 4));
             }
-
-            invalidateVertexCache();
-        }
-
-        Brush* BrushFace::brush() const {
-            return m_brush;
-        }
-
-        void BrushFace::setBrush(Brush* brush) {
-            assert((m_brush == nullptr) ^ (brush == nullptr));
-            m_brush = brush;
         }
 
         const BrushFace::Points& BrushFace::points() const {
             return m_points;
-        }
-
-        bool BrushFace::arePointsOnPlane(const vm::plane3& plane) const {
-            for (size_t i = 0; i < 3; i++)
-                if (plane.point_status(m_points[i]) != vm::plane_status::inside)
-                    return false;
-            return true;
         }
 
         const vm::plane3& BrushFace::boundary() const {
@@ -240,219 +263,60 @@ namespace TrenchBroom {
             return vm::abs((c1 - c2) / 2.0);
         }
 
-        const BrushFaceAttributes& BrushFace::attribs() const {
-            return m_attribs;
+        const BrushFaceAttributes& BrushFace::attributes() const {
+            return m_attributes;
         }
 
-        void BrushFace::setAttribs(const BrushFaceAttributes& attribs) {
-            const float oldRotation = m_attribs.rotation();
-            m_attribs = attribs;
-            m_texCoordSystem->setRotation(m_boundary.normal, oldRotation, m_attribs.rotation());
-            updateBrush();
-        }
-
-        void BrushFace::resetTexCoordSystemCache() {
-            if (m_texCoordSystem != nullptr) {
-                m_texCoordSystem->resetCache(m_points[0], m_points[1], m_points[2], m_attribs);
-            }
-        }
-
-        const std::string& BrushFace::textureName() const {
-            return m_attribs.textureName();
-        }
-
-        Assets::Texture* BrushFace::texture() const {
-            return m_attribs.texture();
-        }
-
-        vm::vec2f BrushFace::textureSize() const {
-            return m_attribs.textureSize();
-        }
-
-        const vm::vec2f& BrushFace::offset() const {
-            return m_attribs.offset();
-        }
-
-        float BrushFace::xOffset() const {
-            return m_attribs.xOffset();
-        }
-
-        float BrushFace::yOffset() const {
-            return m_attribs.yOffset();
-        }
-
-        vm::vec2f BrushFace::modOffset(const vm::vec2f& offset) const {
-            return m_attribs.modOffset(offset);
-        }
-
-        const vm::vec2f& BrushFace::scale() const {
-            return m_attribs.scale();
-        }
-
-        float BrushFace::xScale() const {
-            return m_attribs.xScale();
-        }
-
-        float BrushFace::yScale() const {
-            return m_attribs.yScale();
-        }
-
-        float BrushFace::rotation() const {
-            return m_attribs.rotation();
-        }
-
-        int BrushFace::surfaceContents() const {
-            return m_attribs.surfaceContents();
-        }
-
-        int BrushFace::surfaceFlags() const {
-            return m_attribs.surfaceFlags();
-        }
-
-        float BrushFace::surfaceValue() const {
-            return m_attribs.surfaceValue();
-        }
-
-        bool BrushFace::hasSurfaceAttributes() const {
-            return surfaceContents() != 0 || surfaceFlags() != 0 || surfaceValue() != 0.0f;
-        }
-
-        bool BrushFace::hasColor() const {
-            return color().a() > 0.0f;
-        }
-
-        const Color& BrushFace::color() const {
-            return m_attribs.color();
-        }
-
-        bool BrushFace::setColor(const Color& color) {
-            if (color == m_attribs.color()) {
-                return false;
-            }
-
-            m_attribs.setColor(color);
-            return true;
-        }
-
-        void BrushFace::updateTexture(Assets::TextureManager& textureManager) {
-            Assets::Texture* texture = textureManager.texture(textureName());
-            setTexture(texture);
-        }
-
-        bool BrushFace::setTexture(Assets::Texture* texture) {
-            if (texture == m_attribs.texture()) {
-                return false;
-            }
-
-            m_attribs.setTexture(texture);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::unsetTexture() {
-            if (m_attribs.texture() == nullptr) {
-                return false;
-            }
-
-            m_attribs.unsetTexture();
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setXOffset(const float i_xOffset) {
-            if (i_xOffset == xOffset()) {
-                return false;
-            }
-
-            m_attribs.setXOffset(i_xOffset);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setYOffset(const float i_yOffset) {
-            if (i_yOffset == yOffset()) {
-                return false;
-            }
-
-            m_attribs.setYOffset(i_yOffset);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setXScale(const float i_xScale) {
-            if (i_xScale == xScale()) {
-                return false;
-            }
-
-            m_attribs.setXScale(i_xScale);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setYScale(const float i_yScale) {
-            if (i_yScale == yScale()) {
-                return false;
-            }
-
-            m_attribs.setYScale(i_yScale);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setRotation(const float rotation) {
-            if (rotation == m_attribs.rotation()) {
-                return false;
-            }
-
-            const auto oldRotation = m_attribs.rotation();
-            m_attribs.setRotation(rotation);
-            m_texCoordSystem->setRotation(m_boundary.normal, oldRotation, rotation);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setSurfaceContents(const int surfaceContents) {
-            if (surfaceContents == m_attribs.surfaceContents()) {
-                return false;
-            }
-
-            m_attribs.setSurfaceContents(surfaceContents);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setSurfaceFlags(const int surfaceFlags) {
-            if (surfaceFlags == m_attribs.surfaceFlags()) {
-                return false;
-            }
-
-            m_attribs.setSurfaceFlags(surfaceFlags);
-            updateBrush();
-            return true;
-        }
-
-        bool BrushFace::setSurfaceValue(const float surfaceValue) {
-            if (surfaceValue == m_attribs.surfaceValue()) {
-                return false;
-            }
-
-            m_attribs.setSurfaceValue(surfaceValue);
-            updateBrush();
-            return true;
+        void BrushFace::setAttributes(const BrushFaceAttributes& attributes) {
+            const float oldRotation = m_attributes.rotation();
+            m_attributes = attributes;
+            m_texCoordSystem->setRotation(m_boundary.normal, oldRotation, m_attributes.rotation());
         }
 
         bool BrushFace::setAttributes(const BrushFace* other) {
             auto result = false;
-            result |= setTexture(other->texture());
-            result |= setXOffset(other->xOffset());
-            result |= setYOffset(other->yOffset());
-            result |= setRotation(other->rotation());
-            result |= setXScale(other->xScale());
-            result |= setYScale(other->yScale());
-            result |= setSurfaceContents(other->surfaceContents());
-            result |= setSurfaceFlags(other->surfaceFlags());
-            result |= setSurfaceValue(other->surfaceValue());
+            result |= m_attributes.setTextureName(other->attributes().textureName());
+            result |= m_attributes.setXOffset(other->attributes().xOffset());
+            result |= m_attributes.setYOffset(other->attributes().yOffset());
+            result |= m_attributes.setRotation(other->attributes().rotation());
+            result |= m_attributes.setXScale(other->attributes().xScale());
+            result |= m_attributes.setYScale(other->attributes().yScale());
+            result |= m_attributes.setSurfaceContents(other->attributes().surfaceContents());
+            result |= m_attributes.setSurfaceFlags(other->attributes().surfaceFlags());
+            result |= m_attributes.setSurfaceValue(other->attributes().surfaceValue());
             return result;
+        }
+
+        void BrushFace::resetTexCoordSystemCache() {
+            if (m_texCoordSystem != nullptr) {
+                m_texCoordSystem->resetCache(m_points[0], m_points[1], m_points[2], m_attributes);
+            }
+        }
+
+        Assets::Texture* BrushFace::texture() const {
+            return m_textureReference.texture();
+        }
+
+        vm::vec2f BrushFace::textureSize() const {
+            if (texture() == nullptr) {
+                return vm::vec2f::one();
+            }
+            const float w = texture()->width()  == 0 ? 1.0f : static_cast<float>(texture()->width());
+            const float h = texture()->height() == 0 ? 1.0f : static_cast<float>(texture()->height());
+            return vm::vec2f(w, h);
+        }
+
+        vm::vec2f BrushFace::modOffset(const vm::vec2f& offset) const {
+            return m_attributes.modOffset(offset, textureSize());
+        }
+
+        bool BrushFace::setTexture(Assets::Texture* texture) {
+            if (texture == this->texture()) {
+                return false;
+            }
+
+            m_textureReference = Assets::TextureReference(texture);
+            return true;
         }
 
         vm::vec3 BrushFace::textureXAxis() const {
@@ -465,27 +329,23 @@ namespace TrenchBroom {
 
         void BrushFace::resetTextureAxes() {
             m_texCoordSystem->resetTextureAxes(m_boundary.normal);
-            invalidateVertexCache();
         }
 
         void BrushFace::moveTexture(const vm::vec3& up, const vm::vec3& right, const vm::vec2f& offset) {
-            m_texCoordSystem->moveTexture(m_boundary.normal, up, right, offset, m_attribs);
-            invalidateVertexCache();
+            m_texCoordSystem->moveTexture(m_boundary.normal, up, right, offset, m_attributes);
         }
 
         void BrushFace::rotateTexture(const float angle) {
-            const float oldRotation = m_attribs.rotation();
-            m_texCoordSystem->rotateTexture(m_boundary.normal, angle, m_attribs);
-            m_texCoordSystem->setRotation(m_boundary.normal, oldRotation, m_attribs.rotation());
-            invalidateVertexCache();
+            const float oldRotation = m_attributes.rotation();
+            m_texCoordSystem->rotateTexture(m_boundary.normal, angle, m_attributes);
+            m_texCoordSystem->setRotation(m_boundary.normal, oldRotation, m_attributes.rotation());
         }
 
         void BrushFace::shearTexture(const vm::vec2f& factors) {
             m_texCoordSystem->shearTexture(m_boundary.normal, factors);
-            invalidateVertexCache();
         }
 
-        void BrushFace::transform(const vm::mat4x4& transform, const bool lockTexture) {
+        kdl::result<void, BrushError> BrushFace::transform(const vm::mat4x4& transform, const bool lockTexture) {
             using std::swap;
 
             const vm::vec3 invariant = m_geometry != nullptr ? center() : m_boundary.anchor();
@@ -500,9 +360,10 @@ namespace TrenchBroom {
                 swap(m_points[1], m_points[2]);
             }
 
-            setPoints(m_points[0], m_points[1], m_points[2]);
-
-            m_texCoordSystem->transform(oldBoundary, m_boundary, transform, m_attribs, lockTexture, invariant);
+            return setPoints(m_points[0], m_points[1], m_points[2])
+                .and_then([&]() {
+                    m_texCoordSystem->transform(oldBoundary, m_boundary, transform, m_attributes, textureSize(), lockTexture, invariant);
+                });
         }
 
         void BrushFace::invert() {
@@ -510,46 +371,40 @@ namespace TrenchBroom {
 
             m_boundary = m_boundary.flip();
             swap(m_points[1], m_points[2]);
-            invalidateVertexCache();
         }
 
-        void BrushFace::updatePointsFromVertices() {
+        kdl::result<void, BrushError> BrushFace::updatePointsFromVertices() {
             ensure(m_geometry != nullptr, "geometry is null");
 
             const auto* first = m_geometry->boundary().front();
             const auto oldPlane = m_boundary;
-            setPoints(first->next()->origin()->position(),
-                      first->origin()->position(),
-                      first->previous()->origin()->position());
+            return setPoints(
+                first->next()->origin()->position(),
+                first->origin()->position(),
+                first->previous()->origin()->position()
+            ).and_then([&]() {
+                // Get a line, and a reference point, that are on both the old plane
+                // (before moving the face) and after moving the face.
+                const auto seam = vm::intersect_plane_plane(oldPlane, m_boundary);
+                if (!vm::is_zero(seam.direction, vm::C::almost_zero())) {
+                    const auto refPoint = project_point(seam, center());
 
-            // Get a line, and a reference point, that are on both the old plane
-            // (before moving the face) and after moving the face.
-            const auto seam = vm::intersect_plane_plane(oldPlane, m_boundary);
-            if (!vm::is_zero(seam.direction, vm::C::almost_zero())) {
-                const auto refPoint = project_point(seam, center());
+                    // Get the texcoords at the refPoint using the old face's attribs and tex coord system
+                    const auto desriedCoords = m_texCoordSystem->getTexCoords(refPoint, m_attributes, vm::vec2f::one());
 
-                // Get the texcoords at the refPoint using the old face's attribs and tex coord system
-                const auto desriedCoords = m_texCoordSystem->getTexCoords(refPoint, m_attribs) * m_attribs.textureSize();
+                    m_texCoordSystem->updateNormal(oldPlane.normal, m_boundary.normal, m_attributes, WrapStyle::Projection);
 
-                m_texCoordSystem->updateNormal(oldPlane.normal, m_boundary.normal, m_attribs, WrapStyle::Projection);
-
-                // Adjust the offset on this face so that the texture coordinates at the refPoint stay the same
-                const auto currentCoords = m_texCoordSystem->getTexCoords(refPoint, m_attribs) * m_attribs.textureSize();
-                const auto offsetChange = desriedCoords - currentCoords;
-                m_attribs.setOffset(correct(m_attribs.modOffset(m_attribs.offset() + offsetChange), 4));
-            }
+                    // Adjust the offset on this face so that the texture coordinates at the refPoint stay the same
+                    const auto currentCoords = m_texCoordSystem->getTexCoords(refPoint, m_attributes, vm::vec2f::one());
+                    const auto offsetChange = desriedCoords - currentCoords;
+                    m_attributes.setOffset(correct(modOffset(m_attributes.offset() + offsetChange), 4));
+                }
+            });
         }
 
-        void BrushFace::snapPlanePointsToInteger() {
-            for (size_t i = 0; i < 3; ++i) {
-                m_points[i] = round(m_points[i]);
-            }
-            setPoints(m_points[0], m_points[1], m_points[2]);
-        }
-
-        void BrushFace::findIntegerPlanePoints() {
+        kdl::result<void, BrushError> BrushFace::findIntegerPlanePoints() {
             PlanePointFinder::findPoints(m_boundary, m_points, 3);
-            setPoints(m_points[0], m_points[1], m_points[2]);
+            return setPoints(m_points[0], m_points[1], m_points[2]);
         }
 
         vm::mat4x4 BrushFace::projectToBoundaryMatrix() const {
@@ -576,7 +431,7 @@ namespace TrenchBroom {
         }
 
         float BrushFace::measureTextureAngle(const vm::vec2f& center, const vm::vec2f& point) const {
-            return m_texCoordSystem->measureAngle(m_attribs.rotation(), center, point);
+            return m_texCoordSystem->measureAngle(m_attributes.rotation(), center, point);
         }
 
         size_t BrushFace::vertexCount() const {
@@ -614,25 +469,14 @@ namespace TrenchBroom {
         }
 
         void BrushFace::setGeometry(BrushFaceGeometry* geometry) {
-            if (m_geometry != nullptr) {
-                m_geometry->setPayload(nullptr);
-            }
             m_geometry = geometry;
-            if (m_geometry != nullptr) {
-                m_geometry->setPayload(this);
-            }
-            invalidateVertexCache();
-        }
-
-        void BrushFace::invalidate() {
-            invalidateVertexCache();
         }
 
         size_t BrushFace::lineNumber() const {
             return m_lineNumber;
         }
 
-        void BrushFace::setFilePosition(const size_t lineNumber, const size_t lineCount) {
+        void BrushFace::setFilePosition(const size_t lineNumber, const size_t lineCount) const {
             m_lineNumber = lineNumber;
             m_lineCount = lineCount;
         }
@@ -644,21 +488,15 @@ namespace TrenchBroom {
         void BrushFace::select() {
             assert(!m_selected);
             m_selected = true;
-            if (m_brush != nullptr) {
-                m_brush->childWasSelected();
-            }
-        }
+       }
 
         void BrushFace::deselect() {
             assert(m_selected);
             m_selected = false;
-            if (m_brush != nullptr) {
-                m_brush->childWasDeselected();
-            }
         }
 
         vm::vec2f BrushFace::textureCoords(const vm::vec3& point) const {
-            return m_texCoordSystem->getTexCoords(point, m_attribs);
+            return m_texCoordSystem->getTexCoords(point, m_attributes, textureSize());
         }
 
         FloatType BrushFace::intersectWithRay(const vm::ray3& ray) const {
@@ -672,43 +510,24 @@ namespace TrenchBroom {
             }
         }
 
-        void BrushFace::setPoints(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2) {
+        kdl::result<void, BrushError> BrushFace::setPoints(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2) {
             m_points[0] = point0;
             m_points[1] = point1;
             m_points[2] = point2;
             correctPoints();
 
             const auto [result, plane] = vm::from_points(m_points[0], m_points[1], m_points[2]);
-            if (!result) {
-                auto str = std::stringstream();
-                str << "Colinear face points: (" <<
-                m_points[0] << ") (" <<
-                m_points[1] << ") (" <<
-                m_points[2] << ")";
-                throw GeometryException(str.str());
-            } else {
+            if (result) {
                 m_boundary = plane;
+                return kdl::result<void, BrushError>::success();
+            } else {
+                return kdl::result<void, BrushError>::error(BrushError::InvalidFace);
             }
-
-            invalidateVertexCache();
         }
 
         void BrushFace::correctPoints() {
             for (size_t i = 0; i < 3; ++i) {
                 m_points[i] = correct(m_points[i]);
-            }
-        }
-
-        void BrushFace::updateBrush() {
-            if (m_brush != nullptr) {
-                m_brush->faceDidChange();
-                m_brush->invalidateVertexCache();
-            }
-        }
-
-        void BrushFace::invalidateVertexCache() {
-            if (m_brush != nullptr) {
-                m_brush->invalidateVertexCache();
             }
         }
 
