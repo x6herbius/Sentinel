@@ -115,6 +115,48 @@ namespace TrenchBroom {
             }
         };
 
+        class NightfireFileSerializer : public QuakeFileSerializer {
+        public:
+            NightfireFileSerializer(FILE* stream) :
+            QuakeFileSerializer(stream) {}
+        private:
+            size_t doWriteBrushFace(FILE* stream, const Model::BrushFace& face) override {
+                writeFacePoints(stream, face);
+                writeNightfireTextureInfo(stream, face);
+                std::fprintf(stream, "\n");
+                return 1;
+            }
+            void writeNightfireTextureInfo(FILE* stream, const Model::BrushFace& face) {
+                const std::string& textureName = face.attributes().textureName().empty() ? Model::BrushFaceAttributes::NoTextureName : face.attributes().textureName();
+                const vm::vec3 xAxis = face.textureXAxis();
+                const vm::vec3 yAxis = face.textureYAxis();
+
+                // For now, we just fill in the extra Nightfire data with sensible defaults.
+                // If/when we actually implement things like lightmap scales and materials, we can change this.
+                std::fprintf(stream, " %s [ %.6g %.6g %.6g %.6g ] [ %.6g %.6g %.6g %.6g ] %.6g %.6g %.6g %u wld_lightmap [ 16 0 ]",
+                             textureName.c_str(),
+
+                             xAxis.x(),
+                             xAxis.y(),
+                             xAxis.z(),
+                             static_cast<double>(face.attributes().xOffset()),
+
+                             yAxis.x(),
+                             yAxis.y(),
+                             yAxis.z(),
+                             static_cast<double>(face.attributes().yOffset()),
+
+                             static_cast<double>(face.attributes().rotation()),
+                             static_cast<double>(face.attributes().xScale()),
+                             static_cast<double>(face.attributes().yScale()),
+
+                             // Slight hack for now: if the texture is a special texture,
+                             // set flag for no lightmaps on the face. This is quite
+                             // crude, and should be fixed in a principled way later.
+                             textureName.rfind("special/", 0) == 0 ? 32 : 0);
+            }
+        };
+
         class Quake2FileSerializer : public QuakeFileSerializer {
         private:
             std::string SurfaceAttributesFormat;
@@ -231,6 +273,8 @@ namespace TrenchBroom {
                     return std::make_unique<DaikatanaFileSerializer>(stream);
                 case Model::MapFormat::Valve:
                     return std::make_unique<ValveFileSerializer>(stream);
+                case Model::MapFormat::Nightfire:
+                    return std::make_unique<NightfireFileSerializer>(stream);
                 case Model::MapFormat::Hexen2:
                     return std::make_unique<Hexen2FileSerializer>(stream);
                 case Model::MapFormat::Unknown:

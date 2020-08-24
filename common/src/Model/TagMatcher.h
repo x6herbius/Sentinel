@@ -82,8 +82,9 @@ namespace TrenchBroom {
         class TextureNameTagMatcher : public TextureTagMatcher {
         private:
             std::string m_pattern;
+            bool m_matchFullPathOnly;
         public:
-            explicit TextureNameTagMatcher(const std::string& pattern);
+            explicit TextureNameTagMatcher(const std::string& pattern, bool fullPath = false);
             std::unique_ptr<TagMatcher> clone() const override;
             bool matches(const Taggable& taggable) const override;
         private:

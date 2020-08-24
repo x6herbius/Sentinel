@@ -87,7 +87,7 @@ namespace TrenchBroom {
 
         BrushFace ModelFactoryImpl::doCreateFace(const vm::vec3& point1, const vm::vec3& point2, const vm::vec3& point3, const BrushFaceAttributes& attribs, const vm::vec3& texAxisX, const vm::vec3& texAxisY) const {
             assert(m_format != MapFormat::Unknown);
-            return (m_format == MapFormat::Valve || m_format == MapFormat::Quake2_Valve || m_format == MapFormat::Quake3_Valve
+            return (m_format == MapFormat::Valve || m_format == MapFormat::Quake2_Valve || m_format == MapFormat::Quake3_Valve || m_format == MapFormat::Nightfire
                 ? BrushFace::create(point1, point2, point3, attribs, std::make_unique<ParallelTexCoordSystem>(texAxisX, texAxisY))
                 : BrushFace::create(point1, point2, point3, attribs, std::make_unique<ParaxialTexCoordSystem>(point1, point2, point3, attribs)))
                 .visit(kdl::overload {

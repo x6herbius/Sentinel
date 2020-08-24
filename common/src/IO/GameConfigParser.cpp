@@ -350,7 +350,7 @@ namespace TrenchBroom {
                 }
             }
         }
-    
+
         void GameConfigParser::parseBrushTags(const EL::Value& value, std::vector<Model::SmartTag>& result) const {
             if (value.null()) {
                 return;
@@ -361,7 +361,7 @@ namespace TrenchBroom {
 
                 expectStructure(entry, "[ {'name': 'String', 'match': 'String'}, {'attribs': 'Array', 'pattern': 'String', 'texture': 'String' } ]");
                 checkTagName(entry["name"], result);
-                
+
                 auto name = entry["name"].stringValue();
                 auto match = entry["match"].stringValue();
 
@@ -391,11 +391,11 @@ namespace TrenchBroom {
                 auto name = entry["name"].stringValue();
                 auto match = entry["match"].stringValue();
 
-                if (match == "texture") {
+                if (match == "texture" || match == "texturepath") {
                     expectMapEntry(entry, "pattern", EL::ValueType::String);
                     auto pattern = entry["pattern"].stringValue();
                     auto attribs = parseTagAttributes(entry["attribs"]);
-                    auto matcher = std::make_unique<Model::TextureNameTagMatcher>(std::move(pattern));
+                    auto matcher = std::make_unique<Model::TextureNameTagMatcher>(std::move(pattern), match == "texturepath");
                     result.emplace_back(std::move(name), std::move(attribs), std::move(matcher));
                 } else if (match == "surfaceparm") {
                     parseSurfaceParmTag(name, entry, result);
