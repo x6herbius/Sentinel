@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ViewEditor
-#define TrenchBroom_ViewEditor
+#pragma once
 
 #include <QWidget>
 
@@ -35,6 +34,10 @@ namespace TrenchBroom {
     namespace Assets {
         class EntityDefinition;
         class EntityDefinitionManager;
+    }
+
+    namespace IO {
+        class Path;
     }
 
     namespace Model {
@@ -97,6 +100,8 @@ namespace TrenchBroom {
             QCheckBox* m_showEdgesCheckBox;
 
             QButtonGroup* m_entityLinkRadioGroup;
+
+            QCheckBox* m_showSoftBoundsCheckBox;
         public:
             explicit ViewEditor(std::weak_ptr<MapDocument> document, QWidget* parent = nullptr);
             ~ViewEditor() override;
@@ -106,8 +111,8 @@ namespace TrenchBroom {
 
             void documentWasNewedOrLoaded(MapDocument* document);
             void editorContextDidChange();
-            void mapViewConfigDidChange();
             void entityDefinitionsDidChange();
+            void preferenceDidChange(const IO::Path& path);
 
             void createGui();
 
@@ -139,6 +144,8 @@ namespace TrenchBroom {
             void showFogChanged(bool checked);
             void showEdgesChanged(bool checked);
             void entityLinkModeChanged(int id);
+            void showSoftMapBoundsChanged(bool checked);
+            void restoreDefaultsClicked();
         };
 
         class ViewPopupEditor : public QWidget {
@@ -152,4 +159,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ViewEditor) */

@@ -17,11 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "TestLogger.h"
 
 #include "Assets/Texture.h"
 #include "Assets/Palette.h"
@@ -30,34 +25,44 @@
 #include "IO/Path.h"
 #include "IO/WalTextureReader.h"
 
+#include "Catch2.h"
+#include "TestLogger.h"
+
 namespace TrenchBroom {
     namespace IO {
-        static void assertTexture(const Path& path, const size_t width, const size_t height, const FileSystem& fs, const TextureReader& reader) {
-            const Path filePath = Path("fixture/test/IO/Wal") + path;
-            auto texture = std::unique_ptr<Assets::Texture>{ reader.readTexture(fs.openFile(filePath)) };
-            ASSERT_TRUE(texture != nullptr);
-
-            const auto& name = path.suffix(2).deleteExtension().asString("/");
-            ASSERT_EQ(name, texture->name());
-            ASSERT_EQ(width, texture->width());
-            ASSERT_EQ(height, texture->height());
-        }
+        static const auto fixturePath = Path("fixture/test/IO/Wal");
 
         TEST_CASE("WalTextureReaderTest.testLoadQ2WalDir", "[WalTextureReaderTest]") {
             DiskFileSystem fs(IO::Disk::getCurrentWorkingDir());
             const Assets::Palette palette = Assets::Palette::loadFile(fs, Path("fixture/test/colormap.pcx"));
 
-            TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
+            TextureReader::PathSuffixNameStrategy nameStrategy(fixturePath.length());
             NullLogger logger;
             WalTextureReader textureReader(nameStrategy, fs, logger, palette);
 
-            assertTexture(Path("rtz/b_pv_v1a1.wal"),  128, 256, fs, textureReader);
-            assertTexture(Path("rtz/b_pv_v1a2.wal"),  128, 256, fs, textureReader);
-            assertTexture(Path("rtz/b_pv_v1a3.wal"),  128, 128, fs, textureReader);
-            assertTexture(Path("rtz/b_rc_v16.wal"),   128, 128, fs, textureReader);
-            assertTexture(Path("rtz/b_rc_v16w.wal"),  128, 128, fs, textureReader);
-            assertTexture(Path("rtz/b_rc_v28.wal"),   128,  64, fs, textureReader);
-            assertTexture(Path("rtz/b_rc_v4.wal"),    128, 128, fs, textureReader);
+            using TexInfo = std::tuple<Path, size_t, size_t>;
+            const auto [path, width, height] = GENERATE(values<TexInfo>({
+                { Path("rtz/b_pv_v1a1.wal"),  128, 256 },
+                { Path("rtz/b_pv_v1a2.wal"),  128, 256 },
+                { Path("rtz/b_pv_v1a3.wal"),  128, 128 },
+                { Path("rtz/b_rc_v16.wal"),   128, 128 },
+                { Path("rtz/b_rc_v16w.wal"),  128, 128 },
+                { Path("rtz/b_rc_v28.wal"),   128,  64 },
+                { Path("rtz/b_rc_v4.wal"),    128, 128 },
+            }));
+
+            INFO(path);
+            INFO(width);
+            INFO(height);
+
+            const auto file = fs.openFile(fixturePath + path);
+            REQUIRE(file != nullptr);
+
+            const auto texture = textureReader.readTexture(file);
+            const auto& name = path.suffix(2).deleteExtension().asString("/");
+            CHECK(texture.name() == name);
+            CHECK(texture.width() == width);
+            CHECK(texture.height() == height);
         }
     }
 }

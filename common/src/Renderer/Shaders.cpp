@@ -26,8 +26,9 @@ namespace TrenchBroom {
             const ShaderConfig VaryingPCShader            = ShaderConfig("Varying Position / Color",         { "VaryingPC.vertsh" },            { "VaryingPC.fragsh" });
             const ShaderConfig VaryingPUniformCShader     = ShaderConfig("Varying Position / Uniform Color", { "VaryingPUniformC.vertsh" },     { "VaryingPC.fragsh" });
             const ShaderConfig MiniMapEdgeShader          = ShaderConfig("MiniMap Edges",                    { "MiniMapEdge.vertsh" },          { "MiniMapEdge.fragsh" });
-            const ShaderConfig EntityModelShader          = ShaderConfig("Entity Model",                     { "EntityModel.vertsh" },          { "EntityModel.fragsh" });
-            const ShaderConfig FaceShader                 = ShaderConfig("Face",                             { "Face.vertsh" },                 { "Grid.fragsh", "Face.fragsh" });
+            const ShaderConfig EntityModelShader          = ShaderConfig("Entity Model",                     { "EntityModel.vertsh" },          { "MapBounds.fragsh", "EntityModel.fragsh" });
+            const ShaderConfig FaceShader                 = ShaderConfig("Face",                             { "Face.vertsh" },                 { "Grid.fragsh", "MapBounds.fragsh", "Face.fragsh" });
+            const ShaderConfig EdgeShader                 = ShaderConfig("Edge",                             { "Edge.vertsh" },                 { "MapBounds.fragsh", "Edge.fragsh" });
             const ShaderConfig ColoredTextShader          = ShaderConfig("Colored Text",                     { "ColoredText.vertsh" },          { "Text.fragsh" });
             const ShaderConfig TextShader                 = ShaderConfig("Text",                             { "Text.vertsh" },                 { "Text.fragsh" });
             const ShaderConfig TextBackgroundShader       = ShaderConfig("Text Background",                  { "TextBackground.vertsh" },       { "TextBackground.fragsh" });
@@ -38,8 +39,8 @@ namespace TrenchBroom {
             const ShaderConfig CompassShader              = ShaderConfig("Compass",                          { "Compass.vertsh" },              { "Compass.fragsh" });
             const ShaderConfig CompassOutlineShader       = ShaderConfig("Compass Outline",                  { "CompassOutline.vertsh" },       { "Compass.fragsh" });
             const ShaderConfig CompassBackgroundShader    = ShaderConfig("Compass Background",               { "VaryingPUniformC.vertsh" },     { "VaryingPC.fragsh" });
-            const ShaderConfig EntityLinkShader           = ShaderConfig("Entity Link",                      { "EntityLink.vertsh" },           { "EntityLink.fragsh" });
-            const ShaderConfig EntityLinkArrowShader      = ShaderConfig("Entity Link Arrow",                { "EntityLinkArrow.vertsh" },      { "EntityLinkArrow.fragsh" });
+            const ShaderConfig LinkLineShader             = ShaderConfig("Link Line",                        { "LinkLine.vertsh" },             { "LinkLine.fragsh" });
+            const ShaderConfig LinkArrowShader            = ShaderConfig("Link Arrow",                       { "LinkArrow.vertsh" },            { "LinkArrow.fragsh" });
             const ShaderConfig TriangleShader             = ShaderConfig("Shaded Triangles",                 { "Triangle.vertsh" },             { "Triangle.fragsh" });
             const ShaderConfig UVViewShader               = ShaderConfig("UV View",                          { "UVView.vertsh" },               { "UVView.fragsh" });
         }

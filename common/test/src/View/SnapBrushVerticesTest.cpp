@@ -17,21 +17,19 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/NodeCollection.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
 #include "View/Grid.h"
 
+#include "Catch2.h"
+
 namespace TrenchBroom {
     namespace View {
         class SnapBrushVerticesTest : public MapDocumentTest {};
 
-        // see https://github.com/kduske/TrenchBroom/issues/2244
+        // see https://github.com/TrenchBroom/TrenchBroom/issues/2244
         TEST_CASE_METHOD(SnapBrushVerticesTest, "SnapBrushVerticesTest.snapVerticesCrash_2244") {
             document->selectAllNodes();
             document->deleteObjects();
@@ -54,8 +52,8 @@ namespace TrenchBroom {
             document->paste(brush);
             document->selectAllNodes();
 
-            ASSERT_EQ(1u, document->selectedNodes().brushCount());
-            ASSERT_NO_THROW(document->snapVertices(document->grid().actualSize()));
+            CHECK(document->selectedNodes().brushCount() == 1u);
+            CHECK_NOTHROW(document->snapVertices(document->grid().actualSize()));
         }
     }
 }

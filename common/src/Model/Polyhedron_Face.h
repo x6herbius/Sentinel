@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Polyhedron_Face_h
-#define TrenchBroom_Polyhedron_Face_h
+#pragma once
 
 #include "Macros.h"
 
@@ -47,8 +46,9 @@ namespace TrenchBroom {
         }
 
         template <typename T, typename FP, typename VP>
-        Polyhedron_Face<T,FP,VP>::Polyhedron_Face(HalfEdgeList&& boundary) :
+        Polyhedron_Face<T,FP,VP>::Polyhedron_Face(HalfEdgeList&& boundary, const vm::plane<T,3>& plane) :
             m_boundary(std::move(boundary)),
+            m_plane(plane),
             m_payload(FP::defaultValue()),
 #ifdef _MSC_VER
         // MSVC throws a warning because we're passing this to the FaceLink constructor, but it's okay because we just store the pointer there.
@@ -72,6 +72,16 @@ m_link(this)
         template <typename T, typename FP, typename VP>
         typename Polyhedron_Face<T,FP,VP>::HalfEdgeList& Polyhedron_Face<T,FP,VP>::boundary() {
             return m_boundary;
+        }
+        
+        template <typename T, typename FP, typename VP>
+        const vm::plane<T,3>& Polyhedron_Face<T,FP,VP>::plane() const {
+            return m_plane;
+        }
+        
+        template <typename T, typename FP, typename VP>
+        void Polyhedron_Face<T,FP,VP>::setPlane(const vm::plane<T,3>& plane) {
+            m_plane = plane;
         }
 
         template <typename T, typename FP, typename VP>
@@ -258,7 +268,7 @@ m_link(this)
         }
 
         template <typename T, typename FP, typename VP>
-        bool Polyhedron_Face<T,FP,VP>::coplanar(const Face* other) const {
+        bool Polyhedron_Face<T,FP,VP>::coplanar(const Face* other, const T epsilon) const {
             assert(other != nullptr);
 
             // Test if the normals are colinear by checking their enclosed angle.
@@ -267,19 +277,19 @@ m_link(this)
             }
 
             const vm::plane<T,3> myPlane(m_boundary.front()->origin()->position(), normal());
-            if (!other->verticesOnPlane(myPlane)) {
+            if (!other->verticesOnPlane(myPlane, epsilon)) {
                 return false;
             }
 
             const vm::plane<T,3> otherPlane(other->boundary().front()->origin()->position(), other->normal());
-            return verticesOnPlane(otherPlane);
+            return verticesOnPlane(otherPlane, epsilon);
         }
 
         template <typename T, typename FP, typename VP>
-        bool Polyhedron_Face<T,FP,VP>::verticesOnPlane(const vm::plane<T,3>& plane) const {
+        bool Polyhedron_Face<T,FP,VP>::verticesOnPlane(const vm::plane<T,3>& plane, const T epsilon) const {
             for (const HalfEdge* halfEdge : m_boundary) {
                 const auto* vertex = halfEdge->origin();
-                if (plane.point_status(vertex->position()) != vm::plane_status::inside) {
+                if (plane.point_status(vertex->position(), epsilon) != vm::plane_status::inside) {
                     return false;
                 }
             }
@@ -288,8 +298,20 @@ m_link(this)
         }
 
         template <typename T, typename FP, typename VP>
+        T Polyhedron_Face<T,FP,VP>::maximumVertexDistance(const vm::plane<T,3>& plane) const {
+            T maximumDistance = static_cast<T>(0);
+            for (const HalfEdge* halfEdge : m_boundary) {
+                const auto* vertex = halfEdge->origin();
+                maximumDistance = vm::max(plane.point_distance(vertex->position()), maximumDistance);
+            }
+
+            return maximumDistance;
+        }
+
+        template <typename T, typename FP, typename VP>
         void Polyhedron_Face<T,FP,VP>::flip() {
             m_boundary.reverse();
+            m_plane = m_plane.flip();
         }
 
         template <typename T, typename FP, typename VP> template <typename H>
@@ -442,5 +464,3 @@ m_link(this)
         }
     }
 }
-
-#endif

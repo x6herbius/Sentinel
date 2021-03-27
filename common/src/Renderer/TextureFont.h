@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Font
-#define TrenchBroom_Font
+#pragma once
 
 #include "Macros.h"
 
@@ -26,6 +25,7 @@
 #include <vecmath/vec.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace TrenchBroom {
@@ -61,4 +61,3 @@ namespace TrenchBroom {
 }
 
 
-#endif /* defined(TrenchBroom_Font) */

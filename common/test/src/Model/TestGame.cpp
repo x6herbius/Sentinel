@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "TestGame.h"
-
+#include "Exceptions.h"
 #include "Assets/EntityDefinitionFileSpec.h"
 #include "Assets/EntityModel.h"
 #include "IO/BrushFaceReader.h"
@@ -30,20 +29,35 @@
 #include "IO/TestParserStatus.h"
 #include "IO/TextureLoader.h"
 #include "Model/BrushFace.h"
+#include "Model/Entity.h"
 #include "Model/GameConfig.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 
 #include <kdl/string_utils.h>
 
+#include <fstream>
 #include <memory>
 #include <vector>
 
+#include "Catch2.h"
+
+#include "TestGame.h"
+
 namespace TrenchBroom {
     namespace Model {
-        TestGame::TestGame() = default;
+        TestGame::TestGame() :
+        m_defaultFaceAttributes(Model::BrushFaceAttributes::NoTextureName) {}
+
+        void TestGame::setWorldNodeToLoad(std::unique_ptr<WorldNode> worldNode) {
+            m_worldNodeToLoad = std::move(worldNode);
+        }
 
         void TestGame::setSmartTags(std::vector<SmartTag> smartTags) {
             m_smartTags = std::move(smartTags);
+        }
+
+        void TestGame::setDefaultFaceAttributes(const Model::BrushFaceAttributes& defaultFaceAttributes) {
+            m_defaultFaceAttributes = defaultFaceAttributes;
         }
 
         const std::string& TestGame::doGameName() const {
@@ -56,10 +70,19 @@ namespace TrenchBroom {
         }
 
         void TestGame::doSetGamePath(const IO::Path& /* gamePath */, Logger& /* logger */) {}
+
+        std::optional<vm::bbox3> TestGame::doSoftMapBounds() const {
+            return {vm::bbox3()};
+        }
+
+        Game::SoftMapBounds TestGame::doExtractSoftMapBounds(const Entity&) const {
+            return {Game::SoftMapBoundsType::Game, vm::bbox3()};
+        }
+
         void TestGame::doSetAdditionalSearchPaths(const std::vector<IO::Path>& /* searchPaths */, Logger& /* logger */) {}
         Game::PathErrors TestGame::doCheckAdditionalSearchPaths(const std::vector<IO::Path>& /* searchPaths */) const { return PathErrors(); }
 
-        CompilationConfig& TestGame::doCompilationConfig() {
+        const CompilationConfig& TestGame::doCompilationConfig() {
             static CompilationConfig config;
             return config;
         }
@@ -72,44 +95,50 @@ namespace TrenchBroom {
             return m_smartTags;
         }
 
-        std::unique_ptr<World> TestGame::doNewMap(const MapFormat format, const vm::bbox3& /* worldBounds */, Logger& /* logger */) const {
-            return std::make_unique<World>(format);
+        std::unique_ptr<WorldNode> TestGame::doNewMap(const MapFormat format, const vm::bbox3& /* worldBounds */, Logger& /* logger */) const {
+            return std::make_unique<WorldNode>(Entity(), format);
         }
 
-        std::unique_ptr<World> TestGame::doLoadMap(const MapFormat format, const vm::bbox3& /* worldBounds */, const IO::Path& /* path */, Logger& /* logger */) const {
-            return std::make_unique<World>(format);
+        std::unique_ptr<WorldNode> TestGame::doLoadMap(const MapFormat format, const vm::bbox3& /* worldBounds */, const IO::Path& /* path */, Logger& /* logger */) const {
+            if (!m_worldNodeToLoad) {
+                return std::make_unique<WorldNode>(Entity(), format);
+            } else {
+                return std::move(m_worldNodeToLoad);
+            }
         }
 
-        void TestGame::doWriteMap(World& world, const IO::Path& path) const {
-            const auto mapFormatName = formatName(world.format());
+        void TestGame::doWriteMap(WorldNode& world, const IO::Path& path) const {
+            const auto mapFormatName = formatName(world.mapFormat());
 
-            IO::OpenFile open(path, true);
-            IO::writeGameComment(open.file, gameName(), mapFormatName);
+            std::ofstream file = openPathAsOutputStream(path);
+            if (!file) {
+                throw FileSystemException("Cannot open file: " + path.asString());
+            }
+            IO::writeGameComment(file, gameName(), mapFormatName);
 
-            IO::NodeWriter writer(world, open.file);
+            IO::NodeWriter writer(world, file);
             writer.writeMap();
         }
 
-        void TestGame::doExportMap(World& /* world */, const Model::ExportFormat /* format */, const IO::Path& /* path */) const {}
+        void TestGame::doExportMap(WorldNode& /* world */, const Model::ExportFormat /* format */, const IO::Path& /* path */) const {}
 
-        std::vector<Node*> TestGame::doParseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
+        std::vector<Node*> TestGame::doParseNodes(const std::string& str, const MapFormat mapFormat, const vm::bbox3& worldBounds, Logger& /* logger */) const {
             IO::TestParserStatus status;
-            IO::NodeReader reader(str, world);
+            return IO::NodeReader::read(str, mapFormat, worldBounds, status);
+        }
+
+        std::vector<BrushFace> TestGame::doParseBrushFaces(const std::string& str, const MapFormat mapFormat, const vm::bbox3& worldBounds, Logger& /* logger */) const {
+            IO::TestParserStatus status;
+            IO::BrushFaceReader reader(str, mapFormat);
             return reader.read(worldBounds, status);
         }
 
-        std::vector<BrushFace*> TestGame::doParseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& /* logger */) const {
-            IO::TestParserStatus status;
-            IO::BrushFaceReader reader(str, world);
-            return reader.read(worldBounds, status);
-        }
-
-        void TestGame::doWriteNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
+        void TestGame::doWriteNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeNodes(nodes);
         }
 
-        void TestGame::doWriteBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const {
+        void TestGame::doWriteBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeBrushFaces(faces);
         }
@@ -118,8 +147,8 @@ namespace TrenchBroom {
             return TexturePackageType::File;
         }
 
-        void TestGame::doLoadTextureCollections(AttributableNode& node, const IO::Path& /* documentPath */, Assets::TextureManager& textureManager, Logger& logger) const {
-            const std::vector<IO::Path> paths = extractTextureCollections(node);
+        void TestGame::doLoadTextureCollections(const Entity& entity, const IO::Path& /* documentPath */, Assets::TextureManager& textureManager, Logger& logger) const {
+            const std::vector<IO::Path> paths = extractTextureCollections(entity);
 
             const IO::Path root = IO::Disk::getCurrentWorkingDir();
             const std::vector<IO::Path> fileSearchPaths{ root };
@@ -142,22 +171,26 @@ namespace TrenchBroom {
             return false;
         }
 
+        std::vector<std::string> TestGame::doFileTextureCollectionExtensions() const {
+            return {};
+        }
+
         std::vector<IO::Path> TestGame::doFindTextureCollections() const {
             return std::vector<IO::Path>();
         }
 
-        std::vector<IO::Path> TestGame::doExtractTextureCollections(const AttributableNode& node) const {
-            const auto& pathsValue = node.attribute("wad");
-            if (pathsValue.empty()) {
-                return std::vector<IO::Path>(0);
+        std::vector<IO::Path> TestGame::doExtractTextureCollections(const Entity& entity) const {
+            if (const auto* pathsValue = entity.property("wad")) {
+                return IO::Path::asPaths(kdl::str_split(*pathsValue, ";"));
+            } else {
+                return {};
             }
-
-            return IO::Path::asPaths(kdl::str_split(pathsValue, ";"));
         }
 
-        void TestGame::doUpdateTextureCollections(AttributableNode& node, const std::vector<IO::Path>& paths) const {
+        void TestGame::doUpdateTextureCollections(Entity& entity, const std::vector<IO::Path>& paths) const {
             const std::string value = kdl::str_join(IO::Path::asStrings(paths, "/"), ";");
-            node.addOrUpdateAttribute("wad", value);
+
+            entity.addOrUpdateProperty("wad", value);
         }
 
         void TestGame::doReloadShaders() {}
@@ -170,7 +203,7 @@ namespace TrenchBroom {
             return std::vector<Assets::EntityDefinitionFileSpec>();
         }
 
-        Assets::EntityDefinitionFileSpec TestGame::doExtractEntityDefinitionFile(const AttributableNode& /* node */) const {
+        Assets::EntityDefinitionFileSpec TestGame::doExtractEntityDefinitionFile(const Entity& /* entity */) const {
             return Assets::EntityDefinitionFileSpec();
         }
 
@@ -182,7 +215,7 @@ namespace TrenchBroom {
             return {};
         }
 
-        std::vector<std::string> TestGame::doExtractEnabledMods(const AttributableNode& /* node */) const {
+        std::vector<std::string> TestGame::doExtractEnabledMods(const Entity& /* entity */) const {
             return {};
         }
 
@@ -201,8 +234,11 @@ namespace TrenchBroom {
         }
 
         const Model::BrushFaceAttributes& TestGame::doDefaultFaceAttribs() const {
-            static const Model::BrushFaceAttributes defaults(Model::BrushFaceAttributes::NoTextureName);
-            return defaults;
+            return m_defaultFaceAttributes;
+        }
+
+        const std::vector<CompilationTool>& TestGame::doCompilationTools() const {
+            return m_compilationTools;
         }
 
         std::vector<Assets::EntityDefinition*> TestGame::doLoadEntityDefinitions(IO::ParserStatus& /* status */, const IO::Path& /* path */) const {

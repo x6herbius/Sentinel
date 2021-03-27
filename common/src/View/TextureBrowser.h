@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TextureBrowser
-#define TrenchBroom_TextureBrowser
+#pragma once
 
 #include <memory>
 #include <string>
@@ -41,7 +40,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class BrushFace;
+        class BrushFaceHandle;
         class Node;
     }
 
@@ -65,15 +64,16 @@ namespace TrenchBroom {
             TextureBrowser(std::weak_ptr<MapDocument> document, GLContextManager& contextManager, QWidget* parent = nullptr);
             ~TextureBrowser() override;
 
-            Assets::Texture* selectedTexture() const;
-            void setSelectedTexture(Assets::Texture* selectedTexture);
+            const Assets::Texture* selectedTexture() const;
+            void setSelectedTexture(const Assets::Texture* selectedTexture);
+            void revealTexture(const Assets::Texture* texture);
 
             void setSortOrder(TextureSortOrder sortOrder);
             void setGroup(bool group);
             void setHideUnused(bool hideUnused);
             void setFilterText(const std::string& filterText);
         signals:
-            void textureSelected(Assets::Texture* texture);
+            void textureSelected(const Assets::Texture* texture);
         private:
             void createGui(GLContextManager& contextManager);
             void bindEvents();
@@ -86,7 +86,7 @@ namespace TrenchBroom {
             void nodesWereAdded(const std::vector<Model::Node*>& nodes);
             void nodesWereRemoved(const std::vector<Model::Node*>& nodes);
             void nodesDidChange(const std::vector<Model::Node*>& nodes);
-            void brushFacesDidChange(const std::vector<Model::BrushFace*>& faces);
+            void brushFacesDidChange(const std::vector<Model::BrushFaceHandle>& faces);
             void textureCollectionsDidChange();
             void currentTextureNameDidChange(const std::string& textureName);
             void preferenceDidChange(const IO::Path& path);
@@ -97,4 +97,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_TextureBrowser) */

@@ -17,10 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GameEngineConfig_h
-#define GameEngineConfig_h
-
-#include "Notifier.h"
+#pragma once
 
 #include <memory>
 #include <string>
@@ -33,8 +30,6 @@ namespace TrenchBroom {
         class GameEngineConfig {
         private:
             std::vector<std::unique_ptr<GameEngineProfile>> m_profiles;
-        public:
-            mutable Notifier<> profilesDidChange;
         public:
             GameEngineConfig();
             GameEngineConfig(std::vector<std::unique_ptr<GameEngineProfile>> profiles);
@@ -50,8 +45,10 @@ namespace TrenchBroom {
 
             void addProfile(std::unique_ptr<GameEngineProfile> profile);
             void removeProfile(size_t index);
+
+            friend bool operator==(const GameEngineConfig& lhs, const GameEngineConfig& rhs);
+            friend bool operator!=(const GameEngineConfig& lhs, const GameEngineConfig& rhs);
         };
     }
 }
 
-#endif /* GameEngineConfig_h */

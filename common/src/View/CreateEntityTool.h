@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_CreateEntityTool
-#define TrenchBroom_CreateEntityTool
+#pragma once
 
 #include "FloatType.h"
 #include "View/Tool.h"
@@ -30,7 +29,7 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Entity;
+        class EntityNode;
         class PickResult;
     }
 
@@ -40,7 +39,7 @@ namespace TrenchBroom {
         class CreateEntityTool : public Tool {
         private:
             std::weak_ptr<MapDocument> m_document;
-            Model::Entity* m_entity;
+            Model::EntityNode* m_entity;
             vm::bbox3 m_referenceBounds;
         public:
             explicit CreateEntityTool(std::weak_ptr<MapDocument> document);
@@ -55,4 +54,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_CreateEntityTool) */

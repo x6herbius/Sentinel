@@ -17,10 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include <cmath>
 
 #include "EL/ELExceptions.h"
@@ -32,28 +28,46 @@
 
 #include <string>
 
+#include "Catch2.h"
+
 namespace TrenchBroom {
     namespace EL {
         using V = Value;
 
-        void evaluateAndAssert(const std::string& expression, const Value& result, const EvaluationContext& context = EvaluationContext());
+        static void assertOptimizable(const std::string& expression) {
+            CHECK(IO::ELParser::parseStrict(expression).optimize());
+        }
+
+        static void assertNotOptimizable(const std::string& expression) {
+            CHECK_FALSE(IO::ELParser::parseStrict(expression).optimize());
+        }
+
+        static void evaluateAndAssert(const std::string& expression, const Value& result, const EvaluationContext& context) {
+            CHECK(IO::ELParser::parseStrict(expression).evaluate(context) == result);
+        }
 
         template <typename T>
-        void evaluateAndAssert(const std::string& expression, const T& result, const EvaluationContext& context = EvaluationContext()) {
+        static void evaluateAndAssert(const std::string& expression, const T& result, const EvaluationContext& context = EvaluationContext()) {
             evaluateAndAssert(expression, Value(result), context);
         }
 
         template <typename T, typename S>
-        void evaluateAndAssert(const std::string& expression, const T& result, const std::string& n1, const S& v1) {
+        static void evaluateAndAssert(const std::string& expression, const T& result, const std::string& n1, const S& v1) {
             VariableTable table;
             table.declare(n1, Value::Undefined);
             table.assign(n1, Value(v1));
             evaluateAndAssert(expression, result, EvaluationContext(table));
         }
 
+        static void evalutateComparisonAndAssert(const std::string& op, bool result) {
+            const std::string expression = "4 " + op + " 5";
+            evaluateAndAssert(expression, result);
+            assertOptimizable(expression);
+        }
+        
         template <typename E>
-        void evaluateAndThrow(const std::string& expression, const EvaluationContext& context = EvaluationContext()) {
-            ASSERT_THROW(IO::ELParser::parseStrict(expression).evaluate(context), E);
+        static void evaluateAndThrow(const std::string& expression, const EvaluationContext& context = EvaluationContext()) {
+            CHECK_THROWS_AS(IO::ELParser::parseStrict(expression).evaluate(context), E);
         }
 
         template <typename T1>
@@ -97,9 +111,6 @@ namespace TrenchBroom {
             m[k3] = V(v3);
             return m;
         }
-
-        void assertOptimizable(const std::string& expression);
-        void assertNotOptimizable(const std::string& expression);
 
         TEST_CASE("ExpressionTest.testValueLiterals", "[ExpressionTest]") {
             evaluateAndAssert("true", true);
@@ -305,6 +316,11 @@ namespace TrenchBroom {
 
             evaluateAndAssert("2 * 6 / 4", 2.0 * 6.0 / 4.0);
             evaluateAndAssert("2 / 6 * 4", 2.0 / 6.0 * 4.0);
+
+            evaluateAndAssert("2 + 3 * 4 + 5", 2 + 3 * 4 + 5);
+            evaluateAndAssert("2 * 3 + 4 + 5", 2 * 3 + 4 + 5);
+
+            evaluateAndAssert("2 * 3 + 4 & 5", 2 * 3 + 4 & 5);
         }
 
         TEST_CASE("ExpressionTest.testLogicalPrecedence", "[ExpressionTest]") {
@@ -324,24 +340,6 @@ namespace TrenchBroom {
             evaluateAndAssert("true && false -> true", Value::Undefined);
             evaluateAndAssert("true && true -> false", false);
             evaluateAndAssert("2 + 3 < 2 + 4 -> 6 % 5", 1);
-        }
-
-        void evalutateComparisonAndAssert(const std::string& op, bool result) {
-            const std::string expression = "4 " + op + " 5";
-            evaluateAndAssert(expression, result);
-            assertOptimizable(expression);
-        }
-
-        void evaluateAndAssert(const std::string& expression, const Value& result, const EvaluationContext& context) {
-            ASSERT_EQ(result, IO::ELParser::parseStrict(expression).evaluate(context));
-        }
-
-        void assertOptimizable(const std::string& expression) {
-            ASSERT_TRUE(IO::ELParser::parseStrict(expression).optimize());
-        }
-
-        void assertNotOptimizable(const std::string& expression) {
-            ASSERT_FALSE(IO::ELParser::parseStrict(expression).optimize());
         }
     }
 }

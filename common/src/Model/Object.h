@@ -17,15 +17,14 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Object
-#define TrenchBroom_Object
+#pragma once
 
 #include "FloatType.h"
 
 namespace TrenchBroom {
     namespace Model {
-        class Group;
-        class Layer;
+        class GroupNode;
+        class LayerNode;
         class Node;
 
         class Object {
@@ -34,26 +33,28 @@ namespace TrenchBroom {
         public:
             virtual ~Object();
 
-            Node* container() const;
-            Layer* layer() const;
-            Group* group() const;
+            Node* container();
+            const Node* container() const;
 
-            bool grouped() const;
-            bool groupOpened() const;
+            LayerNode* containingLayer();
+            const LayerNode* containingLayer() const;
 
-            void transform(const vm::mat4x4& transformation, bool lockTextures, const vm::bbox3& worldBounds);
+            GroupNode* containingGroup();
+            const GroupNode* containingGroup() const;
+
+            bool containedInGroup() const;
+            bool containingGroupOpened() const;
+
             bool contains(const Node* object) const;
             bool intersects(const Node* object) const;
         private: // subclassing interface
-            virtual Node* doGetContainer() const = 0;
-            virtual Layer* doGetLayer() const = 0;
-            virtual Group* doGetGroup() const = 0;
+            virtual Node* doGetContainer() = 0;
+            virtual LayerNode* doGetContainingLayer() = 0;
+            virtual GroupNode* doGetContainingGroup() = 0;
 
-            virtual void doTransform(const vm::mat4x4& transformation, bool lockTextures, const vm::bbox3& worldBounds) = 0;
             virtual bool doContains(const Node* node) const = 0;
             virtual bool doIntersects(const Node* node) const = 0;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_Object) */

@@ -89,7 +89,7 @@ endmacro(SET_XCODE_ATTRIBUTES)
 
 macro(set_compiler_config TARGET)
     if(COMPILER_IS_CLANG)
-        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -pedantic)
+        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -Wshadow-all -pedantic)
         target_compile_options(${TARGET} PRIVATE -Wno-global-constructors -Wno-exit-time-destructors -Wno-padded -Wno-format-nonliteral -Wno-used-but-marked-unused)
 
         # disable C++98 compatibility warnings
@@ -104,12 +104,20 @@ macro(set_compiler_config TARGET)
 
         # FIXME: Suppress warnings in moc generated files:
         target_compile_options(${TARGET} PRIVATE -Wno-redundant-parens)
+
+        # Disable a warning in clang when using PCH:
+        target_compile_options(${TARGET} PRIVATE -Wno-pragma-system-header-outside-header)
     elseif(COMPILER_IS_GNU)
-        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -pedantic)
+        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wconversion -Wshadow=local -pedantic)
         target_compile_options(${TARGET} PRIVATE "$<$<CONFIG:RELEASE>:-O3>")
 
         # FIXME: enable -Wcpp once we found a workaround for glew / QOpenGLWindow problem, see RenderView.h
         target_compile_options(${TARGET} PRIVATE -Wno-cpp)
+
+        # gcc <= 7 warns about unused structured bindings, see https://github.com/TrenchBroom/TrenchBroom/issues/3751
+        if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)
+            target_compile_options(${TARGET} PRIVATE -Wno-unused-variable)
+        endif()
     elseif(COMPILER_IS_MSVC)
         target_compile_definitions(${TARGET} PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
         target_compile_options(${TARGET} PRIVATE /W4 /EHsc /MP)
@@ -151,26 +159,65 @@ macro(ADD_TARGET_PROPERTY TARGET PROPERTY VALUE)
 endmacro(ADD_TARGET_PROPERTY)
 
 macro(GET_APP_VERSION GIT_DESCRIBE VERSION_YEAR VERSION_NUMBER)
-    if(NOT ${GIT_DESCRIBE})
-        set(${GIT_DESCRIBE} "v0000.0")
-    endif()
     STRING(REGEX MATCH "v([0-9][0-9][0-9][0-9])[.]([0-9]+)" GIT_DESCRIBE_MATCH "${${GIT_DESCRIBE}}")
 
     if(GIT_DESCRIBE_MATCH)
         set(${VERSION_YEAR} ${CMAKE_MATCH_1})
         set(${VERSION_NUMBER} ${CMAKE_MATCH_2})
     else()
-        message(FATAL_ERROR "Couldn't parse version from git describe output '${${GIT_DESCRIBE}}'")
+        # GIT_DESCRIBE is not a release tag following the "v0000.0" format.
+        set(${VERSION_YEAR} "0")
+        set(${VERSION_NUMBER} "0")
     endif()
 endmacro(GET_APP_VERSION)
 
 macro(GET_GIT_DESCRIBE GIT SOURCE_DIR GIT_DESCRIBE)
-    execute_process(COMMAND ${GIT} describe --dirty WORKING_DIRECTORY ${SOURCE_DIR} OUTPUT_VARIABLE ${GIT_DESCRIBE} OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # When building tags, GitHub Actions checks them out as lightweight tags even if the original tag was annotated.
+    # Pass --tags to enable git describe to match non-annotated tags.
+    execute_process(COMMAND ${GIT} describe --dirty --tags WORKING_DIRECTORY ${SOURCE_DIR} OUTPUT_VARIABLE ${GIT_DESCRIBE} OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(${GIT_DESCRIBE})
+        message(STATUS "Using version description \"${${GIT_DESCRIBE}}\" from git describe")
+    endif()
+
+    # On GitHub Actions, "git describe" will fail due to it being a shallow clone (for PR and branch builds),
+    # and it is also useful to record in the version description whether it's a branch or PR build.
+    # In this case, use:
+    #  - TB_PULL_REQUEST_HEAD_SHA (ci.yml sets to the last commit on the PR branch before the merge commit)
+    #  - or GITHUB_SHA (set by GitHub Actions)
+    # and GITHUB_REF to construct a descriptive version string.
+    # See: https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
+    if(NOT ${GIT_DESCRIBE})
+        if((NOT ("$ENV{GITHUB_SHA}" STREQUAL "")) AND (NOT ("$ENV{TB_PULL_REQUEST_HEAD_SHA}" STREQUAL "")))
+            set(${GIT_DESCRIBE} "unstable-$ENV{GITHUB_REF}-$ENV{TB_PULL_REQUEST_HEAD_SHA}")
+            # Replace / with _ because we need GIT_DESCRIBE to be valid to put in a filename for the final package
+            string(REPLACE "/" "_" ${GIT_DESCRIBE} ${${GIT_DESCRIBE}})
+            message(STATUS "Using version description \"${${GIT_DESCRIBE}}\" from environment variables TB_PULL_REQUEST_HEAD_SHA and GITHUB_REF")
+        endif()
+    endif()
+
+    if(NOT ${GIT_DESCRIBE})
+        if((NOT ("$ENV{GITHUB_SHA}" STREQUAL "")) AND (NOT ("$ENV{GITHUB_REF}" STREQUAL "")))
+            set(${GIT_DESCRIBE} "unstable-$ENV{GITHUB_REF}-$ENV{GITHUB_SHA}")
+            string(REPLACE "/" "_" ${GIT_DESCRIBE} ${${GIT_DESCRIBE}})
+            message(STATUS "Using version description \"${${GIT_DESCRIBE}}\" from environment variables GITHUB_SHA and GITHUB_REF")
+        endif()
+    endif()
+
+    if(NOT ${GIT_DESCRIBE})
+        set(${GIT_DESCRIBE} "unknown")
+        message(WARNING "Unable to determine version description; using \"${${GIT_DESCRIBE}}\"")
+    endif()
 endmacro(GET_GIT_DESCRIBE)
 
 macro(GET_BUILD_PLATFORM PLATFORM_NAME)
     if(WIN32)
-        set(${PLATFORM_NAME} "Win32")
+        if(CMAKE_SIZEOF_VOID_P EQUAL "4")
+            set(${PLATFORM_NAME} "Win32")
+        elseif(CMAKE_SIZEOF_VOID_P EQUAL "8")
+            set(${PLATFORM_NAME} "Win64")
+        else()
+            message(ERROR "Unsupported CMAKE_SIZEOF_VOID_P ${CMAKE_SIZEOF_VOID_P}")
+        endif()
     elseif(APPLE)
         set(${PLATFORM_NAME} "MacOSX")
     elseif(UNIX)

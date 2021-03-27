@@ -20,10 +20,11 @@
 #include "DuplicateNodesCommand.h"
 
 #include "Model/Node.h"
-#include "Model/NodeVisitor.h"
+#include "Model/LayerNode.h"
 #include "View/MapDocumentCommandFacade.h"
 
 #include <kdl/map_utils.h>
+#include <kdl/overload.h>
 
 namespace TrenchBroom {
     namespace View {
@@ -34,7 +35,7 @@ namespace TrenchBroom {
         }
 
         DuplicateNodesCommand::DuplicateNodesCommand() :
-        DocumentCommand(Type, "Duplicate Objects"),
+        UndoableCommand(Type, "Duplicate Objects", true),
         m_firstExecution(true) {}
 
         DuplicateNodesCommand::~DuplicateNodesCommand() {
@@ -50,12 +51,14 @@ namespace TrenchBroom {
                 const vm::bbox3& worldBounds = document->worldBounds();
                 m_previouslySelectedNodes = document->selectedNodes().nodes();
 
-                for (const Model::Node* original : m_previouslySelectedNodes) {
+                for (Model::Node* original : m_previouslySelectedNodes) {
+                    Model::Node* suggestedParent = document->parentForNodes(std::vector<Model::Node*>{original});
                     Model::Node* clone = original->cloneRecursively(worldBounds);
 
-                    Model::Node* parent = original->parent();
-                    if (cloneParent(parent)) {
+                    if (shouldCloneParentWhenCloningNode(original)) {
+                        // e.g. original is a brush in a brush entity, so we need to clone the entity (parent)
                         // see if the parent was already cloned and if not, clone it and store it
+                        Model::Node* parent = original->parent();
                         Model::Node* newParent = nullptr;
                         const auto it = newParentMap.find(parent);
                         if (it != std::end(newParentMap)) {
@@ -65,12 +68,13 @@ namespace TrenchBroom {
                             // parent was not cloned yet
                             newParent = parent->clone(worldBounds);
                             newParentMap.insert({ parent, newParent });
-                            m_addedNodes[document->currentParent()].push_back(newParent);
+                            m_addedNodes[suggestedParent].push_back(newParent);
                         }
 
+                        // the hierarchy will look like (parent -> child): suggestedParent -> newParent -> clone
                         newParent->addChild(clone);
                     } else {
-                        m_addedNodes[document->currentParent()].push_back(clone);
+                        m_addedNodes[suggestedParent].push_back(clone);
                     }
 
                     m_nodesToSelect.push_back(clone);
@@ -92,27 +96,19 @@ namespace TrenchBroom {
             return std::make_unique<CommandResult>(true);
         }
 
-        class DuplicateNodesCommand::CloneParentQuery : public Model::ConstNodeVisitor, public Model::NodeQuery<bool> {
-        private:
-            void doVisit(const Model::World*) override  { setResult(false); }
-            void doVisit(const Model::Layer*) override  { setResult(false); }
-            void doVisit(const Model::Group*) override  { setResult(false);  }
-            void doVisit(const Model::Entity*) override { setResult(true);  }
-            void doVisit(const Model::Brush*) override  { setResult(false); }
-        };
-
-        bool DuplicateNodesCommand::cloneParent(const Model::Node* node) const {
-            CloneParentQuery query;
-            node->accept(query);
-            return query.result();
-        }
-
-        bool DuplicateNodesCommand::doIsRepeatable(MapDocumentCommandFacade* document) const {
-            return document->hasSelectedNodes();
-        }
-
-        std::unique_ptr<UndoableCommand> DuplicateNodesCommand::doRepeat(MapDocumentCommandFacade*) const {
-            return std::make_unique<DuplicateNodesCommand>();
+        /**
+         * Returns whether, for UI reasons, duplicating the given node should also cause its parent to be duplicated.
+         *
+         * Applies when duplicating a brush inside a brush entity.
+         */
+        bool DuplicateNodesCommand::shouldCloneParentWhenCloningNode(const Model::Node* node) const {
+            return node->parent()->accept(kdl::overload(
+                [] (const Model::WorldNode*)  { return false; },
+                [] (const Model::LayerNode*)  { return false; },
+                [] (const Model::GroupNode*)  { return false; },
+                [&](const Model::EntityNode*) { return true; },
+                [] (const Model::BrushNode*)  { return false; }
+            ));
         }
 
         bool DuplicateNodesCommand::doCollateWith(UndoableCommand*) {

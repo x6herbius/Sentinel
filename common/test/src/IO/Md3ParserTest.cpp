@@ -17,12 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Logger.h"
 #include "Assets/EntityModel.h"
 #include "IO/DiskFileSystem.h"
@@ -37,7 +31,10 @@
 #include <vecmath/bbox.h>
 #include <vecmath/vec.h>
 
+#include <cstdio>
 #include <memory>
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace IO {
@@ -50,41 +47,41 @@ namespace TrenchBroom {
 
             const auto md3Path = IO::Path("models/weapons2/bfg/bfg.md3");
             const auto md3File = fs->openFile(md3Path);
-            ASSERT_NE(nullptr, md3File);
+            REQUIRE(md3File != nullptr);
 
             auto reader = md3File->reader().buffer();
             auto parser = Md3Parser("bfg", std::begin(reader), std::end(reader), *fs);
             auto model = std::unique_ptr<Assets::EntityModel>(parser.initializeModel(logger));
             parser.loadFrame(0, *model, logger);
 
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_EQ(1u, model->frameCount());
-            ASSERT_EQ(2u, model->surfaceCount());
+            CHECK(model->frameCount() == 1u);
+            CHECK(model->surfaceCount() == 2u);
 
             const auto* frame = model->frame("MilkShape 3D");
-            ASSERT_NE(nullptr, frame);
-            ASSERT_TRUE(vm::is_equal(vm::bbox3f(vm::vec3f(-10.234375, -10.765625, -9.4375), vm::vec3f(30.34375, 10.765625, 11.609375)), frame->bounds(), 0.01f));
+            CHECK(frame != nullptr);
+            CHECK(vm::is_equal(vm::bbox3f(vm::vec3f(-10.234375, -10.765625, -9.4375), vm::vec3f(30.34375, 10.765625, 11.609375)), frame->bounds(), 0.01f));
 
             const auto* surface1 = model->surface("x_bfg");
-            ASSERT_NE(nullptr, surface1);
-            ASSERT_EQ(1u, surface1->frameCount());
-            ASSERT_EQ(1u, surface1->skinCount());
+            CHECK(surface1 != nullptr);
+            CHECK(surface1->frameCount() == 1u);
+            CHECK(surface1->skinCount() == 1u);
 
-            const auto* skin1 = surface1->skin("bfg/LDAbfg");
-            ASSERT_NE(nullptr, skin1);
+            const auto* skin1 = surface1->skin("models/weapons2/bfg/LDAbfg");
+            CHECK(skin1 != nullptr);
 
             const auto* surface2 = model->surface("x_fx");
-            ASSERT_NE(nullptr, surface2);
-            ASSERT_EQ(1u, surface2->frameCount());
-            ASSERT_EQ(1u, surface2->skinCount());
+            CHECK(surface2 != nullptr);
+            CHECK(surface2->frameCount() == 1u);
+            CHECK(surface2->skinCount() == 1u);
 
-            const auto* skin2 = surface2->skin("bfg/LDAbfg_z");
-            ASSERT_NE(nullptr, skin2);
+            const auto* skin2 = surface2->skin("models/weapons2/bfg/LDAbfg_z");
+            CHECK(skin2 != nullptr);
         }
 
         TEST_CASE("Md3ParserTest.loadFailure_2659", "[Md3ParserTest]") {
-            // see https://github.com/kduske/TrenchBroom/issues/2659
+            // see https://github.com/TrenchBroom/TrenchBroom/issues/2659
 
             NullLogger logger;
             const auto shaderSearchPath = Path("scripts");
@@ -94,19 +91,19 @@ namespace TrenchBroom {
 
             const auto md3Path = IO::Path("models/armor_red.md3");
             const auto md3File = fs->openFile(md3Path);
-            ASSERT_NE(nullptr, md3File);
+            REQUIRE(md3File != nullptr);
 
             auto reader = md3File->reader().buffer();
-            auto parser = Md3Parser("bfg", std::begin(reader), std::end(reader), *fs);
+            auto parser = Md3Parser("armor_red", std::begin(reader), std::end(reader), *fs);
             auto model = std::unique_ptr<Assets::EntityModel>(parser.initializeModel(logger));
 
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_EQ(30u, model->frameCount());
-            ASSERT_EQ(2u, model->surfaceCount());
+            CHECK(model->frameCount() == 30u);
+            CHECK(model->surfaceCount() == 2u);
 
             for (size_t i = 0; i < model->frameCount(); ++i) {
-                ASSERT_NO_THROW(parser.loadFrame(i, *model, logger));
+                CHECK_NOTHROW(parser.loadFrame(i, *model, logger));
             }
         }
     }

@@ -26,16 +26,20 @@
 #include "PreferenceManager.h"
 #include "TrenchBroomApp.h"
 #include "IO/PathQt.h"
-#include "Model/AttributableNode.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/EditorContext.h"
 #include "Model/Entity.h"
+#include "Model/EntityNode.h"
+#include "Model/EntityNodeBase.h"
 #include "Model/ExportFormat.h"
 #include "Model/Game.h"
 #include "Model/GameFactory.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/MapFormat.h"
+#include "Model/ModelUtils.h"
 #include "Model/Node.h"
+#include "Model/WorldNode.h"
 #include "View/Actions.h"
 #include "View/Autosaver.h"
 #if !defined __APPLE__
@@ -43,8 +47,10 @@
 #endif
 #include "View/MapViewBase.h"
 #include "View/ClipTool.h"
+#include "View/ColorButton.h"
 #include "View/CompilationDialog.h"
 #include "View/EdgeTool.h"
+#include "View/FaceInspector.h"
 #include "View/FaceTool.h"
 #include "View/FrameManager.h"
 #include "View/GLContextManager.h"
@@ -64,6 +70,7 @@
 #include "View/QtUtils.h"
 #include "View/MapViewToolBox.h"
 
+#include <kdl/overload.h>
 #include <kdl/string_format.h>
 #include <kdl/string_utils.h>
 
@@ -71,6 +78,7 @@
 #include <vecmath/vec_io.h>
 
 #include <cassert>
+#include <chrono>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -80,14 +88,19 @@
 #include <QLabel>
 #include <QString>
 #include <QApplication>
+#include <QChildEvent>
 #include <QClipboard>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QFileDialog>
+#include <QPushButton>
 #include <QStatusBar>
+#include <QStringList>
 #include <QToolBar>
 #include <QComboBox>
 #include <QVBoxLayout>
+#include <QTableWidget>
 
 namespace TrenchBroom {
     namespace View {
@@ -95,6 +108,7 @@ namespace TrenchBroom {
         QMainWindow(),
         m_frameManager(frameManager),
         m_document(std::move(document)),
+        m_lastInputTime(std::chrono::system_clock::now()),
         m_autosaver(std::make_unique<Autosaver>(m_document)),
         m_autosaveTimer(nullptr),
         m_toolBar(nullptr),
@@ -111,14 +125,14 @@ namespace TrenchBroom {
         m_compilationDialog(nullptr),
         m_recentDocumentsMenu(nullptr),
         m_undoAction(nullptr),
-        m_redoAction(nullptr),
-        m_pasteAction(nullptr),
-        m_pasteAtOriginalPositionAction(nullptr) {
+        m_redoAction(nullptr) {
             ensure(m_frameManager != nullptr, "frameManager is null");
             ensure(m_document != nullptr, "document is null");
 
             setAttribute(Qt::WA_DeleteOnClose);
             setObjectName("MapFrame");
+
+            installEventFilter(this);
 
             createGui();
             createMenus();
@@ -196,6 +210,18 @@ namespace TrenchBroom {
             return *m_console;
         }
 
+        QAction* MapFrame::findAction(const IO::Path& path) {
+            const auto& actionManager = ActionManager::instance();
+            auto& actionsMap = actionManager.actionsMap();
+            if (const auto iAction = actionsMap.find(path); iAction != std::end(actionsMap)) {
+                const auto& action = iAction->second;
+                if (const auto iQAction = m_actionMap.find(action.get()); iQAction != std::end(m_actionMap)) {
+                    return iQAction->second;
+                }
+            }
+            return nullptr;
+        }
+
         void MapFrame::updateTitle() {
             setWindowModified(m_document->modified());
             setWindowTitle(QString::fromStdString(m_document->filename()) + QString("[*] - TrenchBroom"));
@@ -214,8 +240,6 @@ namespace TrenchBroom {
             m_recentDocumentsMenu = menuBuilder.recentDocumentsMenu;
             m_undoAction = menuBuilder.undoAction;
             m_redoAction = menuBuilder.redoAction;
-            m_pasteAction = menuBuilder.pasteAction;
-            m_pasteAtOriginalPositionAction = menuBuilder.pasteAtOriginalPositionAction;
 
             addRecentDocumentsMenu();
         }
@@ -229,8 +253,7 @@ namespace TrenchBroom {
         void MapFrame::updateActionState() {
             ActionExecutionContext context(this, currentMapViewBase());
             for (auto [tAction, qAction] : m_actionMap) {
-                if (qAction == m_undoAction || qAction == m_redoAction ||
-                    qAction == m_pasteAction || qAction == m_pasteAtOriginalPositionAction) {
+                if (qAction == m_undoAction || qAction == m_redoAction) {
                     // These are handled specially for performance reasons.
                     continue;
                 }
@@ -262,16 +285,6 @@ namespace TrenchBroom {
                     m_redoAction->setText("Redo");
                     m_redoAction->setEnabled(false);
                 }
-            }
-        }
-
-        void MapFrame::updatePasteActions() {
-            const auto enable = canPaste();
-            if (m_pasteAction != nullptr) {
-                m_pasteAction->setEnabled(enable);
-            }
-            if (m_pasteAtOriginalPositionAction != nullptr) {
-                m_pasteAtOriginalPositionAction->setEnabled(enable);
             }
         }
 
@@ -342,9 +355,6 @@ namespace TrenchBroom {
             auto* frameLayout = new QVBoxLayout();
             frameLayout->setContentsMargins(0, 0, 0, 0);
             frameLayout->setSpacing(0); // no space between BorderLine and m_hSplitter
-#if !defined __APPLE__
-            frameLayout->addWidget(new BorderLine());
-#endif
             frameLayout->addWidget(m_hSplitter);
 
             // NOTE: you can't set the layout of a QMainWindow, so make another widget to wrap this layout in
@@ -385,6 +395,10 @@ namespace TrenchBroom {
             m_toolBar->setObjectName("MapFrameToolBar");
             m_toolBar->setFloatable(false);
             m_toolBar->setMovable(false);
+            // macOS Qt bug: with the 32x32 default icon size, 24x24 highdpi icons get scaled up to 32x32.
+            // We expect them to be drawn at 24x24 logical pixels centered in a 32x32 box, as is the case with non-highdpi icons.
+            // As a workaround, just lower the toolbar size to 24x24 (we could alternatively render the icons at 32x32).
+            m_toolBar->setIconSize(QSize(24, 24));
 
             ToolBarBuilder builder(*m_toolBar, m_actionMap, [this](const Action& action) {
                 ActionExecutionContext context(this, currentMapViewBase());
@@ -415,14 +429,14 @@ namespace TrenchBroom {
             statusBar()->addWidget(m_statusBarLabel);
         }
 
-        static Model::AttributableNode* commonEntityForBrushList(const std::vector<Model::Brush*>& list) {
+        static Model::EntityNodeBase* commonEntityForBrushList(const std::vector<Model::BrushNode*>& list) {
             if (list.empty())
                 return nullptr;
 
-            Model::AttributableNode* firstEntity = list.front()->entity();
+            Model::EntityNodeBase* firstEntity = list.front()->entity();
             bool multipleEntities = false;
 
-            for (const Model::Brush* brush : list) {
+            for (const Model::BrushNode* brush : list) {
                 if (brush->entity() != firstEntity) {
                     multipleEntities = true;
                 }
@@ -435,15 +449,15 @@ namespace TrenchBroom {
             }
         }
 
-        static std::string commonClassnameForEntityList(const std::vector<Model::Entity*>& list) {
+        static std::string commonClassnameForEntityList(const std::vector<Model::EntityNode*>& list) {
             if (list.empty())
                 return "";
 
-            const std::string firstClassname = list.front()->classname();
+            const std::string firstClassname = list.front()->entity().classname();
             bool multipleClassnames = false;
 
-            for (const Model::Entity* entity : list) {
-                if (entity->classname() != firstClassname) {
+            for (const Model::EntityNode* entityNode : list) {
+                if (entityNode->entity().classname() != firstClassname) {
                     multipleClassnames = true;
                 }
             }
@@ -460,21 +474,30 @@ namespace TrenchBroom {
         }
 
         static QString describeSelection(const MapDocument* document) {
-            const QString DblArrow = QString(" ") + QString(QChar(0x00BB)) + QString(" ");
             const QString Arrow = QString(" ") + QString(QChar(0x203A)) + QString(" ");
 
-            QString result;
+            QStringList pipeSeparatedSections;
 
-            // current layer
-            result += QString::fromStdString(document->currentLayer()->name()) + DblArrow;
+            pipeSeparatedSections << QString::fromStdString(document->game()->gameName())
+                                  << QString::fromStdString(Model::formatName(document->world()->mapFormat()))
+                                  << QString::fromStdString(document->currentLayer()->name());
 
             // open groups
-            std::list<Model::Group*> groups;
-            for (Model::Group* group = document->currentGroup(); group != nullptr; group = group->group()) {
-                groups.push_front(group);
+            std::vector<Model::GroupNode*> groups;
+            for (Model::GroupNode* group = document->currentGroup(); group != nullptr; group = group->containingGroup()) {
+                groups.push_back(group);
             }
-            for (Model::Group* group : groups) {
-                result += QString::fromStdString(group->name()) + Arrow;
+            if (!groups.empty()) {
+                QStringList openGroups;
+
+                // groups vector is sorted from innermost to outermost, so visit it in reverse order
+                for (auto it = groups.rbegin(); it != groups.rend(); ++it) {
+                    const Model::GroupNode* group = *it;
+                    openGroups << QString::fromStdString(group->name());
+                }
+
+                const QString openGroupsString = QObject::tr("Open groups: %1").arg(openGroups.join(Arrow));
+                pipeSeparatedSections << openGroupsString;
             }
 
             // build a vector of strings describing the things that are selected
@@ -484,12 +507,12 @@ namespace TrenchBroom {
 
             // selected brushes
             if (!selectedNodes.brushes().empty()) {
-                Model::AttributableNode *commonEntity = commonEntityForBrushList(selectedNodes.brushes());
+                Model::EntityNodeBase* commonEntityNode = commonEntityForBrushList(selectedNodes.brushes());
 
                 // if all selected brushes are from the same entity, print the entity name
                 std::string token = numberWithSuffix(selectedNodes.brushes().size(), "brush", "brushes");
-                if (commonEntity) {
-                    token += " (" + commonEntity->classname() + ")";
+                if (commonEntityNode) {
+                    token += " (" + commonEntityNode->entity().classname() + ")";
                 } else {
                     token += " (multiple entities)";
                 }
@@ -520,19 +543,70 @@ namespace TrenchBroom {
                 tokens.push_back(numberWithSuffix(selectedNodes.groups().size(), "group", "groups"));
             }
 
-            // layers
-            if (!selectedNodes.layers().empty()) {
-                tokens.push_back(numberWithSuffix(selectedNodes.layers().size(), "layer", "layers"));
-            }
-
-            if (tokens.empty()) {
-                tokens.push_back("nothing");
+            // get the layers of the selected nodes
+            const std::vector<Model::LayerNode*> selectedObjectLayers = Model::findContainingLayersUserSorted(selectedNodes.nodes());
+            QString layersDescription;
+            if (selectedObjectLayers.size() == 1) {
+                Model::LayerNode* layer = selectedObjectLayers[0];
+                layersDescription = QObject::tr(" in layer \"%1\"").arg(QString::fromStdString(layer->name()));
+            } else if (selectedObjectLayers.size() > 1) {
+                layersDescription = QObject::tr(" in %1 layers").arg(selectedObjectLayers.size());
             }
 
             // now, turn `tokens` into a comma-separated string
-            result += QString::fromStdString(kdl::str_join(tokens, ", ", ", and ", " and ")) + " selected";
+            if (!tokens.empty()) {
+                pipeSeparatedSections << QObject::tr("%1%2 selected")
+                        .arg(QString::fromStdString(kdl::str_join(tokens, ", ", ", and ", " and ")))
+                        .arg(layersDescription);
+            }
 
-            return result;
+            // count hidden objects
+            size_t hiddenGroups = 0u;
+            size_t hiddenEntities = 0u;
+            size_t hiddenBrushes = 0u;
+
+            const auto& editorContext = document->editorContext();
+            document->world()->accept(kdl::overload(
+                [](auto&& thisLambda, const Model::WorldNode* world) { world->visitChildren(thisLambda); },
+                [](auto&& thisLambda, const Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
+                [&](auto&& thisLambda, const Model::GroupNode* group) { 
+                    if (!editorContext.visible(group)) {
+                        ++hiddenGroups;
+                    }
+                    group->visitChildren(thisLambda); 
+                },
+                [&](auto&& thisLambda, const Model::EntityNode* entity) { 
+                    if (!editorContext.visible(entity)) {
+                        ++hiddenEntities;
+                    }
+                    entity->visitChildren(thisLambda); 
+                },
+                [&](const Model::BrushNode* brush) {
+                    if (!editorContext.visible(brush)) {
+                        ++hiddenBrushes;
+                    }
+                 }
+            ));
+
+            // print hidden objects
+            if (hiddenGroups > 0 || hiddenEntities > 0 || hiddenBrushes > 0) {
+                std::vector<std::string> hiddenDescriptors;
+
+                if (hiddenGroups > 0) {
+                    hiddenDescriptors.push_back(numberWithSuffix(hiddenGroups, "group", "groups"));
+                }
+                if (hiddenEntities > 0) {
+                    hiddenDescriptors.push_back(numberWithSuffix(hiddenEntities, "entity", "entities"));
+                }
+                if (hiddenBrushes > 0) {
+                    hiddenDescriptors.push_back(numberWithSuffix(hiddenBrushes, "brush", "brushes"));
+                }
+
+                pipeSeparatedSections << QObject::tr("%1 hidden")
+                        .arg(QString::fromStdString(kdl::str_join(hiddenDescriptors, ", ", ", and ", " and ")));
+            }
+
+            return QString::fromLatin1("   ") + pipeSeparatedSections.join(QLatin1String("   |   "));
         }
 
         void MapFrame::updateStatusBar() {
@@ -554,6 +628,8 @@ namespace TrenchBroom {
             m_document->currentLayerDidChangeNotifier.addObserver(this, &MapFrame::currentLayerDidChange);
             m_document->groupWasOpenedNotifier.addObserver(this, &MapFrame::groupWasOpened);
             m_document->groupWasClosedNotifier.addObserver(this, &MapFrame::groupWasClosed);
+            m_document->nodeVisibilityDidChangeNotifier.addObserver(this, &MapFrame::nodeVisibilityDidChange);
+            m_document->editorContextDidChangeNotifier.addObserver(this, &MapFrame::editorContextDidChange);
 
             Grid& grid = m_document->grid();
             grid.gridDidChangeNotifier.addObserver(this, &MapFrame::gridDidChange);
@@ -578,6 +654,8 @@ namespace TrenchBroom {
             m_document->currentLayerDidChangeNotifier.removeObserver(this, &MapFrame::currentLayerDidChange);
             m_document->groupWasOpenedNotifier.removeObserver(this, &MapFrame::groupWasOpened);
             m_document->groupWasClosedNotifier.removeObserver(this, &MapFrame::groupWasClosed);
+            m_document->nodeVisibilityDidChangeNotifier.removeObserver(this, &MapFrame::nodeVisibilityDidChange);
+            m_document->editorContextDidChangeNotifier.removeObserver(this, &MapFrame::editorContextDidChange);
 
             Grid& grid = m_document->grid();
             grid.gridDidChangeNotifier.removeObserver(this, &MapFrame::gridDidChange);
@@ -651,15 +729,24 @@ namespace TrenchBroom {
             updateStatusBar();
         }
 
-        void MapFrame::currentLayerDidChange(const TrenchBroom::Model::Layer*) {
+        void MapFrame::currentLayerDidChange(const TrenchBroom::Model::LayerNode*) {
             updateStatusBar();
         }
 
-        void MapFrame::groupWasOpened(Model::Group*) {
+        void MapFrame::groupWasOpened(Model::GroupNode*) {
             updateStatusBar();
         }
 
-        void MapFrame::groupWasClosed(Model::Group*) {
+        void MapFrame::groupWasClosed(Model::GroupNode*) {
+            updateStatusBar();
+        }
+
+        void MapFrame::nodeVisibilityDidChange(const std::vector<Model::Node*>&) {
+            updateStatusBar();
+        }
+
+        void MapFrame::editorContextDidChange() {
+            // e.g. changing the view filters may cause the number of hidden brushes/entities to change
             updateStatusBar();
         }
 
@@ -667,7 +754,10 @@ namespace TrenchBroom {
             connect(m_autosaveTimer, &QTimer::timeout, this, &MapFrame::triggerAutosave);
             connect(qApp, &QApplication::focusChanged, this, &MapFrame::focusChange);
             connect(m_gridChoice, QOverload<int>::of(&QComboBox::activated), this, [this](const int index) { setGridSize(index + Grid::MinSize); });
-            connect(QApplication::clipboard(), &QClipboard::dataChanged, this, &MapFrame::updatePasteActions);
+            connect(QApplication::clipboard(), &QClipboard::dataChanged, this, [this]() {
+                // update the "Paste" menu items
+                this->updateActionState();
+            });
             connect(m_toolBar, &QToolBar::visibilityChanged, this, [this](const bool /* visible */) {
                 // update the "Toggle Toolbar" menu item
                 this->updateActionState();
@@ -686,15 +776,25 @@ namespace TrenchBroom {
             if (!confirmOrDiscardChanges()) {
                 return false;
             }
+            const auto startTime = std::chrono::high_resolution_clock::now();
             m_document->loadDocument(mapFormat, MapDocument::DefaultWorldBounds, game, path);
+            const auto endTime = std::chrono::high_resolution_clock::now();
+
+            logger().info() << "Loaded " << m_document->path() << " in "
+                                         << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms";
+
             return true;
         }
 
         bool MapFrame::saveDocument() {
             try {
                 if (m_document->persistent()) {
+                    const auto startTime = std::chrono::high_resolution_clock::now();
                     m_document->saveDocument();
-                    logger().info() << "Saved " << m_document->path();
+                    const auto endTime = std::chrono::high_resolution_clock::now();
+
+                    logger().info() << "Saved " << m_document->path() << " in "
+                                    << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms";
                     return true;
                 } else {
                     return saveDocumentAs();
@@ -720,8 +820,13 @@ namespace TrenchBroom {
                 }
 
                 const IO::Path path = IO::pathFromQString(newFileName);
+
+                const auto startTime = std::chrono::high_resolution_clock::now();
                 m_document->saveDocumentAs(path);
-                logger().info() << "Saved " << m_document->path();
+                const auto endTime = std::chrono::high_resolution_clock::now();
+
+                logger().info() << "Saved " << m_document->path() << " in "
+                                << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms";
                 return true;
             } catch (const FileSystemException& e) {
                 QMessageBox::critical(this, "", e.what());
@@ -730,6 +835,20 @@ namespace TrenchBroom {
                 QMessageBox::critical(this, "", QString::fromStdString("Unknown error while saving " + m_document->filename()), QMessageBox::Ok);
                 return false;
             }
+        }
+
+        bool MapFrame::revertDocument() {
+            if (!m_document->persistent()) {
+                return false;
+            }
+            if (!confirmRevertDocument()) {
+                return false;
+            }
+            const auto mapFormat = m_document->world()->mapFormat();
+            const auto game = m_document->game();
+            const auto path = m_document->path();
+            m_document->loadDocument(mapFormat, MapDocument::DefaultWorldBounds, game, path);
+            return true;
         }
 
         bool MapFrame::exportDocumentAsObj() {
@@ -743,7 +862,22 @@ namespace TrenchBroom {
             return exportDocument(Model::ExportFormat::WavefrontObj, IO::pathFromQString(newFileName));
         }
 
+        bool MapFrame::exportDocumentAsMap() {
+            const IO::Path& originalPath = m_document->path();
+
+            const QString newFileName = QFileDialog::getSaveFileName(this, tr("Export Map file"), IO::pathAsQString(originalPath), "Map files (*.map)");
+            if (newFileName.isEmpty()) {
+                return false;
+            }
+
+            return exportDocument(Model::ExportFormat::Map, IO::pathFromQString(newFileName));
+        }
+
         bool MapFrame::exportDocument(const Model::ExportFormat format, const IO::Path& path) {
+            if (path == m_document->path()) {
+                QMessageBox::critical(this, "", tr("You can't overwrite the current document.\nPlease choose a different file name to export to."));
+                return false;
+            }
             try {
                 m_document->exportDocumentAs(format, path);
                 logger().info() << "Exported " << path;
@@ -780,6 +914,31 @@ namespace TrenchBroom {
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
+        }
+
+        /**
+         * Returns whether the document should be reverted.
+         */
+        bool MapFrame::confirmRevertDocument() {
+            if (!m_document->modified()) {
+                return true;
+            }
+
+            QMessageBox messageBox(this);
+            messageBox.setWindowTitle("TrenchBroom");
+            messageBox.setIcon(QMessageBox::Question);
+            messageBox.setText(tr("Revert %1 to %2?")
+                .arg(QString::fromStdString(m_document->filename()))
+                .arg(IO::pathAsQString(m_document->path())));
+            messageBox.setInformativeText(tr("This will discard all unsaved changes and reload the document from disk."));
+
+            auto* revertButton = messageBox.addButton(tr("Revert"), QMessageBox::DestructiveRole);
+            auto* cancelButton = messageBox.addButton(QMessageBox::Cancel);
+            messageBox.setDefaultButton(cancelButton);
+
+            messageBox.exec();
+
+            return (messageBox.clickedButton() == revertButton);
         }
 
         void MapFrame::loadPointFile() {
@@ -920,15 +1079,15 @@ namespace TrenchBroom {
                 str = m_document->serializeSelectedBrushFaces();
             }
 
-            clipboard->setText(QString::fromStdString(str));
+            clipboard->setText(mapStringToUnicode(m_document->encoding(), str));
         }
 
         bool MapFrame::canCutSelection() const {
-            return m_document->hasSelectedNodes() && !m_mapView->anyToolActive();
+            return widgetOrChildHasFocus(m_mapView) && m_document->hasSelectedNodes() && !m_mapView->anyToolActive();
         }
 
         bool MapFrame::canCopySelection() const {
-            return m_document->hasSelectedNodes() || m_document->hasSelectedBrushFaces();
+            return widgetOrChildHasFocus(m_mapView) && (m_document->hasSelectedNodes() || m_document->hasSelectedBrushFaces());
         }
 
         void MapFrame::pasteAtCursorPosition() {
@@ -939,7 +1098,7 @@ namespace TrenchBroom {
                     const vm::bbox3 bounds = m_document->selectionBounds();
 
                     // The pasted objects must be hidden to prevent the picking done in pasteObjectsDelta
-                    // from hitting them (https://github.com/kduske/TrenchBroom/issues/2755)
+                    // from hitting them (https://github.com/TrenchBroom/TrenchBroom/issues/2755)
                     const std::vector<Model::Node*> nodes = m_document->selectedNodes().nodes();
                     m_document->hide(nodes);
                     const vm::vec3 delta = m_mapView->pasteObjectsDelta(bounds, referenceBounds);
@@ -965,15 +1124,24 @@ namespace TrenchBroom {
                 return PasteType::Failed;
             }
 
-            return m_document->paste(qtext.toStdString());
+            return m_document->paste(mapStringFromUnicode(m_document->encoding(), qtext));
         }
 
         /**
          * This is relatively expensive so only call it when the clipboard changes or e.g. the user tries to paste.
          */
         bool MapFrame::canPaste() const {
-            auto* clipboard = QApplication::clipboard();
-            return !clipboard->text().isEmpty();
+            if (!widgetOrChildHasFocus(m_mapView)) {
+                return false;
+            }
+
+            if (!m_mapView->isCurrent()) {
+                return false;
+            }
+
+            const auto* clipboard = QApplication::clipboard();
+            const auto* mimeData = clipboard->mimeData();
+            return mimeData != nullptr && mimeData->hasText();
         }
 
         void MapFrame::duplicateSelection() {
@@ -1106,7 +1274,7 @@ namespace TrenchBroom {
 
         void MapFrame::groupSelectedObjects() {
             if (canGroupSelectedObjects()) {
-                const std::string name = queryGroupName(this);
+                const std::string name = queryGroupName(this, "Unnamed");
                 if (!name.empty()) {
                     m_document->groupSelection(name);
                 }
@@ -1131,7 +1299,9 @@ namespace TrenchBroom {
             if (canRenameSelectedGroups()) {
                 auto document = kdl::mem_lock(m_document);
                 assert(document->selectedNodes().hasOnlyGroups());
-                const std::string name = queryGroupName(this);
+
+                const std::string suggestion = document->selectedNodes().groups().front()->name();
+                const std::string name = queryGroupName(this, suggestion);
                 if (!name.empty()) {
                     document->renameGroups(name);
                 }
@@ -1146,6 +1316,10 @@ namespace TrenchBroom {
         void MapFrame::replaceTexture() {
             ReplaceTextureDialog dialog(m_document, *m_contextManager, this);
             dialog.exec();
+        }
+
+        bool MapFrame::anyToolActive() const {
+            return m_mapView->anyToolActive();
         }
 
         void MapFrame::toggleCreateComplexBrushTool() {
@@ -1329,17 +1503,15 @@ namespace TrenchBroom {
         }
 
         bool MapFrame::canSnapVertices() const {
-            return m_document->selectedNodes().hasOnlyBrushes();
+            return m_document->selectedNodes().hasBrushesRecursively();
         }
 
         void MapFrame::toggleTextureLock() {
-            PreferenceManager::instance().set(Preferences::TextureLock, !pref(Preferences::TextureLock));
-            PreferenceManager::instance().saveChanges();
+            togglePref(Preferences::TextureLock);
         }
 
         void MapFrame::toggleUVLock() {
-            PreferenceManager::instance().set(Preferences::UVLock, !pref(Preferences::UVLock));
-            PreferenceManager::instance().saveChanges();
+            togglePref(Preferences::UVLock);
         }
 
         void MapFrame::toggleShowGrid() {
@@ -1408,8 +1580,9 @@ namespace TrenchBroom {
             bool ok = false;
             const QString str = QInputDialog::getText(this, "Move Camera", "Enter a position (x y z) for the camera.", QLineEdit::Normal, "0.0 0.0 0.0", &ok);
             if (ok) {
-                const vm::vec3 position = vm::parse<FloatType, 3>(str.toStdString());
-                m_mapView->moveCameraToPosition(position, true);
+                if (const auto position = vm::parse<FloatType, 3>(str.toStdString())) {
+                    m_mapView->moveCameraToPosition(*position, true);
+                }
             }
         }
 
@@ -1481,20 +1654,35 @@ namespace TrenchBroom {
             showModelessDialog(m_compilationDialog);
         }
 
-        void MapFrame::compilationDialogWillClose() {
-            // Save the compilation and engine configurations just in case:
-            const auto& gameName = m_document->game()->gameName();
-            auto& gameFactory = Model::GameFactory::instance();
-            gameFactory.saveConfigs(gameName);
-        }
-
         void MapFrame::showLaunchEngineDialog() {
             LaunchGameEngineDialog dialog(m_document, this);
             dialog.exec();
+        }
 
-            const auto& gameName = m_document->game()->gameName();
-            auto& gameFactory = Model::GameFactory::instance();
-            gameFactory.saveConfigs(gameName);
+        static const Assets::Texture* textureToReveal(std::shared_ptr<MapDocument> document) {
+            kdl::vector_set<const Assets::Texture*> selectedTextures;
+            for (const Model::BrushFaceHandle& face : document->allSelectedBrushFaces()) {
+                selectedTextures.insert(face.face().texture());
+            }
+            if (selectedTextures.size() == 1) {
+                return *selectedTextures.begin();
+            }
+            return nullptr;
+        }
+
+        bool MapFrame::canRevealTexture() const {
+            return textureToReveal(m_document) != nullptr;
+        }
+
+        void MapFrame::revealTexture() {
+            if (const auto texture = textureToReveal(m_document)) {
+                revealTexture(texture);
+            }
+        }
+
+        void MapFrame::revealTexture(const Assets::Texture* texture) {
+            m_inspector->switchToPage(InspectorPage::Face);
+            m_inspector->faceInspector()->revealTexture(texture);
         }
 
         void MapFrame::debugPrintVertices() {
@@ -1541,7 +1729,6 @@ namespace TrenchBroom {
 #endif
         static void debugSegfault() {
             volatile void *test = nullptr;
-            // cppcheck-suppress nullPointer
             printf("%p\n", *((void **)test));
         }
 #ifdef __clang__
@@ -1577,9 +1764,15 @@ namespace TrenchBroom {
             bool ok = false;
             const QString str = QInputDialog::getText(this, "Window Size", "Enter Size (W H)", QLineEdit::Normal, "1920 1080", &ok);
             if (ok) {
-                const auto size = vm::parse<int, 2>(str.toStdString());
-                resize(size.x(), size.y());
+                if (const auto size = vm::parse<int, 2>(str.toStdString())) {
+                    resize(size->x(), size->y());
+                }
             }
+        }
+
+        void MapFrame::debugShowPalette() {
+            DebugPaletteWindow* window = new DebugPaletteWindow(this);
+            showModelessDialog(window);
         }
 
         void MapFrame::focusChange(QWidget* /* oldFocus */, QWidget* newFocus) {
@@ -1634,8 +1827,114 @@ namespace TrenchBroom {
             // Don't call superclass implementation
         }
 
-        void MapFrame::triggerAutosave() {
-            m_autosaver->triggerAutosave(logger());
+        template <typename F>
+        static void applyRecursively(QObject* object, const F& f) {
+            f(object);
+            for (auto* child : object->children()) {
+                applyRecursively(child, f);
+            }
         }
+
+        bool MapFrame::eventFilter(QObject* target, QEvent* event) {
+            if (event->type() == QEvent::MouseButtonPress ||
+                event->type() == QEvent::MouseButtonRelease ||
+                event->type() == QEvent::MouseButtonDblClick ||
+                event->type() == QEvent::MouseMove ||
+                event->type() == QEvent::KeyPress ||
+                event->type() == QEvent::KeyRelease) {
+                m_lastInputTime = std::chrono::system_clock::now();
+            } else if (event->type() == QEvent::ChildAdded) {
+                auto* childEvent = static_cast<QChildEvent*>(event);
+                applyRecursively(childEvent->child(), [&](auto* object) { object->installEventFilter(this); });
+            } else if (event->type() == QEvent::ChildRemoved) {
+                auto* childEvent = static_cast<QChildEvent*>(event);
+                applyRecursively(childEvent->child(), [&](auto* object) { object->removeEventFilter(this); });
+            }
+            return QMainWindow::eventFilter(target, event);
+        }
+
+        void MapFrame::triggerAutosave() {
+            using namespace std::chrono_literals;
+            if (QGuiApplication::mouseButtons() == Qt::NoButton && std::chrono::system_clock::now() - m_lastInputTime > 2s) {
+                m_autosaver->triggerAutosave(logger());
+            }
+        }
+
+        // DebugPaletteWindow
+
+        DebugPaletteWindow::DebugPaletteWindow(QWidget *parent)
+        : QDialog(parent) {
+            setWindowTitle(tr("Palette"));
+
+            const auto roles = std::vector<std::pair<QPalette::ColorRole, QString>> {
+                { QPalette::Window,          "Window" },
+                { QPalette::WindowText,      "WindowText" },
+                { QPalette::Base,            "Base" },
+                { QPalette::AlternateBase,   "AlternateBase" },
+                { QPalette::ToolTipBase,     "ToolTipBase" },
+                { QPalette::ToolTipText,     "ToolTipText" },
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
+                { QPalette::PlaceholderText, "PlaceholderText" },
+#endif
+                { QPalette::Text,            "Text" },
+                { QPalette::Button,          "Button" },
+                { QPalette::ButtonText,      "ButtonText" },
+                { QPalette::BrightText,      "BrightText" },
+                { QPalette::Light,           "Light" },
+                { QPalette::Midlight,        "Midlight" },
+                { QPalette::Dark,            "Dark" },
+                { QPalette::Mid,             "Mid" },
+                { QPalette::Shadow,          "Shadow" },
+                { QPalette::Highlight,       "Highlight" },
+                { QPalette::HighlightedText, "HighlightedText" }
+            };
+
+            const auto groups = std::vector<std::pair<QPalette::ColorGroup, QString>> {
+                { QPalette::Disabled,  "Disabled" },
+                { QPalette::Active,    "Active" },
+                { QPalette::Inactive,  "Inactive" }
+            };
+
+            QStringList verticalHeaderLabels;
+            for (const auto& [role, roleLabel] : roles) {
+                verticalHeaderLabels.append(roleLabel);
+            }
+
+            QStringList horizontalHeaderLabels;
+            for (const auto& [group, groupLabel] : groups) {
+                horizontalHeaderLabels.append(groupLabel);
+            }
+
+            auto* table = new QTableWidget(static_cast<int>(roles.size()),
+                                           static_cast<int>(groups.size()));
+            table->setHorizontalHeaderLabels(horizontalHeaderLabels);
+            table->setVerticalHeaderLabels(verticalHeaderLabels);
+
+            for (int x = 0; x < table->columnCount(); ++x) {
+                for (int y = 0; y < table->rowCount(); ++y) {
+                    const QPalette::ColorRole role = roles.at(static_cast<size_t>(y)).first;
+                    const QPalette::ColorGroup group = groups.at(static_cast<size_t>(x)).first;
+
+                    ColorButton* button = new ColorButton();
+                    table->setCellWidget(y, x, button);
+
+                    button->setColor(qApp->palette().color(group, role));
+
+                    connect(button, &ColorButton::colorChangedByUser, this, [=](const QColor& color){
+                        QPalette palette = qApp->palette();
+                        palette.setColor(group, role, color);
+                        qApp->setPalette(palette);
+                    });
+                }
+            }
+
+            auto* layout = new QVBoxLayout();
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->setSpacing(0);
+            layout->addWidget(table);
+            setLayout(layout);
+        }
+
+        DebugPaletteWindow::~DebugPaletteWindow() = default;
     }
 }

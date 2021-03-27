@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_EntityModel
-#define TrenchBroom_EntityModel
+#pragma once
 
 #include "Assets/EntityModel_Forward.h"
 
@@ -219,11 +218,11 @@ namespace TrenchBroom {
             void addTexturedMesh(EntityModelLoadedFrame& frame, const std::vector<EntityModelVertex>& vertices, const EntityModelTexturedIndices& indices);
 
             /**
-             * Adds the given texture as a skin to this surface.
+             * Sets the given textures as skins to this surface.
              *
-             *@param skin the skin to add
+             * @param skins the textures to set
              */
-            void addSkin(Texture* skin);
+            void setSkins(std::vector<Texture> skins);
 
             /**
              * Returns the number of frame meshes in this surface, should match the model's frame count.
@@ -245,7 +244,7 @@ namespace TrenchBroom {
              * @param name the name of the skin to find
              * @return the skin with the given name, or null if no such skin was found
              */
-            Texture* skin(const std::string& name) const;
+            const Texture* skin(const std::string& name) const;
 
             /**
              * Returns the skin with the given index.
@@ -253,7 +252,7 @@ namespace TrenchBroom {
              * @param index the index of the skin to find
              * @return the skin with the given index, or null if the index is out of bounds
              */
-            Texture* skin(size_t index) const;
+            const Texture* skin(size_t index) const;
 
             std::unique_ptr<Renderer::TexturedIndexRangeRenderer> buildRenderer(size_t skinIndex, size_t frameIndex);
         };
@@ -416,4 +415,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_EntityModel) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TextureCollectionLoader_h
-#define TextureCollectionLoader_h
+#pragma once
 
 #include <memory>
 #include <string>
@@ -49,10 +48,9 @@ namespace TrenchBroom {
         public:
             virtual ~TextureCollectionLoader();
         public:
-            std::unique_ptr<Assets::TextureCollection> loadTextureCollection(const Path& path, const std::vector<std::string>& textureExtensions, const TextureReader& textureReader);
-        private:
+            virtual Assets::TextureCollection loadTextureCollection(const Path& path, const std::vector<std::string>& textureExtensions, const TextureReader& textureReader) = 0;
+        protected:
             bool shouldExclude(const std::string& textureName);
-            virtual FileList doFindTextures(const Path& path, const std::vector<std::string>& extensions) = 0;
         };
 
         class FileTextureCollectionLoader : public TextureCollectionLoader {
@@ -61,7 +59,7 @@ namespace TrenchBroom {
         public:
             FileTextureCollectionLoader(Logger& logger, const std::vector<Path>& searchPaths, const std::vector<std::string>& exclusions);
         private:
-            FileList doFindTextures(const Path& path, const std::vector<std::string>& extensions) override;
+            Assets::TextureCollection loadTextureCollection(const Path& path, const std::vector<std::string>& textureExtensions, const TextureReader& textureReader);
         };
 
         class DirectoryTextureCollectionLoader : public TextureCollectionLoader {
@@ -70,9 +68,8 @@ namespace TrenchBroom {
         public:
             DirectoryTextureCollectionLoader(Logger& logger, const FileSystem& gameFS, const std::vector<std::string>& exclusions);
         private:
-            FileList doFindTextures(const Path& path, const std::vector<std::string>& extensions) override;
+            Assets::TextureCollection loadTextureCollection(const Path& path, const std::vector<std::string>& textureExtensions, const TextureReader& textureReader);
         };
     }
 }
 
-#endif /* TextureCollectionLoader_h */

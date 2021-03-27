@@ -29,12 +29,21 @@ namespace TrenchBroom {
     namespace Preferences {
         Preference<int> MapViewLayout(IO::Path("Views/Map view layout"), static_cast<int>(View::MapViewLayout::OnePane));
 
+        QString systemTheme() {
+            return QStringLiteral("System");
+        }
+        QString darkTheme() {
+            return QStringLiteral("Dark");
+        }
+        Preference<QString> Theme(IO::Path("Theme"), systemTheme());
+
         Preference<bool>  ShowAxes(IO::Path("Renderer/Show axes"), true);
+        Preference<Color> SoftMapBoundsColor(IO::Path("Renderer/Colors/Soft map bounds color"), Color(241, 125, 37));
         Preference<Color> BackgroundColor(IO::Path("Renderer/Colors/Background"), Color(38, 38, 38));
         Preference<float> AxisLength(IO::Path("Renderer/Axis length"), 128.0f);
-        Preference<Color> XAxisColor(IO::Path("Renderer/Colors/X axis"), Color(0xFF, 0x3D, 0x00, 0.7f));
-        Preference<Color> YAxisColor(IO::Path("Renderer/Colors/Y axis"), Color(0x4B, 0x95, 0x00, 0.7f));
-        Preference<Color> ZAxisColor(IO::Path("Renderer/Colors/Z axis"), Color(0x10, 0x9C, 0xFF, 0.7f));
+        Preference<Color> XAxisColor(IO::Path("Renderer/Colors/X axis"), Color(0xFF, 0x3D, 0x00, 0.7f), true);
+        Preference<Color> YAxisColor(IO::Path("Renderer/Colors/Y axis"), Color(0x4B, 0x95, 0x00, 0.7f), true);
+        Preference<Color> ZAxisColor(IO::Path("Renderer/Colors/Z axis"), Color(0x10, 0x9C, 0xFF, 0.7f), true);
         Preference<Color> PointFileColor(IO::Path("Renderer/Colors/Point file"), Color(0.0f, 1.0f, 0.0f, 1.0f));
         Preference<Color> PortalFileBorderColor(IO::Path("Renderer/Colors/Portal file border"), Color(1.0f, 1.0f, 1.0f, 0.5f));
         Preference<Color> PortalFileFillColor(IO::Path("Renderer/Colors/Portal file fill"), Color(1.0f, 0.4f, 0.4f, 0.2f));
@@ -52,13 +61,14 @@ namespace TrenchBroom {
             }
         }
 
-        Preference<Color> CompassBackgroundColor(IO::Path("Renderer/Colors/Compass background"), Color(0.5f, 0.5f, 0.5f, 0.5f));
-        Preference<Color> CompassBackgroundOutlineColor(IO::Path("Renderer/Colors/Compass background outline"), Color(1.0f, 1.0f, 1.0f, 0.5f));
-        Preference<Color> CompassAxisOutlineColor(IO::Path("Renderer/Colors/Compass axis outline"), Color(1.0f, 1.0f, 1.0f, 1.0f));
+        Preference<Color> CompassBackgroundColor(IO::Path("Renderer/Colors/Compass background"), Color(0.5f, 0.5f, 0.5f, 0.5f), true);
+        Preference<Color> CompassBackgroundOutlineColor(IO::Path("Renderer/Colors/Compass background outline"), Color(1.0f, 1.0f, 1.0f, 0.5f), true);
+        Preference<Color> CompassAxisOutlineColor(IO::Path("Renderer/Colors/Compass axis outline"), Color(1.0f, 1.0f, 1.0f, 1.0f), true);
 
         Preference<Color> CameraFrustumColor(IO::Path("Renderer/Colors/Camera frustum"), Color(0.0f, 1.0f, 1.0f, 1.0f));
 
         Preference<Color> DefaultGroupColor(IO::Path("Renderer/Colors/Groups"), Color(0.7f,  0.4f,  1.0f,  1.0f));
+        Preference<Color> LinkedGroupColor(IO::Path("Renderer/Colors/Linked Groups"), Color(1.0f,  0.35f,  0.87f,  1.0f));
 
         Preference<Color> TutorialOverlayTextColor(IO::Path("Renderer/Colors/Tutorial overlay text"), Color(1.0f, 1.0f, 1.0f, 1.0f));
         Preference<Color> TutorialOverlayBackgroundColor(IO::Path("Renderer/Colors/Tutorial overlay background"), Color(1.0f, 0.5f, 0.0f, 0.6f));
@@ -69,7 +79,7 @@ namespace TrenchBroom {
         Preference<float> TransparentFaceAlpha(IO::Path("Renderer/Colors/Transparent faces"), 0.4f);
         Preference<Color> EdgeColor(IO::Path("Renderer/Colors/Edges"), Color(0.9f,  0.9f,  0.9f,  1.0f));
         Preference<Color> SelectedEdgeColor(IO::Path("Renderer/Colors/Selected edges"), Color(1.0f,  0.0f,  0.0f,  1.0f));
-        Preference<Color> OccludedSelectedEdgeColor(IO::Path("Renderer/Colors/Occluded selected edges"), Color(1.0f,  0.0f,  0.0f,  0.4f));
+        Preference<float> OccludedSelectedEdgeAlpha(IO::Path("Renderer/Colors/Occluded selected edge alpha"), 0.4f);
         Preference<Color> LockedEdgeColor(IO::Path("Renderer/Colors/Locked edges"), Color(0.13f, 0.3f,  1.0f,  1.0f));
         Preference<Color> UndefinedEntityColor(IO::Path("Renderer/Colors/Undefined entity"), Color(0.5f,  0.5f,  0.5f,  1.0f));
 
@@ -78,7 +88,7 @@ namespace TrenchBroom {
         Preference<Color> InfoOverlayTextColor(IO::Path("Renderer/Colors/Info overlay text"), Color(1.0f, 1.0f, 1.0f, 1.0f));
         Preference<Color> GroupInfoOverlayTextColor(IO::Path("Renderer/Colors/Group info overlay text"), Color(0.7f,  0.4f,  1.0f,  1.0f));
         Preference<Color> InfoOverlayBackgroundColor(IO::Path("Renderer/Colors/Info overlay background"), Color(0.0f, 0.0f, 0.0f, 0.6f));
-        Preference<Color> WeakInfoOverlayBackgroundColor(IO::Path("Renderer/Colors/Weak info overlay background"), Color(0.0f, 0.0f, 0.0f, 0.3f));
+        Preference<float> WeakInfoOverlayBackgroundAlpha(IO::Path("Renderer/Colors/Weak info overlay background alpha"), 0.3f);
         Preference<Color> SelectedInfoOverlayTextColor(IO::Path("Renderer/Colors/Selected info overlay text"), Color(1.0f, 1.0f, 1.0f, 1.0f));
         Preference<Color> SelectedInfoOverlayBackgroundColor(IO::Path("Renderer/Colors/Selected info overlay background"), Color(1.0f, 0.0f, 0.0f, 0.6f));
         Preference<Color> LockedInfoOverlayTextColor(IO::Path("Renderer/Colors/Locked info overlay text"), Color(0.35f, 0.35f, 0.6f,  1.0f));
@@ -98,12 +108,12 @@ namespace TrenchBroom {
         Preference<float> RotateHandleRadius(IO::Path("Controls/Rotate handle radius"), 64.0f);
         Preference<Color> RotateHandleColor(IO::Path("Renderer/Colors/Rotate handle"), Color(248, 230, 60, 1.0f));
 
-        Preference<Color> ScaleHandleColor(IO::Path("Renderer/Colors/Scale handle"),   Color(0, 255, 145, 1.0f));
-        Preference<Color> ScaleFillColor(IO::Path("Renderer/Colors/Scale fill"),       Color(0, 255, 145, 0.125f));
-        Preference<Color> ScaleOutlineColor(IO::Path("Renderer/Colors/Scale outline"), Color(0, 255, 145, 1.0f));
-        Preference<Color> ScaleOutlineDimColor(IO::Path("Renderer/Colors/Scale outline dim"), Color(0, 255, 145, 0.3f));
-        Preference<Color> ShearFillColor(IO::Path("Renderer/Colors/Shear fill"),       Color(128, 128, 255, 0.125f));
-        Preference<Color> ShearOutlineColor(IO::Path("Renderer/Colors/Shear outline"), Color(128, 128, 255, 1.0f));
+        Preference<Color> ScaleHandleColor(IO::Path("Renderer/Colors/Scale handle"),   Color(77, 255, 80, 1.0f));
+        Preference<Color> ScaleFillColor(IO::Path("Renderer/Colors/Scale fill"),       Color(77, 255, 80, 0.125f));
+        Preference<Color> ScaleOutlineColor(IO::Path("Renderer/Colors/Scale outline"), Color(77, 255, 80, 1.0f));
+        Preference<float> ScaleOutlineDimAlpha(IO::Path("Renderer/Colors/Scale outline dim alpha"), 0.3f);
+        Preference<Color> ShearFillColor(IO::Path("Renderer/Colors/Shear fill"),       Color(45, 133, 255, 0.125f));
+        Preference<Color> ShearOutlineColor(IO::Path("Renderer/Colors/Shear outline"), Color(45, 133, 255, 1.0f));
 
         Preference<Color> MoveTraceColor(IO::Path("Renderer/Colors/Move trace"), Color(0.0f, 1.0f, 1.0f, 1.0f));
         Preference<Color> OccludedMoveTraceColor(IO::Path("Renderer/Colors/Move trace"), Color(0.0f, 1.0f, 1.0f, 0.4f));
@@ -121,6 +131,7 @@ namespace TrenchBroom {
 
         Preference<int> TextureMinFilter(IO::Path("Renderer/Texture mode min filter"), 0x2700);
         Preference<int> TextureMagFilter(IO::Path("Renderer/Texture mode mag filter"), 0x2600);
+        Preference<bool> EnableMSAA(IO::Path("Renderer/Enable multisampling"), true);
 
         Preference<bool> TextureLock(IO::Path("Editor/Texture lock"), true);
         Preference<bool> UVLock(IO::Path("Editor/UV lock"), false);
@@ -130,12 +141,13 @@ namespace TrenchBroom {
             return fontPath;
         }
 
-    Preference<int> RendererFontSize(IO::Path("Renderer/Font size"), 13);
+        Preference<int> RendererFontSize(IO::Path("Renderer/Font size"), 13);
 
         Preference<int> BrowserFontSize(IO::Path("Browser/Font size"), 13);
         Preference<Color> BrowserTextColor(IO::Path("Browser/Text color"), Color(1.0f, 1.0f, 1.0f, 1.0f));
-        Preference<Color> BrowserSubTextColor(IO::Path("Browser/Text color"), Color(0.65f, 0.65f, 0.65f, 1.0f));
-        Preference<Color> BrowserGroupBackgroundColor(IO::Path("Browser/Group background color"), Color(0.8f, 0.8f, 0.8f, 0.8f));
+        Preference<Color> BrowserSubTextColor(IO::Path("Browser/Sub text color"), Color(0.65f, 0.65f, 0.65f, 1.0f));
+        Preference<Color> BrowserGroupBackgroundColor(IO::Path("Browser/Group background color"), Color(0.1f, 0.1f, 0.1f, 0.8f));
+        Preference<Color> BrowserBackgroundColor(IO::Path("Browser/Background color"), Color(0.14f, 0.14f, 0.14f, 1.0f));
         Preference<float> TextureBrowserIconSize(IO::Path("Texture Browser/Icon size"), 1.0f);
         Preference<Color> TextureBrowserDefaultColor(IO::Path("Texture Browser/Default color"), Color(0.0f, 0.0f, 0.0f, 0.0f));
         Preference<Color> TextureBrowserSelectedColor(IO::Path("Texture Browser/Selected color"), Color(1.0f, 0.0f, 0.0f, 1.0f));
@@ -183,9 +195,44 @@ namespace TrenchBroom {
             return pref;
         }
 
+        Preference<bool> ShowEntityClassnames(IO::Path("Map view/Show entity classnames"), true);
+        Preference<bool> ShowGroupBounds(IO::Path("Map view/Show group bounds"), true);
+        Preference<bool> ShowBrushEntityBounds(IO::Path("Map view/Show brush entity bounds"), true);
+        Preference<bool> ShowPointEntityBounds(IO::Path("Map view/Show point entity bounds"), true);
+        Preference<bool> ShowPointEntityModels(IO::Path("Map view/Show point entity models"), true);
+
+        QString faceRenderModeTextured() { return "textured"; }
+        QString faceRenderModeFlat() { return "flat"; }
+        QString faceRenderModeSkip() { return "skip"; }
+        Preference<QString> FaceRenderMode(IO::Path("Map view/Face render mode"), "textured");
+
+        Preference<bool> ShadeFaces(IO::Path("Map view/Shade faces"), true);
+        Preference<bool> ShowFog(IO::Path("Map view/Show fog"), false);
+        Preference<bool> ShowEdges(IO::Path("Map view/Show edges"), true);
+
+        Preference<bool> ShowSoftMapBounds(IO::Path("Map view/Show soft map bounds"), true);
+
+        Preference<bool> ShowPointEntities(IO::Path("Map view/Show point entities"), true);
+        Preference<bool> ShowBrushes(IO::Path("Map view/Show brushes"), true);
+
+        QString entityLinkModeAll() {
+            return "all";
+        }
+        QString entityLinkModeTransitive() {
+            return "transitive";
+        }
+        QString entityLinkModeDirect() {
+            return "direct";
+        }
+        QString entityLinkModeNone() {
+            return "none";
+        }
+        Preference<QString> EntityLinkMode(IO::Path("Map view/Entity link mode"), "direct");
+
         const std::vector<PreferenceBase*>& staticPreferences() {
             static const std::vector<PreferenceBase*> list {
                 &MapViewLayout,
+                &Theme,
                 &ShowAxes,
                 &BackgroundColor,
                 &AxisLength,
@@ -209,14 +256,14 @@ namespace TrenchBroom {
                 &TransparentFaceAlpha,
                 &EdgeColor,
                 &SelectedEdgeColor,
-                &OccludedSelectedEdgeColor,
+                &OccludedSelectedEdgeAlpha,
                 &LockedEdgeColor,
                 &UndefinedEntityColor,
                 &SelectionBoundsColor,
                 &InfoOverlayTextColor,
                 &GroupInfoOverlayTextColor,
                 &InfoOverlayBackgroundColor,
-                &WeakInfoOverlayBackgroundColor,
+                &WeakInfoOverlayBackgroundAlpha,
                 &SelectedInfoOverlayTextColor,
                 &SelectedInfoOverlayBackgroundColor,
                 &LockedInfoOverlayTextColor,
@@ -235,7 +282,7 @@ namespace TrenchBroom {
                 &ScaleHandleColor,
                 &ScaleFillColor,
                 &ScaleOutlineColor,
-                &ScaleOutlineDimColor,
+                &ScaleOutlineDimAlpha,
                 &ShearFillColor,
                 &ShearOutlineColor,
                 &MoveTraceColor,
@@ -256,6 +303,7 @@ namespace TrenchBroom {
                 &BrowserFontSize,
                 &BrowserTextColor,
                 &BrowserSubTextColor,
+                &BrowserBackgroundColor,
                 &BrowserGroupBackgroundColor,
                 &TextureBrowserIconSize,
                 &TextureBrowserDefaultColor,
@@ -280,7 +328,20 @@ namespace TrenchBroom {
                 &CameraFlyLeft(),
                 &CameraFlyRight(),
                 &CameraFlyUp(),
-                &CameraFlyDown()
+                &CameraFlyDown(),
+                &ShowEntityClassnames,
+                &ShowGroupBounds,
+                &ShowBrushEntityBounds,
+                &ShowPointEntityBounds,
+                &ShowPointEntityModels,
+                &FaceRenderMode,
+                &ShadeFaces,
+                &ShowFog,
+                &ShowEdges,
+                &ShowSoftMapBounds,
+                &ShowPointEntities,
+                &ShowBrushes,
+                &EntityLinkMode
             };
 
             return list;
@@ -312,6 +373,7 @@ namespace TrenchBroom {
         }
 
         DynamicPreferencePattern<QString>      GamesPath(IO::Path("Games/*/Path"));
+        DynamicPreferencePattern<QString>      GamesToolPath(IO::Path("Games/*/Tool Path/*"));
         DynamicPreferencePattern<QString>      GamesDefaultEngine(IO::Path("Games/*/Default Engine"));
         DynamicPreferencePattern<QKeySequence> FiltersTagsToggle(IO::Path("Filters/Tags/*/Toggle Visible"));
         DynamicPreferencePattern<QKeySequence> TagsEnable(IO::Path("Tags/*/Enable"));
@@ -322,6 +384,7 @@ namespace TrenchBroom {
         const std::vector<DynamicPreferencePatternBase*>& dynaimcPreferencePatterns() {
             static const std::vector<DynamicPreferencePatternBase*> list {
                 &GamesPath,
+                &GamesToolPath,
                 &GamesDefaultEngine,
                 &FiltersTagsToggle,
                 &TagsEnable,

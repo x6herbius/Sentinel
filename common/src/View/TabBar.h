@@ -17,26 +17,28 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TabBar
-#define TrenchBroom_TabBar
+#pragma once
 
 #include "View/ContainerBar.h"
 
 #include <vector>
 
-#include <QLabel>
+#include <QWidget>
 
-class QStackedLayout;
 class QHBoxLayout;
+class QLabel;
+class QStackedLayout;
 
 namespace TrenchBroom {
     namespace View {
         class TabBook;
         class TabBookPage;
 
-        class TabBarButton : public QLabel {
+        class TabBarButton : public QWidget {
             Q_OBJECT
         private:
+            QLabel* m_label;
+            QWidget* m_indicator;
             bool m_pressed;
         public:
             explicit TabBarButton(const QString& label = "", QWidget* parent = nullptr);
@@ -51,7 +53,7 @@ namespace TrenchBroom {
             void clicked();
 
         private:
-            void updateLabel();
+            void updateState();
         };
 
         class TabBar : public ContainerBar {
@@ -78,4 +80,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_TabBar) */

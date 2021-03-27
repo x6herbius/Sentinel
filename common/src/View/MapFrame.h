@@ -17,15 +17,16 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapFrame
-#define TrenchBroom_MapFrame
+#pragma once
 
 #include "Model/MapFormat.h"
 #include "View/Selection.h"
 
 #include <QMainWindow>
 #include <QPointer>
+#include <QDialog>
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <string>
@@ -43,6 +44,10 @@ class QToolBar;
 namespace TrenchBroom {
     class Logger;
 
+    namespace Assets {
+        class Texture;
+    }
+
     namespace IO {
         class Path;
     }
@@ -50,8 +55,8 @@ namespace TrenchBroom {
     namespace Model {
         enum class ExportFormat;
         class Game;
-        class Group;
-        class Layer;
+        class GroupNode;
+        class LayerNode;
     }
 
     namespace View {
@@ -75,6 +80,7 @@ namespace TrenchBroom {
             FrameManager* m_frameManager;
             std::shared_ptr<MapDocument> m_document;
 
+            std::chrono::time_point<std::chrono::system_clock> m_lastInputTime;
             std::unique_ptr<Autosaver> m_autosaver;
             QTimer* m_autosaveTimer;
 
@@ -104,8 +110,6 @@ namespace TrenchBroom {
             QMenu* m_recentDocumentsMenu;
             QAction* m_undoAction;
             QAction* m_redoAction;
-            QAction* m_pasteAction;
-            QAction* m_pasteAtOriginalPositionAction;
         public:
             MapFrame(FrameManager* frameManager, std::shared_ptr<MapDocument> document);
             ~MapFrame() override;
@@ -114,6 +118,7 @@ namespace TrenchBroom {
             std::shared_ptr<MapDocument> document() const;
         public: // getters and such
             Logger& logger() const;
+            QAction* findAction(const IO::Path& path);
         private: // title bar contents
             void updateTitle();
         private: // menu bar
@@ -121,7 +126,6 @@ namespace TrenchBroom {
             void updateShortcuts();
             void updateActionState();
             void updateUndoRedoActions();
-            void updatePasteActions();
 
             void addRecentDocumentsMenu();
             void removeRecentDocumentsMenu();
@@ -152,9 +156,11 @@ namespace TrenchBroom {
             void toolDeactivated(Tool* tool);
             void toolHandleSelectionChanged(Tool* tool);
             void selectionDidChange(const Selection& selection);
-            void currentLayerDidChange(const TrenchBroom::Model::Layer* layer);
-            void groupWasOpened(Model::Group* group);
-            void groupWasClosed(Model::Group* group);
+            void currentLayerDidChange(const TrenchBroom::Model::LayerNode* layer);
+            void groupWasOpened(Model::GroupNode* group);
+            void groupWasClosed(Model::GroupNode* group);
+            void nodeVisibilityDidChange(const std::vector<Model::Node*>& nodes);
+            void editorContextDidChange();
         private: // menu event handlers
             void bindEvents();
         public:
@@ -162,10 +168,13 @@ namespace TrenchBroom {
             bool openDocument(std::shared_ptr<Model::Game> game, Model::MapFormat mapFormat, const IO::Path& path);
             bool saveDocument();
             bool saveDocumentAs();
+            bool revertDocument();
             bool exportDocumentAsObj();
+            bool exportDocumentAsMap();
             bool exportDocument(Model::ExportFormat format, const IO::Path& path);
         private:
             bool confirmOrDiscardChanges();
+            bool confirmRevertDocument();
         public:
             void loadPointFile();
             void reloadPointFile();
@@ -235,6 +244,8 @@ namespace TrenchBroom {
             void renameSelectedGroups();
             bool canRenameSelectedGroups() const;
 
+            bool anyToolActive() const;
+            
             void toggleCreateComplexBrushTool();
             bool canToggleCreateComplexBrushTool() const;
             bool createComplexBrushToolActive() const;
@@ -335,9 +346,13 @@ namespace TrenchBroom {
             bool currentViewMaximized();
 
             void showCompileDialog();
-            void compilationDialogWillClose();
 
             void showLaunchEngineDialog();
+
+            bool canRevealTexture() const;
+            void revealTexture();
+
+            void revealTexture(const Assets::Texture* texture);
 
             void debugPrintVertices();
             void debugCreateBrush();
@@ -346,6 +361,7 @@ namespace TrenchBroom {
             void debugCrash();
             void debugThrowExceptionDuringCommand();
             void debugSetWindowSize();
+            void debugShowPalette();
 
             void focusChange(QWidget* oldFocus, QWidget* newFocus);
 
@@ -356,10 +372,18 @@ namespace TrenchBroom {
         protected: // other event handlers
             void changeEvent(QEvent* event) override;
             void closeEvent(QCloseEvent* event) override;
+        public: // event filter (suppress autosave for user input events)
+            bool eventFilter(QObject* target, QEvent* event) override;
         private:
             void triggerAutosave();
+        };
+
+        class DebugPaletteWindow : public QDialog {
+            Q_OBJECT
+        public:
+            DebugPaletteWindow(QWidget *parent = nullptr);
+            virtual ~DebugPaletteWindow();
         };
     }
 }
 
-#endif /* defined(TrenchBroom_MapFrame) */

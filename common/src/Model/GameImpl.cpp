@@ -21,6 +21,7 @@
 
 #include "Ensure.h"
 #include "Exceptions.h"
+#include "Logger.h"
 #include "Macros.h"
 #include "Assets/Palette.h"
 #include "Assets/EntityModel.h"
@@ -36,6 +37,7 @@
 #include "IO/FgdParser.h"
 #include "IO/File.h"
 #include "IO/FileMatcher.h"
+#include "IO/GameConfigParser.h"
 #include "IO/IOUtils.h"
 #include "IO/MdlParser.h"
 #include "IO/Md2Parser.h"
@@ -49,19 +51,26 @@
 #include "IO/SimpleParserStatus.h"
 #include "IO/SystemPaths.h"
 #include "IO/TextureLoader.h"
-#include "Model/Brush.h"
 #include "Model/BrushBuilder.h"
-#include "Model/EntityAttributes.h"
+#include "Model/BrushError.h"
+#include "Model/BrushNode.h"
+#include "Model/Entity.h"
+#include "Model/EntityProperties.h"
 #include "Model/ExportFormat.h"
 #include "Model/GameConfig.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 
+#include <kdl/overload.h>
+#include <kdl/result.h>
 #include <kdl/string_compare.h>
 #include <kdl/string_format.h>
 #include <kdl/string_utils.h>
 #include <kdl/vector_utils.h>
 
+#include <vecmath/vec_io.h>
+
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -110,7 +119,7 @@ namespace TrenchBroom {
             return result;
         }
 
-        CompilationConfig& GameImpl::doCompilationConfig() {
+        const CompilationConfig& GameImpl::doCompilationConfig() {
             return m_config.compilationConfig();
         }
 
@@ -118,73 +127,111 @@ namespace TrenchBroom {
             return m_config.maxPropertyLength();
         }
 
+        std::optional<vm::bbox3> GameImpl::doSoftMapBounds() const {
+            return m_config.softMapBounds();
+        }
+
+        Game::SoftMapBounds GameImpl::doExtractSoftMapBounds(const Entity& entity) const {
+            if (!entity.hasProperty(PropertyKeys::SoftMapBounds)) {
+                // Not set in map -> use Game value
+                return {SoftMapBoundsType::Game, doSoftMapBounds()};
+            }
+
+            if (const auto* mapValue = entity.property(PropertyKeys::SoftMapBounds); mapValue && *mapValue != PropertyValues::NoSoftMapBounds) {
+                return {SoftMapBoundsType::Map, IO::parseSoftMapBoundsString(*mapValue)};
+            } else {
+                return {SoftMapBoundsType::Map, std::nullopt};
+            }
+        }
+
         const std::vector<SmartTag>& GameImpl::doSmartTags() const {
             return m_config.smartTags();
         }
 
-        std::unique_ptr<World> GameImpl::doNewMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::unique_ptr<WorldNode> GameImpl::doNewMap(const MapFormat format, const vm::bbox3& worldBounds, Logger& logger) const {
             const auto initialMapFilePath = m_config.findInitialMap(formatName(format));
             if (!initialMapFilePath.isEmpty() && IO::Disk::fileExists(initialMapFilePath)) {
                 return doLoadMap(format, worldBounds, initialMapFilePath, logger);
             } else {
-                auto world = std::make_unique<World>(format);
-
-                const Model::BrushBuilder builder(world.get(), worldBounds, defaultFaceAttribs());
-                auto* brush = builder.createCuboid(vm::vec3(128.0, 128.0, 32.0), Model::BrushFaceAttributes::NoTextureName);
-                world->defaultLayer()->addChild(brush);
-
+                auto worldEntity = Model::Entity();
                 if (format == MapFormat::Valve || format == MapFormat::Quake2_Valve || format == MapFormat::Quake3_Valve) {
-                    world->addOrUpdateAttribute(AttributeNames::ValveVersion, "220");
+                    worldEntity.addOrUpdateProperty(PropertyKeys::ValveVersion, "220");
                 }
 
-                return world;
+                auto worldNode = std::make_unique<WorldNode>(std::move(worldEntity), format);
+
+                const Model::BrushBuilder builder(worldNode->mapFormat(), worldBounds, defaultFaceAttribs());
+                builder.createCuboid(vm::vec3(128.0, 128.0, 32.0), Model::BrushFaceAttributes::NoTextureName).
+                    visit(kdl::overload(
+                        [&](Brush&& b) {
+                            worldNode->defaultLayer()->addChild(new BrushNode(std::move(b)));
+                        },
+                        [&](const Model::BrushError e) {
+                            logger.error() << "Could not create default brush: " << e;
+                        }
+                    ));
+
+                return worldNode;
             }
         }
 
-        std::unique_ptr<World> GameImpl::doLoadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
+        std::unique_ptr<WorldNode> GameImpl::doLoadMap(const MapFormat format, const vm::bbox3& worldBounds, const IO::Path& path, Logger& logger) const {
             IO::SimpleParserStatus parserStatus(logger);
             auto file = IO::Disk::openFile(IO::Disk::fixPath(path));
             auto fileReader = file->reader().buffer();
-            IO::WorldReader worldReader(std::begin(fileReader), std::end(fileReader));
-            return worldReader.read(format, worldBounds, parserStatus);
+            IO::WorldReader worldReader(fileReader.stringView(), format);
+            return worldReader.read(worldBounds, parserStatus);
         }
 
-        void GameImpl::doWriteMap(World& world, const IO::Path& path) const {
-            const auto mapFormatName = formatName(world.format());
+        void GameImpl::doWriteMap(WorldNode& world, const IO::Path& path, const bool exporting) const {
+            const auto mapFormatName = formatName(world.mapFormat());
 
-            IO::OpenFile open(path, true);
-            IO::writeGameComment(open.file, gameName(), mapFormatName);
+            std::ofstream file = openPathAsOutputStream(path);
+            if (!file) {
+                throw FileSystemException("Cannot open file: " + path.asString());
+            }
+            IO::writeGameComment(file, gameName(), mapFormatName);
 
-            IO::NodeWriter writer(world, open.file);
+            IO::NodeWriter writer(world, file);
+            writer.setExporting(exporting);
             writer.writeMap();
         }
 
-        void GameImpl::doExportMap(World& world, const Model::ExportFormat format, const IO::Path& path) const {
+        void GameImpl::doWriteMap(WorldNode& world, const IO::Path& path) const {
+            doWriteMap(world, path, false);
+        }
+
+        void GameImpl::doExportMap(WorldNode& world, const Model::ExportFormat format, const IO::Path& path) const {
             switch (format) {
-                case Model::ExportFormat::WavefrontObj:
-                    IO::NodeWriter(world, new IO::ObjFileSerializer(path)).writeMap();
+                case Model::ExportFormat::WavefrontObj: {
+                    IO::NodeWriter writer(world, std::make_unique<IO::ObjFileSerializer>(path));
+                    writer.setExporting(true);
+                    writer.writeMap();
+                    break;
+                }
+                case Model::ExportFormat::Map:
+                    doWriteMap(world, path, true);
                     break;
             }
         }
 
-        std::vector<Node*> GameImpl::doParseNodes(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
+        std::vector<Node*> GameImpl::doParseNodes(const std::string& str, const MapFormat mapFormat, const vm::bbox3& worldBounds, Logger& logger) const {
             IO::SimpleParserStatus parserStatus(logger);
-            IO::NodeReader reader(str, world);
+            return IO::NodeReader::read(str, mapFormat, worldBounds, parserStatus);
+        }
+
+        std::vector<BrushFace> GameImpl::doParseBrushFaces(const std::string& str, const MapFormat mapFormat, const vm::bbox3& worldBounds, Logger& logger) const {
+            IO::SimpleParserStatus parserStatus(logger);
+            IO::BrushFaceReader reader(str, mapFormat);
             return reader.read(worldBounds, parserStatus);
         }
 
-        std::vector<BrushFace*> GameImpl::doParseBrushFaces(const std::string& str, World& world, const vm::bbox3& worldBounds, Logger& logger) const {
-            IO::SimpleParserStatus parserStatus(logger);
-            IO::BrushFaceReader reader(str, world);
-            return reader.read(worldBounds, parserStatus);
-        }
-
-        void GameImpl::doWriteNodesToStream(World& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
+        void GameImpl::doWriteNodesToStream(WorldNode& world, const std::vector<Node*>& nodes, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeNodes(nodes);
         }
 
-        void GameImpl::doWriteBrushFacesToStream(World& world, const std::vector<BrushFace*>& faces, std::ostream& stream) const {
+        void GameImpl::doWriteBrushFacesToStream(WorldNode& world, const std::vector<BrushFace>& faces, std::ostream& stream) const {
             IO::NodeWriter writer(world, stream);
             writer.writeBrushFaces(faces);
         }
@@ -202,8 +249,8 @@ namespace TrenchBroom {
             }
         }
 
-        void GameImpl::doLoadTextureCollections(AttributableNode& node, const IO::Path& documentPath, Assets::TextureManager& textureManager, Logger& logger) const {
-            const auto paths = extractTextureCollections(node);
+        void GameImpl::doLoadTextureCollections(const Entity& entity, const IO::Path& documentPath, Assets::TextureManager& textureManager, Logger& logger) const {
+            const auto paths = extractTextureCollections(entity);
 
             const auto fileSearchPaths = textureCollectionSearchPaths(documentPath);
             IO::TextureLoader textureLoader(m_fs, fileSearchPaths, m_config.textureConfig(), logger);
@@ -241,7 +288,7 @@ namespace TrenchBroom {
             try {
                 const auto& searchPath = m_config.textureConfig().package.rootDirectory;
                 if (!searchPath.isEmpty() && m_fs.directoryExists(searchPath)) {
-                    return m_fs.findItems(searchPath, IO::FileTypeMatcher(false, true));
+                    return kdl::vec_concat(std::vector<IO::Path>({searchPath}), m_fs.findItemsRecursively(searchPath, IO::FileTypeMatcher(false, true)));
                 }
                 return std::vector<IO::Path>();
             } catch (FileSystemException& e) {
@@ -249,28 +296,32 @@ namespace TrenchBroom {
             }
         }
 
-        std::vector<IO::Path> GameImpl::doExtractTextureCollections(const AttributableNode& node) const {
-            const auto& property = m_config.textureConfig().attribute;
-            if (property.empty()) {
-                return std::vector<IO::Path>(0);
-            }
-
-            const auto& pathsValue = node.attribute(property);
-            if (pathsValue.empty()) {
-                return std::vector<IO::Path>(0);
-            }
-
-            return IO::Path::asPaths(kdl::str_split(pathsValue, ";"));
+        std::vector<std::string> GameImpl::doFileTextureCollectionExtensions() const {
+            return m_config.textureConfig().package.fileFormat.extensions;
         }
 
-        void GameImpl::doUpdateTextureCollections(AttributableNode& node, const std::vector<IO::Path>& paths) const {
-            const auto& attribute = m_config.textureConfig().attribute;
+        std::vector<IO::Path> GameImpl::doExtractTextureCollections(const Entity& entity) const {
+            const auto& property = m_config.textureConfig().property;
+            if (property.empty()) {
+                return {};
+            }
+
+            const auto* pathsValue = entity.property(property);
+            if (!pathsValue) {
+                return {};
+            }
+            
+            return IO::Path::asPaths(kdl::str_split(*pathsValue, ";"));
+        }
+
+        void GameImpl::doUpdateTextureCollections(Entity& entity, const std::vector<IO::Path>& paths) const {
+            const auto& attribute = m_config.textureConfig().property;
             if (attribute.empty()) {
                 return;
             }
 
             const auto value = kdl::str_join(IO::Path::asStrings(paths, "/"), ";");
-            node.addOrUpdateAttribute(attribute, value);
+            entity.addOrUpdateProperty(attribute, value);
         }
 
         void GameImpl::doReloadShaders() {
@@ -297,17 +348,17 @@ namespace TrenchBroom {
             if (kdl::ci::str_is_equal("fgd", extension)) {
                 auto file = IO::Disk::openFile(IO::Disk::fixPath(path));
                 auto reader = file->reader().buffer();
-                IO::FgdParser parser(std::begin(reader), std::end(reader), defaultColor, file->path());
+                IO::FgdParser parser(reader.stringView(), defaultColor, file->path());
                 return parser.parseDefinitions(status);
             } else if (kdl::ci::str_is_equal("def", extension)) {
                 auto file = IO::Disk::openFile(IO::Disk::fixPath(path));
                 auto reader = file->reader().buffer();
-                IO::DefParser parser(std::begin(reader), std::end(reader), defaultColor);
+                IO::DefParser parser(reader.stringView(), defaultColor);
                 return parser.parseDefinitions(status);
             } else if (kdl::ci::str_is_equal("ent", extension)) {
                 auto file = IO::Disk::openFile(IO::Disk::fixPath(path));
                 auto reader = file->reader().buffer();
-                IO::EntParser parser(std::begin(reader), std::end(reader), defaultColor);
+                IO::EntParser parser(reader.stringView(), defaultColor);
                 return parser.parseDefinitions(status);
             } else {
                 throw GameException("Unknown entity definition format: '" + path.asString() + "'");
@@ -328,12 +379,12 @@ namespace TrenchBroom {
             return result;
         }
 
-        Assets::EntityDefinitionFileSpec GameImpl::doExtractEntityDefinitionFile(const AttributableNode& node) const {
-            const auto& defValue = node.attribute(AttributeNames::EntityDefinitions);
-            if (defValue.empty()) {
+        Assets::EntityDefinitionFileSpec GameImpl::doExtractEntityDefinitionFile(const Entity& entity) const {
+            if (const auto* defValue = entity.property(PropertyKeys::EntityDefinitions)) {
+                return Assets::EntityDefinitionFileSpec::parse(*defValue);
+            } else {
                 return defaultEntityDefinitionFile();
             }
-            return Assets::EntityDefinitionFileSpec::parse(defValue);
         }
 
         Assets::EntityDefinitionFileSpec GameImpl::defaultEntityDefinitionFile() const {
@@ -401,7 +452,7 @@ namespace TrenchBroom {
                     return parser.initializeModel(logger);
                 } else if (extension == "ase" && kdl::vec_contains(supported, "ase")) {
                     auto reader = file->reader().buffer();
-                    IO::AseParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    IO::AseParser parser(modelName, reader.stringView(), m_fs);
                     return parser.initializeModel(logger);
                 } else if (extension == "obj" && kdl::vec_contains(supported, "obj_neverball")) {
                     auto reader = file->reader().buffer();
@@ -461,7 +512,7 @@ namespace TrenchBroom {
                     parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "ase" && kdl::vec_contains(supported, "ase")) {
                     auto reader = file->reader().buffer();
-                    IO::AseParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    IO::AseParser parser(modelName, reader.stringView(), m_fs);
                     parser.loadFrame(frameIndex, model, logger);
                 } else if (extension == "obj" && kdl::vec_contains(supported, "obj_neverball")) {
                     auto reader = file->reader().buffer();
@@ -501,14 +552,12 @@ namespace TrenchBroom {
             return result;
         }
 
-        std::vector<std::string> GameImpl::doExtractEnabledMods(const AttributableNode& node) const {
-            std::vector<std::string> result;
-            const auto& modStr = node.attribute(AttributeNames::Mods);
-            if (modStr.empty()) {
-                return result;
+        std::vector<std::string> GameImpl::doExtractEnabledMods(const Entity& entity) const {
+            if (const auto* modStr = entity.property(PropertyKeys::Mods)) {
+                return kdl::str_split(*modStr, ";");
+            } else {
+                return {};
             }
-
-            return kdl::str_split(modStr, ";");
         }
 
         std::string GameImpl::doDefaultMod() const {
@@ -527,24 +576,35 @@ namespace TrenchBroom {
             return m_config.faceAttribsConfig().defaults;
         }
 
-        void GameImpl::writeLongAttribute(AttributableNode& node, const std::string& baseName, const std::string& value, const size_t maxLength) const {
-            node.removeNumberedAttribute(baseName);
+        const std::vector<CompilationTool>& GameImpl::doCompilationTools() const {
+            return m_config.compilationTools();
+        }
+
+        void GameImpl::writeLongAttribute(EntityNodeBase& node, const std::string& baseName, const std::string& value, const size_t maxLength) const {
+            auto entity = node.entity();
+            entity.removeNumberedProperty(baseName);
 
             std::stringstream nameStr;
             for (size_t i = 0; i <= value.size() / maxLength; ++i) {
                 nameStr.str("");
                 nameStr << baseName << i+1;
-                node.addOrUpdateAttribute(nameStr.str(), value.substr(i * maxLength, maxLength));
+                entity.addOrUpdateProperty(nameStr.str(), value.substr(i * maxLength, maxLength));
             }
+
+            node.setEntity(std::move(entity));
         }
 
-        std::string GameImpl::readLongAttribute(const AttributableNode& node, const std::string& baseName) const {
+        std::string GameImpl::readLongAttribute(const EntityNodeBase& node, const std::string& baseName) const {
             size_t index = 1;
             std::stringstream nameStr;
             std::stringstream valueStr;
             nameStr << baseName << index;
-            while (node.hasAttribute(nameStr.str())) {
-                valueStr << node.attribute(nameStr.str());
+
+            const auto& entity = node.entity();
+            while (entity.hasProperty(nameStr.str())) {
+                if (const auto* value = entity.property(nameStr.str())) {
+                    valueStr << *value;
+                }
                 nameStr.str("");
                 nameStr << baseName << ++index;
             }

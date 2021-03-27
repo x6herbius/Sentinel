@@ -15,8 +15,7 @@
  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef KDL_SET_ADAPTER_H
-#define KDL_SET_ADAPTER_H
+#pragma once
 
 #include "collection_utils.h"
 
@@ -930,10 +929,9 @@ namespace kdl {
      * @return a set adapter using the given collection as its underlying collection
      */
     template <typename C, typename Compare = std::less<typename C::value_type>>
-    set_adapter<C&, Compare> create_set(C& data, const Compare& cmp = Compare()) {
+    set_adapter<C, Compare> create_set(C data, const Compare& cmp = Compare()) {
         detail::sort_unique(data, cmp);
-        return set_adapter<C&, Compare>(data, cmp);
+        return set_adapter<C, Compare>(std::move(data), cmp);
     }
 }
 
-#endif //KDL_SET_ADAPTER_H

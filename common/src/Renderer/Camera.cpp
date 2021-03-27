@@ -156,8 +156,8 @@ namespace TrenchBroom {
             return vm::ray3f(m_position, m_direction);
         }
 
-        vm::ray3f Camera::pickRay(const int x, const int y) const {
-            return doGetPickRay(unproject(static_cast<float>(x), static_cast<float>(y), 0.5f));
+        vm::ray3f Camera::pickRay(const float x, const float y) const {
+            return doGetPickRay(unproject(x, y, 0.5f));
         }
 
         vm::ray3f Camera::pickRay(const vm::vec3f& point) const {
@@ -180,7 +180,7 @@ namespace TrenchBroom {
             return m_position + distance * direction();
         }
 
-        vm::vec3f Camera::defaultPoint(const int x, const int y) const {
+        vm::vec3f Camera::defaultPoint(const float x, const float y) const {
             const vm::ray3f ray = pickRay(x, y);
             return defaultPoint(ray);
         }
@@ -370,7 +370,7 @@ namespace TrenchBroom {
 
         Camera::Camera() :
         m_nearPlane(1.0f),
-        m_farPlane(8000.0f),
+        m_farPlane(65536.0f),
         m_viewport(Viewport(0, 0, 1024, 768)),
         m_zoom(1.0f),
         m_position(vm::vec3f::zero()),

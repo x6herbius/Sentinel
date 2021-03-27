@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_MD3PARSER_H
-#define TRENCHBROOM_MD3PARSER_H
+#pragma once
 
 #include "Assets/EntityModel_Forward.h"
 #include "IO/EntityModelParser.h"
@@ -66,7 +65,7 @@ namespace TrenchBroom {
             std::vector<Assets::EntityModelVertex> buildVertices(const std::vector<vm::vec3f>& positions, const std::vector<vm::vec2f>& texCoords);
 
             void loadSurfaceSkins(Assets::EntityModelSurface& surface, const std::vector<Path>& shaders, Logger& logger);
-            std::unique_ptr<Assets::Texture> loadShader(Logger& logger, const Path& path) const;
+            Assets::Texture loadShader(Logger& logger, const Path& path) const;
             
             void buildFrameSurface(Assets::EntityModelLoadedFrame& frame, Assets::EntityModelSurface& surface, const std::vector<Md3Parser::Md3Triangle>& triangles, const std::vector<Assets::EntityModelVertex>& vertices);
         };
@@ -74,4 +73,3 @@ namespace TrenchBroom {
 }
 
 
-#endif //TRENCHBROOM_MD3PARSER_H

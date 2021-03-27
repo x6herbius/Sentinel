@@ -19,17 +19,18 @@
 
 #include "ResizeBrushesTool.h"
 
+#include "Exceptions.h"
 #include "Preferences.h"
 #include "PreferenceManager.h"
 #include "FloatType.h"
 #include "Model/Brush.h"
+#include "Model/BrushError.h"
 #include "Model/BrushFace.h"
+#include "Model/BrushFaceHandle.h"
 #include "Model/BrushGeometry.h"
-#include "Model/CollectMatchingBrushFacesVisitor.h"
-#include "Model/FindMatchingBrushFaceVisitor.h"
+#include "Model/BrushNode.h"
 #include "Model/HitAdapter.h"
 #include "Model/HitQuery.h"
-#include "Model/NodeVisitor.h"
 #include "Model/PickResult.h"
 #include "Model/Polyhedron.h"
 #include "Renderer/Camera.h"
@@ -37,7 +38,11 @@
 #include "View/MapDocument.h"
 
 #include <kdl/collection_utils.h>
+#include <kdl/map_utils.h>
 #include <kdl/memory_utils.h>
+#include <kdl/overload.h>
+#include <kdl/result.h>
+#include <kdl/result_for_each.h>
 #include <kdl/vector_utils.h>
 
 #include <vecmath/vec.h>
@@ -53,8 +58,8 @@
 
 namespace TrenchBroom {
     namespace View {
-        const Model::HitType::Type ResizeBrushesTool::ResizeHit2D = Model::HitType::freeType();
-        const Model::HitType::Type ResizeBrushesTool::ResizeHit3D = Model::HitType::freeType();
+        const Model::HitType::Type ResizeBrushesTool::Resize2DHitType = Model::HitType::freeType();
+        const Model::HitType::Type ResizeBrushesTool::Resize3DHitType = Model::HitType::freeType();
 
         ResizeBrushesTool::ResizeBrushesTool(std::weak_ptr<MapDocument> document) :
         Tool(true),
@@ -75,112 +80,104 @@ namespace TrenchBroom {
 
         Model::Hit ResizeBrushesTool::pick2D(const vm::ray3& pickRay, const Model::PickResult& pickResult) {
             auto document = kdl::mem_lock(m_document);
-            const auto& hit = pickResult.query().pickable().type(Model::Brush::BrushHit).occluded().selected().first();
+            const auto& hit = pickResult.query().pickable().type(Model::BrushNode::BrushHitType).occluded().selected().first();
             if (hit.isMatch()) {
                 return Model::Hit::NoHit;
             } else {
-                return pickProximateFace(ResizeHit2D, pickRay);
+                return pickProximateFace(Resize2DHitType, pickRay);
             }
         }
 
         Model::Hit ResizeBrushesTool::pick3D(const vm::ray3& pickRay, const Model::PickResult& pickResult) {
             auto document = kdl::mem_lock(m_document);
-            const auto& hit = pickResult.query().pickable().type(Model::Brush::BrushHit).occluded().selected().first();
-            if (hit.isMatch()) {
-                return Model::Hit(ResizeHit3D, hit.distance(), hit.hitPoint(), Model::hitToFace(hit));
+            const auto& hit = pickResult.query().pickable().type(Model::BrushNode::BrushHitType).occluded().selected().first();
+            if (const auto faceHandle = hitToFaceHandle(hit)) {
+                return Model::Hit(Resize3DHitType, hit.distance(), hit.hitPoint(), *faceHandle);
             } else {
-                return pickProximateFace(ResizeHit3D, pickRay);
+                return pickProximateFace(Resize3DHitType, pickRay);
             }
         }
 
-        class ResizeBrushesTool::PickProximateFace : public Model::ConstNodeVisitor, public Model::NodeQuery<Model::Hit> {
-        private:
-            const Model::HitType::Type m_hitType;
-            const vm::ray3& m_pickRay;
-            FloatType m_closest;
-        public:
-            PickProximateFace(const Model::HitType::Type hitType, const vm::ray3& pickRay) :
-            NodeQuery(Model::Hit::NoHit),
-            m_hitType(hitType),
-            m_pickRay(pickRay),
-            m_closest(std::numeric_limits<FloatType>::max()) {}
-        private:
-            void doVisit(const Model::World*) override  {}
-            void doVisit(const Model::Layer*) override  {}
-            void doVisit(const Model::Group*) override  {}
-            void doVisit(const Model::Entity*) override {}
-            void doVisit(const Model::Brush* brush) override   {
-                for (const auto* edge : brush->edges())
-                    visitEdge(edge);
-            }
-
-            void visitEdge(const Model::BrushEdge* edge) {
-                auto* left = edge->firstFace()->payload();
-                auto* right = edge->secondFace()->payload();
-                const auto leftDot  = dot(left->boundary().normal,  m_pickRay.direction);
-                const auto rightDot = dot(right->boundary().normal, m_pickRay.direction);
-
-                if ((leftDot > 0.0) != (rightDot > 0.0)) {
-                    const auto result = vm::distance(m_pickRay, vm::segment3(edge->firstVertex()->position(), edge->secondVertex()->position()));
-                    if (!vm::is_nan(result.distance) && result.distance < m_closest) {
-                        m_closest = result.distance;
-                        const auto hitPoint = vm::point_at_distance(m_pickRay, result.position1);
-                        if (m_hitType == ResizeBrushesTool::ResizeHit2D) {
-                            std::vector<Model::BrushFace*> faces;
-                            if (vm::is_zero(leftDot, vm::C::almost_zero())) {
-                                faces.push_back(left);
-                            } else if (vm::is_zero(rightDot, vm::C::almost_zero())) {
-                                faces.push_back(right);
-                            } else {
-                                if (vm::abs(leftDot) < 1.0) {
-                                    faces.push_back(left);
-                                }
-                                if (vm::abs(rightDot) < 1.0) {
-                                    faces.push_back(right);
-                                }
-                            }
-                            setResult(Model::Hit(m_hitType, result.position1, hitPoint, faces));
-                        } else {
-                            auto* face = leftDot > rightDot ? left : right;
-                            setResult(Model::Hit(m_hitType, result.position1, hitPoint, face));
-                        }
-                    }
-                }
-            }
-        };
-
         Model::Hit ResizeBrushesTool::pickProximateFace(const Model::HitType::Type hitType, const vm::ray3& pickRay) const {
-            PickProximateFace visitor(hitType, pickRay);
-
             auto document = kdl::mem_lock(m_document);
             const auto& nodes = document->selectedNodes().nodes();
-            Model::Node::accept(std::begin(nodes), std::end(nodes), visitor);
 
-            if (!visitor.hasResult()) {
-                return Model::Hit::NoHit;
-            } else {
-                return visitor.result();
+            auto closestDistance = std::numeric_limits<FloatType>::max();
+            auto hit = Model::Hit::NoHit;
+
+            for (auto* node : nodes) {
+                node->accept(kdl::overload(
+                    [] (Model::WorldNode*) {},
+                    [] (Model::LayerNode*) {},
+                    [] (Model::GroupNode*) {},
+                    [] (Model::EntityNode*){},
+                    [&](Model::BrushNode* brushNode) {
+                        const auto& brush = brushNode->brush();
+                        for (const auto* edge : brush.edges()) {
+                            const auto leftFaceIndex = edge->firstFace()->payload();
+                            const auto rightFaceIndex = edge->secondFace()->payload();
+                            assert(leftFaceIndex && rightFaceIndex);
+                            
+                            const auto& leftFace = brush.face(*leftFaceIndex);
+                            const auto& rightFace = brush.face(*rightFaceIndex);
+                            const auto leftDot  = dot(leftFace.boundary().normal,  pickRay.direction);
+                            const auto rightDot = dot(rightFace.boundary().normal, pickRay.direction);
+
+                            const auto leftFaceHandle = Model::BrushFaceHandle(brushNode, *leftFaceIndex);
+                            const auto rightFaceHandle = Model::BrushFaceHandle(brushNode, *rightFaceIndex);
+                            
+                            if ((leftDot > 0.0) != (rightDot > 0.0)) {
+                                const auto result = vm::distance(pickRay, vm::segment3(edge->firstVertex()->position(), edge->secondVertex()->position()));
+                                if (!vm::is_nan(result.distance) && result.distance < closestDistance) {
+                                    closestDistance = result.distance;
+                                    const auto hitPoint = vm::point_at_distance(pickRay, result.position1);
+                                    if (hitType == ResizeBrushesTool::Resize2DHitType) {
+                                        Resize2DHitData data;
+                                        if (vm::is_zero(leftDot, vm::C::almost_zero())) {
+                                            data.push_back(leftFaceHandle);
+                                        } else if (vm::is_zero(rightDot, vm::C::almost_zero())) {
+                                            data.push_back(rightFaceHandle);
+                                        } else {
+                                            if (vm::abs(leftDot) < 1.0) {
+                                                data.push_back(leftFaceHandle);
+                                            }
+                                            if (vm::abs(rightDot) < 1.0) {
+                                                data.push_back(rightFaceHandle);
+                                            }
+                                        }
+                                        hit = Model::Hit(hitType, result.position1, hitPoint, data);
+                                    } else {
+                                        const auto faceHandle = leftDot > rightDot ? leftFaceHandle : rightFaceHandle;
+                                        hit = Model::Hit(hitType, result.position1, hitPoint, faceHandle);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ));
             }
+
+            return hit;
         }
 
         bool ResizeBrushesTool::hasDragFaces() const {
             return !m_dragHandles.empty();
         }
 
-        std::vector<Model::BrushFace*> ResizeBrushesTool::dragFaces() const {
-            std::vector<Model::BrushFace*> result;
-            for (const auto& handle : m_dragHandles) {
-                const auto* brush = std::get<0>(handle);
-                const auto& normal = std::get<1>(handle);
-                auto* face = brush->findFace(normal);
-                assert(face != nullptr);
-                result.push_back(face);
-            }
-            return result;
+        std::vector<Model::BrushFaceHandle> ResizeBrushesTool::dragFaces() const {
+            return kdl::vec_transform(m_dragHandles, [](const auto& dragHandle) {
+                auto* brushNode = std::get<0>(dragHandle);
+                const auto& normal = std::get<1>(dragHandle);
+                
+                const auto& brush = brushNode->brush();
+                const auto faceIndex = brush.findFace(normal);
+                assert(faceIndex);
+                return Model::BrushFaceHandle(brushNode, *faceIndex);
+            });
         }
 
         void ResizeBrushesTool::updateDragFaces(const Model::PickResult& pickResult) {
-            const auto& hit = pickResult.query().type(ResizeHit2D | ResizeHit3D).occluded().first();
+            const auto& hit = pickResult.query().type(Resize2DHitType | Resize3DHitType).occluded().first();
             auto newDragHandles = getDragHandles(hit);
             if (newDragHandles != m_dragHandles) {
                 refreshViews();
@@ -198,61 +195,65 @@ namespace TrenchBroom {
             }
         }
 
-        class ResizeBrushesTool::MatchFaceBoundary {
-        private:
-            const Model::BrushFace* m_reference;
-        public:
-            explicit MatchFaceBoundary(const Model::BrushFace* reference) :
-            m_reference(reference) {
-                ensure(m_reference != nullptr, "reference is null");
-            }
-
-            bool operator()(Model::BrushFace* face) const {
-                return face != m_reference && vm::is_equal(face->boundary(), m_reference->boundary(),
-                    vm::C::almost_zero());
-            }
-        };
-
         std::vector<ResizeBrushesTool::FaceHandle> ResizeBrushesTool::collectDragHandles(const Model::Hit& hit) const {
             assert(hit.isMatch());
-            assert(hit.type() == ResizeHit2D || hit.type() == ResizeHit3D);
+            assert(hit.type() == Resize2DHitType || hit.type() == Resize3DHitType);
 
-            std::vector<Model::BrushFace*> result;
-            if (hit.type() == ResizeHit2D) {
-                const std::vector<Model::BrushFace*>& faces = hit.target<const std::vector<Model::BrushFace*>&>();
-                assert(!faces.empty());
-                kdl::vec_append(result, faces, collectDragFaces(faces[0]));
-                if (faces.size() > 1) {
-                    kdl::vec_append(result, collectDragFaces(faces[1]));
+            std::vector<Model::BrushFaceHandle> result;
+            if (hit.type() == Resize2DHitType) {
+                const Resize2DHitData& data = hit.target<const Resize2DHitData&>();
+                assert(!data.empty());
+                result = kdl::vec_concat(std::move(result), data, collectDragFaces(data[0]));
+                if (data.size() > 1) {
+                    result = kdl::vec_concat(std::move(result), collectDragFaces(data[1]));
                 }
             } else {
-                Model::BrushFace* face = hit.target<Model::BrushFace*>();
-                result.push_back(face);
-                kdl::vec_append(result, collectDragFaces(face));
+                const Resize3DHitData& data = hit.target<const Resize3DHitData&>();
+                result.push_back(data);
+                result = kdl::vec_concat(std::move(result), collectDragFaces(data));
             }
 
-            return getDragHandles(result);
+            return kdl::vec_transform(result, [](const auto& handle) {
+                return std::make_tuple(handle.node(), handle.face().boundary().normal);
+            });
         }
 
-        std::vector<Model::BrushFace*> ResizeBrushesTool::collectDragFaces(Model::BrushFace* face) const {
-            Model::CollectMatchingBrushFacesVisitor<MatchFaceBoundary> visitor((MatchFaceBoundary(face)));
+        std::vector<Model::BrushFaceHandle> ResizeBrushesTool::collectDragFaces(const Model::BrushFaceHandle& faceHandle) const {
+            auto result = std::vector<Model::BrushFaceHandle>{};
 
             auto document = kdl::mem_lock(m_document);
             const auto& nodes = document->selectedNodes().nodes();
-            Model::Node::accept(std::begin(nodes), std::end(nodes), visitor);
-            return visitor.faces();
-        }
 
-        std::vector<ResizeBrushesTool::FaceHandle> ResizeBrushesTool::getDragHandles(const std::vector<Model::BrushFace*>& faces) const {
-            std::vector<FaceHandle> result;
-            for (auto* face : faces) {
-                result.push_back(std::make_tuple(face->brush(), face->boundary().normal));
+            const auto& referenceFace = faceHandle.face();
+            for (auto* node : nodes) {
+                node->accept(kdl::overload(
+                    [] (Model::WorldNode*) {},
+                    [] (Model::LayerNode*) {},
+                    [] (Model::GroupNode*) {},
+                    [] (Model::EntityNode*){},
+                    [&](Model::BrushNode* brushNode) {
+                        const auto& brush = brushNode->brush();
+                        for (size_t i = 0; i < brush.faceCount(); ++i) {
+                            const auto& face = brush.face(i);
+                            if (&face == &referenceFace) {
+                                continue;
+                            }
+
+                            if (!face.coplanarWith(referenceFace.boundary())) {
+                                continue;
+                            }
+
+                            result.emplace_back(brushNode, i);
+                        }
+                    }
+                ));
             }
-            return result;
+
+            return result;            
         }
 
         bool ResizeBrushesTool::beginResize(const Model::PickResult& pickResult, const bool split) {
-            const auto& hit = pickResult.query().type(ResizeHit2D | ResizeHit3D).occluded().first();
+            const auto& hit = pickResult.query().type(Resize2DHitType | Resize3DHitType).occluded().first();
             if (!hit.isMatch()) {
                 return false;
             }
@@ -268,10 +269,12 @@ namespace TrenchBroom {
         }
 
         bool ResizeBrushesTool::resize(const vm::ray3& pickRay, const Renderer::Camera& /* camera */) {
-            assert(hasDragFaces());
-
-            auto* dragFace = dragFaces().front();
-            const auto& faceNormal = dragFace->boundary().normal;
+            const auto dragFaceHandles = dragFaces();
+            assert(!dragFaceHandles.empty());
+            
+            const auto dragFaceHandle = dragFaceHandles.front();
+            const auto& dragFace = dragFaceHandle.face();
+            const auto& faceNormal = dragFace.boundary().normal;
 
             const auto dist = vm::distance(pickRay, vm::line3(m_dragOrigin, faceNormal));
             if (dist.parallel) {
@@ -282,10 +285,9 @@ namespace TrenchBroom {
 
             auto document = kdl::mem_lock(m_document);
             const auto& grid = document->grid();
-            const auto relativeFaceDelta = grid.snap(dragDist) * faceNormal;
-            const auto absoluteFaceDelta = grid.moveDelta(dragFace, faceNormal * dragDist);
+            const auto unsnappedDelta = faceNormal * dragDist;
+            const auto faceDelta = grid.snap() ? grid.moveDelta(dragFace, unsnappedDelta) : unsnappedDelta;
 
-            const auto faceDelta = selectDelta(relativeFaceDelta, absoluteFaceDelta, dragDist);
             if (vm::is_zero(faceDelta, vm::C::almost_zero())) {
                 return true;
             }
@@ -318,7 +320,7 @@ namespace TrenchBroom {
         }
 
         bool ResizeBrushesTool::beginMove(const Model::PickResult& pickResult) {
-            const auto& hit = pickResult.query().type(ResizeHit2D).occluded().first();
+            const auto& hit = pickResult.query().type(Resize2DHitType).occluded().first();
             if (!hit.isMatch()) {
                 return false;
             }
@@ -349,12 +351,8 @@ namespace TrenchBroom {
                 return true;
             }
 
-            std::map<vm::polygon3, std::vector<Model::Brush*>> brushMap;
-            for (const auto* face : dragFaces()) {
-                brushMap[face->polygon()] = { face->brush() };
-            }
-
-            if (document->moveFaces(brushMap, delta)) {
+            auto facesToMove = kdl::vec_transform(dragFaces(), [](const auto& handle) { return handle.face().polygon(); });
+            if (document->moveFaces(std::move(facesToMove), delta)) {
                 m_lastPoint = m_lastPoint + delta;
                 m_totalDelta = m_totalDelta + delta;
             }
@@ -394,46 +392,49 @@ namespace TrenchBroom {
                 }
             }
 
-            std::vector<Model::Brush*> newBrushes;
             std::vector<FaceHandle> newDragHandles;
             std::map<Model::Node*, std::vector<Model::Node*>> newNodes;
 
-            for (auto* dragFace : dragFaces()) {
-                auto* brush = dragFace->brush();
+            return kdl::for_each_result(dragFaces(), [&](const auto& dragFaceHandle) {
+                auto* brushNode = dragFaceHandle.node();
 
-                auto* newBrush = brush->clone(worldBounds);
-                auto* newDragFace = findMatchingFace(newBrush, dragFace);
+                const auto& oldBrush = brushNode->brush();
+                const auto dragFaceIndex = dragFaceHandle.faceIndex();
+                const auto newDragFaceNormal = oldBrush.face(dragFaceIndex).boundary().normal;
 
-                newBrushes.push_back(newBrush);
-                newDragHandles.emplace_back(newDragFace->brush(), newDragFace->boundary().normal);
-
-                if (!newBrush->canMoveBoundary(worldBounds, newDragFace, delta)) {
-                    // There is a brush for which the move is not applicable. Abort.
-                    kdl::col_delete_all(newBrushes);
-                    return false;
-                } else {
-                    auto* clipFace = newDragFace->clone();
-                    clipFace->invert();
-
-                    newBrush->moveBoundary(worldBounds, newDragFace, delta, lockTextures);
-
-                    // This should never happen, but let's be on the safe side.
-                    if (!newBrush->clip(worldBounds, clipFace)) {
-                        delete clipFace;
-                        kdl::col_delete_all(newBrushes);
-                        return false;
-                    }
-
-                    newNodes[brush->parent()].push_back(newBrush);
+                auto newBrush = oldBrush;
+                return newBrush.moveBoundary(worldBounds, dragFaceIndex, delta, lockTextures)
+                    .and_then([&]() {
+                        auto clipFace = oldBrush.face(dragFaceIndex);
+                        clipFace.invert();
+                        return newBrush.clip(worldBounds, std::move(clipFace));
+                    }).and_then([&]() {
+                        auto* newBrushNode = new Model::BrushNode(std::move(newBrush));
+                        newNodes[brushNode->parent()].push_back(newBrushNode);
+                        newDragHandles.emplace_back(newBrushNode, newDragFaceNormal);
+                    });
+            }).and_then([&]() {
+                document->deselectAll();
+                const auto addedNodes = document->addNodes(newNodes);
+                document->select(addedNodes);
+                m_dragHandles = std::move(newDragHandles);
+            }).handle_errors(
+                [&](const Model::BrushError e) {
+                    document->error() << "Could not extrude brush: " << e;
+                    kdl::map_clear_and_delete(newNodes);
                 }
+            );
+        }
+
+        namespace {
+            struct ResizeError {
+                std::string msg;
+            };
+
+            std::ostream& operator<<(std::ostream& str, const ResizeError& e) {
+                str << e.msg;
+                return str;
             }
-
-            document->deselectAll();
-            const auto addedNodes = document->addNodes(newNodes);
-            document->select(addedNodes);
-            m_dragHandles = std::move(newDragHandles);
-
-            return true;
         }
 
         bool ResizeBrushesTool::splitBrushesInward(const vm::vec3& delta) {
@@ -450,59 +451,51 @@ namespace TrenchBroom {
                 }
             }
 
-            const std::vector<FaceHandle> oldDragHandles = m_dragHandles;
-            std::vector<Model::Brush*> newBrushes;
             std::vector<FaceHandle> newDragHandles;
             // This map is to handle the case when the brushes being
             // extruded have different parents (e.g. different brush entities),
             // so each newly created brush should be made a sibling of the brush it was cloned from.
             std::map<Model::Node*, std::vector<Model::Node*>> newNodes;
 
-            for (auto* dragFace : dragFaces()) {
-                auto* brush = dragFace->brush();
+            return kdl::for_each_result(dragFaces(), [&](const auto& dragFaceHandle) -> kdl::result<void, ResizeError, Model::BrushError> {
+                const auto& dragFace = dragFaceHandle.face();
+                auto* brushNode = dragFaceHandle.node();
 
-                auto* newBrush = brush->clone(worldBounds);
-                auto* newDragFace = findMatchingFace(newBrush, dragFace);
-
-                auto* clipFace = newDragFace->clone();
-                clipFace->invert();
-                clipFace->transform(vm::translation_matrix(delta), lockTextures);
-
-                if (!newBrush->clip(worldBounds, clipFace)) {
-                    delete clipFace;
-                    kdl::col_delete_all(newBrushes);
-                    return false;
+                auto newBrush = brushNode->brush();
+                const auto newDragFaceIndex = newBrush.findFace(dragFace.boundary());
+                if (!newDragFaceIndex) {
+                    return ResizeError{"Face not found"};
                 }
 
-                newBrushes.push_back(newBrush);
-                newDragHandles.emplace_back(newBrush, clipFace->boundary().normal);
-                newNodes[brush->parent()].push_back(newBrush);
-            }
+                auto clipFace = newBrush.face(*newDragFaceIndex);
+                clipFace.invert();
+                
+                return clipFace.transform(vm::translation_matrix(delta), lockTextures)
+                    .and_then([&]() {
+                        return newBrush.clip(worldBounds, std::move(clipFace));
+                    }).and_then([&]() {
+                        auto* newBrushNode = new Model::BrushNode(std::move(newBrush));
+                        newNodes[brushNode->parent()].push_back(newBrushNode);
+                        newDragHandles.emplace_back(newBrushNode, clipFace.boundary().normal);
+                    });
+            }).and_then([&]() -> kdl::result<void, ResizeError> {
+                // Now that the newly split off brushes are ready to insert (but not selected),
+                // resize the original brushes, which are still selected at this point.
+                if (!document->resizeBrushes(dragFaceDescriptors(), delta)) {
+                    return ResizeError{"Resizing failed"};
+                }
 
-            // Now that the newly split off brushes are ready to insert (but not selected),
-            // resize the original brushes, which are still selected at this point.
-            if (!document->resizeBrushes(dragFaceDescriptors(), delta)) {
-                kdl::col_delete_all(newBrushes);
-                return false;
-            }
+                // Add the newly split off brushes and select them (keeping the original brushes selected).
+                const auto addedNodes = document->addNodes(newNodes);
+                document->select(addedNodes);
 
-            // Add the newly split off brushes and select them (keeping the original brushes selected).
-            const auto addedNodes = document->addNodes(newNodes);
-            document->select(addedNodes);
-
-            m_dragHandles = kdl::vec_concat(oldDragHandles, newDragHandles);
-
-            return true;
-        }
-
-        Model::BrushFace* ResizeBrushesTool::findMatchingFace(Model::Brush* brush, const Model::BrushFace* reference) const {
-            Model::FindMatchingBrushFaceVisitor<MatchFaceBoundary> visitor((MatchFaceBoundary(reference)));
-            visitor.visit(brush);
-            if (!visitor.hasResult()) {
-                return nullptr;
-            } else {
-                return visitor.result();
-            }
+                m_dragHandles = kdl::vec_concat(std::move(m_dragHandles), newDragHandles);
+                
+                return kdl::void_success;
+            }).handle_errors([&](const auto& e) {
+                document->error() << "Could not extrude inwards: " << e;
+                kdl::map_clear_and_delete(newNodes);
+            });
         }
 
         std::vector<vm::polygon3> ResizeBrushesTool::dragFaceDescriptors() const {
@@ -510,8 +503,9 @@ namespace TrenchBroom {
 
             std::vector<vm::polygon3> result;
             result.reserve(dragFaces.size());
-            for (const auto* face : dragFaces) {
-                result.push_back(face->polygon());
+            for (const auto& dragFaceHandle : dragFaces) {
+                const auto& dragFace = dragFaceHandle.face();
+                result.push_back(dragFace.polygon());
             }
 
             return result;

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationRun_h
-#define CompilationRun_h
+#pragma once
 
 #include <QObject>
 
@@ -41,7 +40,7 @@ namespace TrenchBroom {
         class CompilationRun : public QObject {
             Q_OBJECT
         private:
-            std::unique_ptr<CompilationRunner> m_currentRun;
+            CompilationRunner* m_currentRun;
         public:
             CompilationRun();
             ~CompilationRun() override;
@@ -56,8 +55,6 @@ namespace TrenchBroom {
         private:
             std::string buildWorkDir(const Model::CompilationProfile* profile, std::shared_ptr<MapDocument> document);
             void cleanup();
-        private slots:
-            void _compilationEnded();
         signals:
             void compilationStarted();
             void compilationEnded();
@@ -65,4 +62,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* CompilationRun_h */

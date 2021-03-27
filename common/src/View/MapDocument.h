@@ -17,14 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapDocument
-#define TrenchBroom_MapDocument
+#pragma once
 
 #include "FloatType.h"
 #include "Notifier.h"
 #include "IO/Path.h"
+#include "Model/Game.h"
 #include "Model/MapFacade.h"
 #include "Model/NodeCollection.h"
+#include "Model/NodeContents.h"
 #include "View/CachingLogger.h"
 
 #include <vecmath/forward.h>
@@ -33,7 +34,9 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace TrenchBroom {
@@ -49,8 +52,12 @@ namespace TrenchBroom {
     }
 
     namespace Model {
+        class Brush;
+        class BrushFace;
+        class BrushFaceHandle;
         class BrushFaceAttributes;
         class EditorContext;
+        class Entity;
         enum class ExportFormat;
         class Game;
         class Issue;
@@ -61,7 +68,7 @@ namespace TrenchBroom {
         class SmartTag;
         class TagManager;
         class TexCoordSystemSnapshot;
-        class World;
+        class WorldNode;
         enum class WrapStyle;
     }
 
@@ -70,11 +77,12 @@ namespace TrenchBroom {
         class Command;
         class CommandResult;
         class Grid;
-        class MapViewConfig;
         enum class PasteType;
+        class RepeatStack;
         class Selection;
         class UndoableCommand;
         class ViewEffectsService;
+        enum class MapTextEncoding;
 
         class MapDocument : public Model::MapFacade, public CachingLogger {
         public:
@@ -83,7 +91,7 @@ namespace TrenchBroom {
         protected:
             vm::bbox3 m_worldBounds;
             std::shared_ptr<Model::Game> m_game;
-            std::unique_ptr<Model::World> m_world;
+            std::unique_ptr<Model::WorldNode> m_world;
 
             std::unique_ptr<Model::PointFile> m_pointFile;
             std::unique_ptr<Model::PortalFile> m_portalFile;
@@ -96,7 +104,6 @@ namespace TrenchBroom {
             std::unique_ptr<Model::TagManager> m_tagManager;
 
             std::unique_ptr<Model::EditorContext> m_editorContext;
-            std::unique_ptr<MapViewConfig> m_mapViewConfig;
             std::unique_ptr<Grid> m_grid;
 
             using ActionList = std::vector<std::unique_ptr<Action>>;
@@ -107,17 +114,25 @@ namespace TrenchBroom {
             size_t m_lastSaveModificationCount;
             size_t m_modificationCount;
 
-            Model::NodeCollection m_partiallySelectedNodes;
             Model::NodeCollection m_selectedNodes;
-            std::vector<Model::BrushFace*> m_selectedBrushFaces;
+            std::vector<Model::BrushFaceHandle> m_selectedBrushFaces;
 
-            Model::Layer* m_currentLayer;
+            Model::LayerNode* m_currentLayer;
             std::string m_currentTextureName;
             vm::bbox3 m_lastSelectionBounds;
             mutable vm::bbox3 m_selectionBounds;
             mutable bool m_selectionBoundsValid;
 
             ViewEffectsService* m_viewEffectsService;
+
+            /*
+             * All actions pushed to this stack can be repeated later. The stack must be
+             * primed to be cleared whenever the selection changes. The effect is that
+             * changing the selection automatically begins a new "macro", but at the same
+             * time the current repeat stack can still be repeated after the selection
+             * was changed.
+             */
+            std::unique_ptr<RepeatStack> m_repeatStack;
         public: // notification
             Notifier<Command*> commandDoNotifier;
             Notifier<Command*> commandDoneNotifier;
@@ -136,8 +151,7 @@ namespace TrenchBroom {
             Notifier<> documentModificationStateDidChangeNotifier;
 
             Notifier<> editorContextDidChangeNotifier;
-            Notifier<> mapViewConfigDidChangeNotifier;
-            Notifier<const Model::Layer*> currentLayerDidChangeNotifier;
+            Notifier<const Model::LayerNode*> currentLayerDidChangeNotifier;
             Notifier<const std::string&> currentTextureNameDidChangeNotifier;
 
             Notifier<> selectionWillChangeNotifier;
@@ -152,15 +166,20 @@ namespace TrenchBroom {
             Notifier<const std::vector<Model::Node*>&> nodeVisibilityDidChangeNotifier;
             Notifier<const std::vector<Model::Node*>&> nodeLockingDidChangeNotifier;
 
-            Notifier<Model::Group*> groupWasOpenedNotifier;
-            Notifier<Model::Group*> groupWasClosedNotifier;
+            Notifier<Model::GroupNode*> groupWasOpenedNotifier;
+            Notifier<Model::GroupNode*> groupWasClosedNotifier;
 
-            Notifier<const std::vector<Model::BrushFace*>&> brushFacesDidChangeNotifier;
+            Notifier<const std::vector<Model::BrushFaceHandle>&> brushFacesDidChangeNotifier;
 
             Notifier<> textureCollectionsWillChangeNotifier;
             Notifier<> textureCollectionsDidChangeNotifier;
+            
+            Notifier<> textureUsageCountsDidChangeNotifier;
 
+            Notifier<> entityDefinitionsWillChangeNotifier;
             Notifier<> entityDefinitionsDidChangeNotifier;
+            
+            Notifier<> modsWillChangeNotifier;
             Notifier<> modsDidChangeNotifier;
 
             Notifier<> pointFileWasLoadedNotifier;
@@ -177,22 +196,31 @@ namespace TrenchBroom {
 
             std::shared_ptr<Model::Game> game() const override;
             const vm::bbox3& worldBounds() const;
-            Model::World* world() const;
+            Model::WorldNode* world() const;
 
             bool isGamePathPreference(const IO::Path& path) const;
 
-            Model::Layer* currentLayer() const override;
-            void setCurrentLayer(Model::Layer* currentLayer);
+            Model::LayerNode* currentLayer() const override;
+        protected:
+            Model::LayerNode* performSetCurrentLayer(Model::LayerNode* currentLayer);
+        public:
+            void setCurrentLayer(Model::LayerNode* currentLayer);
+            bool canSetCurrentLayer(Model::LayerNode* currentLayer) const;
 
-            Model::Group* currentGroup() const override;
+            Model::GroupNode* currentGroup() const override;
             /**
              * Returns the current group if one is open, otherwise the world.
              */
             Model::Node* currentGroupOrWorld() const override;
             /**
-             * Returns the current group if one is open, otherwise the current layer.
+             * Suggests a parent to use for new nodes.
+             * 
+             * If reference nodes are given, return the parent (either a group, if there is one, otherwise the layer) of
+             * the first node in the given vector.
+             * 
+             * Otherwise, returns the current group if one is open, otherwise the current layer.
              */
-            Model::Node* currentParent() const override;
+            Model::Node* parentForNodes(const std::vector<Model::Node*>& referenceNodes = std::vector<Model::Node*>()) const override;
 
             Model::EditorContext& editorContext() const;
 
@@ -200,7 +228,6 @@ namespace TrenchBroom {
             Assets::EntityModelManager& entityModelManager() override;
             Assets::TextureManager& textureManager() override;
 
-            MapViewConfig& mapViewConfig() const;
             Grid& grid() const;
 
             Model::PointFile* pointFile() const;
@@ -226,6 +253,7 @@ namespace TrenchBroom {
             }
 
             void createTagActions();
+            void clearTagActions();
             void createEntityDefinitionActions();
         public: // new, load, save document
             void newDocument(Model::MapFormat mapFormat, const vm::bbox3& worldBounds, std::shared_ptr<Model::Game> game);
@@ -237,6 +265,8 @@ namespace TrenchBroom {
         private:
             void doSaveDocument(const IO::Path& path);
             void clearDocument();
+        public: // text encoding
+            MapTextEncoding encoding() const;
         public: // copy and paste
             std::string serializeSelectedNodes();
             std::string serializeSelectedBrushFaces();
@@ -244,16 +274,14 @@ namespace TrenchBroom {
             PasteType paste(const std::string& str);
         private:
             bool pasteNodes(const std::vector<Model::Node*>& nodes);
-            bool pasteBrushFaces(const std::vector<Model::BrushFace*>& faces);
+            bool pasteBrushFaces(const std::vector<Model::BrushFace>& faces);
         public: // point file management
-            // cppcheck-suppress passedByValue
             void loadPointFile(const IO::Path path);
             bool isPointFileLoaded() const;
             bool canReloadPointFile() const;
             void reloadPointFile();
             void unloadPointFile();
         public: // portal file management
-            // cppcheck-suppress passedByValue
             void loadPortalFile(const IO::Path path);
             bool isPortalFileLoaded() const;
             bool canReloadPortalFile() const;
@@ -265,10 +293,10 @@ namespace TrenchBroom {
             bool hasSelectedBrushFaces() const override;
             bool hasAnySelectedBrushFaces() const override;
 
-            std::vector<Model::AttributableNode*> allSelectedAttributableNodes() const override;
+            std::vector<Model::EntityNodeBase*> allSelectedEntityNodes() const override;
             const Model::NodeCollection& selectedNodes() const override;
-            std::vector<Model::BrushFace*> allSelectedBrushFaces() const override;
-            const std::vector<Model::BrushFace*>& selectedBrushFaces() const override;
+            std::vector<Model::BrushFaceHandle> allSelectedBrushFaces() const override;
+            std::vector<Model::BrushFaceHandle> selectedBrushFaces() const override;
 
             const vm::bbox3& referenceBounds() const override;
             const vm::bbox3& lastSelectionBounds() const override;
@@ -284,15 +312,16 @@ namespace TrenchBroom {
             void selectNodesWithFilePosition(const std::vector<size_t>& positions) override;
             void select(const std::vector<Model::Node*>& nodes) override;
             void select(Model::Node* node) override;
-            void select(const std::vector<Model::BrushFace*>& faces) override;
-            void select(Model::BrushFace* face) override;
+            void select(const std::vector<Model::BrushFaceHandle>& handles) override;
+            void select(const Model::BrushFaceHandle& handle) override;
             void convertToFaceSelection() override;
             void selectFacesWithTexture(const Assets::Texture* texture);
+            void selectTall(vm::axis::type cameraAxis);
 
             void deselectAll() override;
             void deselect(Model::Node* node) override;
             void deselect(const std::vector<Model::Node*>& nodes) override;
-            void deselect(Model::BrushFace* face) override;
+            void deselect(const Model::BrushFaceHandle& handle) override;
         protected:
             void updateLastSelectionBounds();
             void invalidateSelectionBounds();
@@ -300,12 +329,7 @@ namespace TrenchBroom {
             void validateSelectionBounds() const;
             void clearSelection();
         public: // adding, removing, reparenting, and duplicating nodes, declared in MapFacade interface
-            void addNode(Model::Node* node, Model::Node* parent) override;
-            void removeNode(Model::Node* node) override;
-
             std::vector<Model::Node*> addNodes(const std::map<Model::Node*, std::vector<Model::Node*>>& nodes) override;
-            std::vector<Model::Node*> addNodes(const std::vector<Model::Node*>& nodes, Model::Node* parent) override;
-
             void removeNodes(const std::vector<Model::Node*>& nodes) override;
         private:
             std::map<Model::Node*, std::vector<Model::Node*>> collectRemovableParents(const std::map<Model::Node*, std::vector<Model::Node*>>& nodes) const;
@@ -315,28 +339,74 @@ namespace TrenchBroom {
 
             void closeRemovedGroups(const std::map<Model::Node*, std::vector<Model::Node*>>& toRemove);
         public:
-            bool reparentNodes(Model::Node* newParent, const std::vector<Model::Node*>& children) override;
             bool reparentNodes(const std::map<Model::Node*, std::vector<Model::Node*>>& nodesToAdd) override;
         private:
             bool checkReparenting(const std::map<Model::Node*, std::vector<Model::Node*>>& nodesToAdd) const;
         public:
             bool deleteObjects() override;
-            bool duplicateObjects() override;
+            void duplicateObjects() override;
         public: // entity management
-            Model::Entity* createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) override;
-            Model::Entity* createBrushEntity(const Assets::BrushEntityDefinition* definition) override;
+            Model::EntityNode* createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) override;
+            Model::EntityNode* createBrushEntity(const Assets::BrushEntityDefinition* definition) override;
         public: // group management
-            Model::Group* groupSelection(const std::string& name);
-            void mergeSelectedGroupsWithGroup(Model::Group* group);
+            Model::GroupNode* groupSelection(const std::string& name);
+            void mergeSelectedGroupsWithGroup(Model::GroupNode* group);
         private:
-            class MatchGroupableNodes;
             std::vector<Model::Node*> collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes) const;
         public:
             void ungroupSelection();
             void renameGroups(const std::string& name);
 
-            void openGroup(Model::Group* group);
+            void openGroup(Model::GroupNode* group);
             void closeGroup();
+
+            /**
+             * Creates a new group that is linked to the currently selected group and returns the newly created group.
+             *
+             * If the current selection does not consist of exactly one group, then null is returned.
+             */
+            Model::GroupNode* createLinkedDuplicate();
+            bool canCreateLinkedDuplicate() const;
+
+            /**
+             * Selects all groups linked to the currently selected groups.
+             *
+             * Nothing happens if the current selection does not consist of only groups.
+             */
+            void selectLinkedGroups();
+            bool canSelectLinkedGroups() const;
+
+            void linkGroups(const std::vector<Model::GroupNode*>& groupNodes);
+            void unlinkGroups(const std::vector<Model::GroupNode*>& groupNodes);
+
+            /**
+             * Unlinks the selected linked groups.
+             *
+             * For every set of selected linked groups that belong to the same link set, the selected groups will be added to a new
+             * link set with the effect that these groups will still be linked to each other, but they will no longer be linked
+             * to any other member of their original link set that was not selected.
+             */
+            void separateLinkedGroups();
+            bool canSeparateLinkedGroups() const;
+        private:
+            void separateSelectedLinkedGroups(bool relinkGroups);
+        public: // layer management
+            void renameLayer(Model::LayerNode* layer, const std::string& name);
+        private:
+            enum class MoveDirection { Up, Down };
+            bool moveLayerByOne(Model::LayerNode* layerNode, MoveDirection direction);
+        public:
+            void moveLayer(Model::LayerNode* layer, int offset);
+            bool canMoveLayer(Model::LayerNode* layer, int offset) const;
+            void moveSelectionToLayer(Model::LayerNode* layer);
+            bool canMoveSelectionToLayer(Model::LayerNode* layer) const;
+            void hideLayers(const std::vector<Model::LayerNode*>& layers);
+            bool canHideLayers(const std::vector<Model::LayerNode*>& layers) const;
+            void isolateLayers(const std::vector<Model::LayerNode*>& layers);
+            bool canIsolateLayers(const std::vector<Model::LayerNode*>& layers) const;
+            void setOmitLayerFromExport(Model::LayerNode* layerNode, bool omitFromExport);
+            void selectAllInLayers(const std::vector<Model::LayerNode*>& layers);
+            bool canSelectAllInLayers(const std::vector<Model::LayerNode*>& layers) const;
         public: // modifying transient node attributes, declared in MapFacade interface
             void isolate();
             void hide(std::vector<Model::Node*> nodes) override; // Don't take the nodes by reference!
@@ -348,8 +418,15 @@ namespace TrenchBroom {
 
             void lock(const std::vector<Model::Node*>& nodes) override;
             void unlock(const std::vector<Model::Node*>& nodes) override;
+            void ensureUnlocked(const std::vector<Model::Node*>& nodes);
             void resetLock(const std::vector<Model::Node*>& nodes) override;
+        private:
+            void downgradeShownToInherit(const std::vector<Model::Node*>& nodes);
+            void downgradeUnlockedToInherit(const std::vector<Model::Node*>& nodes);
         public: // modifying objects, declared in MapFacade interface
+            bool swapNodeContents(const std::string& commandName, std::vector<std::pair<Model::Node*, Model::NodeContents>> nodesToSwap, std::vector<std::pair<const Model::GroupNode*, std::vector<Model::GroupNode*>>> linkedGroupsToUpdate);
+            bool transformObjects(const std::string& commandName, const vm::mat4x4& transformation);
+
             bool translateObjects(const vm::vec3& delta) override;
             bool rotateObjects(const vm::vec3& center, const vm::vec3& axis, FloatType angle) override;
             bool scaleObjects(const vm::bbox3& oldBBox, const vm::bbox3& newBBox) override;
@@ -364,42 +441,37 @@ namespace TrenchBroom {
             bool csgHollow();
         public: // Clipping operations, declared in MapFacade interface
             bool clipBrushes(const vm::vec3& p1, const vm::vec3& p2, const vm::vec3& p3);
-        public: // modifying entity attributes, declared in MapFacade interface
-            bool setAttribute(const std::string& name, const std::string& value) override;
-            bool renameAttribute(const std::string& oldName, const std::string& newName) override;
-            bool removeAttribute(const std::string& name) override;
+        public: // modifying entity properties, declared in MapFacade interface
+            bool setProperty(const std::string& key, const std::string& value, bool defaultToProtected = false) override;
+            bool renameProperty(const std::string& oldKey, const std::string& newKey) override;
+            bool removeProperty(const std::string& key) override;
 
-            bool convertEntityColorRange(const std::string& name, Assets::ColorRange::Type range) override;
-            bool updateSpawnflag(const std::string& name, const size_t flagIndex, const bool setFlag) override;
+            bool convertEntityColorRange(const std::string& key, Assets::ColorRange::Type range) override;
+            bool updateSpawnflag(const std::string& key, const size_t flagIndex, const bool setFlag) override;
+
+            bool setProtectedProperty(const std::string& key, bool value);
+            bool clearProtectedProperties();
+            bool canClearProtectedProperties() const;
         public: // brush resizing, declared in MapFacade interface
             bool resizeBrushes(const std::vector<vm::polygon3>& faces, const vm::vec3& delta) override;
-        public: // modifying face attributes, declared in MapFacade interface
-            void setTexture(Assets::Texture* texture, bool toggle) override;
-        private:
-            bool hasTexture(const std::vector<Model::BrushFace*>& faces, Assets::Texture* texture) const;
         public:
             bool setFaceAttributes(const Model::BrushFaceAttributes& attributes) override;
+            bool setFaceAttributesExceptContentFlags(const Model::BrushFaceAttributes& attributes) override;
             bool setFaceAttributes(const Model::ChangeBrushFaceAttributesRequest& request) override;
             bool copyTexCoordSystemFromFace(const Model::TexCoordSystemSnapshot& coordSystemSnapshot, const Model::BrushFaceAttributes& attribs, const vm::plane3& sourceFacePlane, const Model::WrapStyle wrapStyle);
             bool moveTextures(const vm::vec3f& cameraUp, const vm::vec3f& cameraRight, const vm::vec2f& delta) override;
             bool rotateTextures(float angle) override;
             bool shearTextures(const vm::vec2f& factors) override;
+            bool flipTextures(const vm::vec3f& cameraUp, const vm::vec3f& cameraRight, vm::direction cameraRelativeFlipDirection);
         public: // modifying vertices, declared in MapFacade interface
-            void rebuildBrushGeometry(const std::vector<Model::Brush*>& brushes) override;
-
             bool snapVertices(FloatType snapTo) override;
-            bool findPlanePoints() override;
 
-            MoveVerticesResult moveVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices, const vm::vec3& delta) override;
-            bool moveEdges(const std::map<vm::segment3, std::vector<Model::Brush*>>& edges, const vm::vec3& delta) override;
-            bool moveFaces(const std::map<vm::polygon3, std::vector<Model::Brush*>>& faces, const vm::vec3& delta) override;
+            MoveVerticesResult moveVertices(std::vector<vm::vec3> vertexPositions, const vm::vec3& delta) override;
+            bool moveEdges(std::vector<vm::segment3> edgePositions, const vm::vec3& delta) override;
+            bool moveFaces(std::vector<vm::polygon3> facePositions, const vm::vec3& delta) override;
 
-            bool addVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices);
-            bool removeVertices(const std::map<vm::vec3, std::vector<Model::Brush*>>& vertices);
-            bool removeEdges(const std::map<vm::segment3, std::vector<Model::Brush*>>& edges);
-            bool removeFaces(const std::map<vm::polygon3, std::vector<Model::Brush*>>& faces);
-        private: // subclassing interface for certain operations which are available from this class, but can only be implemented in a subclass
-            virtual void performRebuildBrushGeometry(const std::vector<Model::Brush*>& brushes) = 0;
+            bool addVertex(const vm::vec3& vertexPosition);
+            bool removeVertices(const std::string& commandName, std::vector<vm::vec3> vertexPositions);
         public: // debug commands
             void printVertices();
             bool throwExceptionDuringCommand();
@@ -411,7 +483,7 @@ namespace TrenchBroom {
             void undoCommand();
             void redoCommand();
             bool canRepeatCommands() const;
-            std::unique_ptr<CommandResult> repeatCommands();
+            void repeatCommands();
             void clearRepeatableCommands();
         public: // transactions
             void startTransaction(const std::string& name = "");
@@ -428,9 +500,6 @@ namespace TrenchBroom {
             virtual const std::string& doGetRedoCommandName() const = 0;
             virtual void doUndoCommand() = 0;
             virtual void doRedoCommand() = 0;
-            virtual bool doCanRepeatCommands() const = 0;
-            virtual std::unique_ptr<CommandResult> doRepeatCommands() = 0;
-            virtual void doClearRepeatableCommands() = 0;
 
             virtual void doStartTransaction(const std::string& name) = 0;
             virtual void doCommitTransaction() = 0;
@@ -475,16 +544,12 @@ namespace TrenchBroom {
             void loadTextures();
             void unloadTextures();
 
-            class SetTextures;
-            class UnsetTextures;
             void setTextures();
             void setTextures(const std::vector<Model::Node*>& nodes);
-            void setTextures(const std::vector<Model::BrushFace*>& faces);
+            void setTextures(const std::vector<Model::BrushFaceHandle>& faceHandles);
             void unsetTextures();
             void unsetTextures(const std::vector<Model::Node*>& nodes);
 
-            class SetEntityDefinitions;
-            class UnsetEntityDefinitions;
             void setEntityDefinitions();
             void setEntityDefinitions(const std::vector<Model::Node*>& nodes);
             void unsetEntityDefinitions();
@@ -493,8 +558,6 @@ namespace TrenchBroom {
 
             void clearEntityModels();
 
-            class SetEntityModels;
-            class UnsetEntityModels;
             void setEntityModels();
             void setEntityModels(const std::vector<Model::Node*>& nodes);
             void unsetEntityModels();
@@ -506,6 +569,9 @@ namespace TrenchBroom {
             std::vector<std::string> mods() const override;
             void setMods(const std::vector<std::string>& mods) override;
             std::string defaultMod() const;
+        public: // map soft bounds
+            void setSoftMapBounds(const Model::Game::SoftMapBounds& bounds);
+            Model::Game::SoftMapBounds softMapBounds() const;
         private: // issue management
             void registerIssueGenerators();
         public:
@@ -520,15 +586,12 @@ namespace TrenchBroom {
             bool isRegisteredSmartTag(size_t index) const;
             const Model::SmartTag& smartTag(size_t index) const;
         private:
-            class InitializeNodeTagsVisitor;
-            class ClearNodeTagsVisitor;
             void initializeNodeTags(MapDocument* document);
             void initializeNodeTags(const std::vector<Model::Node*>& nodes);
             void clearNodeTags(const std::vector<Model::Node*>& nodes);
             void updateNodeTags(const std::vector<Model::Node*>& nodes);
 
-            class InitializeFaceTagsVisitor;
-            void updateFaceTags(const std::vector<Model::BrushFace*>& faces);
+            void updateFaceTags(const std::vector<Model::BrushFaceHandle>& faces);
             void updateAllFaceTags();
         public: // document path
             bool persistent() const;
@@ -545,9 +608,17 @@ namespace TrenchBroom {
         private: // observers
             void bindObservers();
             void unbindObservers();
+            void textureCollectionsWillChange();
+            void textureCollectionsDidChange();
+            void entityDefinitionsWillChange();
+            void entityDefinitionsDidChange();
+            void modsWillChange();
+            void modsDidChange();
             void preferenceDidChange(const IO::Path& path);
             void commandDone(Command* command);
             void commandUndone(UndoableCommand* command);
+            void transactionDone(const std::string& name);
+            void transactionUndone(const std::string& name);
         };
 
         class Transaction {
@@ -569,4 +640,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_MapDocument) */

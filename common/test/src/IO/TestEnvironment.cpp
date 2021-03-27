@@ -20,6 +20,7 @@
 #include "TestEnvironment.h"
 
 #include "Macros.h"
+#include "Uuid.h"
 #include "IO/PathQt.h"
 
 #include <string>
@@ -29,10 +30,13 @@
 #include <QFile>
 #include <QTextStream>
 
+#include "Catch2.h"
+
 namespace TrenchBroom {
     namespace IO {
         TestEnvironment::TestEnvironment(const std::string& dir) :
-            m_dir(IO::pathFromQString(QDir::current().path()) + Path(dir)) {
+            m_sandboxPath(pathFromQString(QDir::current().path()) + Path(generateUuid())),
+            m_dir(m_sandboxPath + Path(dir)) {
             createTestEnvironment();
         }
 
@@ -75,7 +79,7 @@ namespace TrenchBroom {
         }
 
         bool TestEnvironment::deleteTestEnvironment() {
-            return deleteDirectoryAbsolute(m_dir);
+            return deleteDirectoryAbsolute(m_sandboxPath);
         }
 
         bool TestEnvironment::directoryExists(const Path& path) const {

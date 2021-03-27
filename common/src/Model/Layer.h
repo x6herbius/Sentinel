@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010-2017 Kristian Duske
+ Copyright (C) 2020 Kristian Duske
 
  This file is part of TrenchBroom.
 
@@ -17,60 +17,42 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Layer
-#define TrenchBroom_Layer
+#pragma once
 
-#include "FloatType.h"
-#include "Macros.h"
-#include "Model/Node.h"
-
-#include <vecmath/bbox.h>
+#include "Color.h"
 
 #include <string>
-#include <vector>
+#include <optional>
 
 namespace TrenchBroom {
     namespace Model {
-        class Layer : public Node {
+        class Layer {
         private:
+            bool m_defaultLayer;
             std::string m_name;
-
-            mutable vm::bbox3 m_logicalBounds;
-            mutable vm::bbox3 m_physicalBounds;
-            mutable bool m_boundsValid;
+            std::optional<int> m_sortIndex;
+            std::optional<Color> m_color;
+            bool m_omitFromExport;
         public:
-            Layer(const std::string& name);
+            explicit Layer(std::string name, bool defaultLayer = false);
 
-            void setName(const std::string& name);
-        private: // implement Node interface
-            const std::string& doGetName() const override;
-            const vm::bbox3& doGetLogicalBounds() const override;
-            const vm::bbox3& doGetPhysicalBounds() const override;
+            bool defaultLayer() const;
 
-            Node* doClone(const vm::bbox3& worldBounds) const override;
-            bool doCanAddChild(const Node* child) const override;
-            bool doCanRemoveChild(const Node* child) const override;
-            bool doRemoveIfEmpty() const override;
-            bool doShouldAddToSpacialIndex() const override;
-            void doNodePhysicalBoundsDidChange() override;
-            bool doSelectable() const override;
+            const std::string& name() const;
+            void setName(std::string name);
 
-            void doPick(const vm::ray3& ray, PickResult& pickResult) override;
-            void doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) override;
+            bool hasSortIndex() const;
+            int sortIndex() const;
+            void setSortIndex(int sortIndex);
 
-            void doGenerateIssues(const IssueGenerator* generator, std::vector<Issue*>& issues) override;
-            void doAccept(NodeVisitor& visitor) override;
-            void doAccept(ConstNodeVisitor& visitor) const override;
-        private:
-            void invalidateBounds();
-            void validateBounds() const;
-        private: // implement Taggable interface
-            void doAcceptTagVisitor(TagVisitor& visitor) override;
-            void doAcceptTagVisitor(ConstTagVisitor& visitor) const override;
-        private:
-            deleteCopyAndMove(Layer)
+            const std::optional<Color>& color() const;
+            void setColor(const Color& color);
+
+            bool omitFromExport() const;
+            void setOmitFromExport(bool omitFromExport);
+
+            static int invalidSortIndex();
+            static int defaultLayerSortIndex();
         };
     }
 }
-
-#endif /* defined(TrenchBroom_Layer) */

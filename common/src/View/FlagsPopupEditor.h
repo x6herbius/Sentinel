@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_FlagsPopupEditor
-#define TrenchBroom_FlagsPopupEditor
+#pragma once
 
 #include <QWidget>
 
@@ -48,9 +47,8 @@ namespace TrenchBroom {
         private:
             void updateFlagsText();
         signals:
-            void flagChanged(size_t index, int setFlag, int mixedFlag);
+            void flagChanged(size_t index, int value, int setFlag, int mixedFlag);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_FlagsPopupEditor) */

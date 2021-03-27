@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ViewConstants_h
-#define TrenchBroom_ViewConstants_h
+#pragma once
 
 class QColor;
 class QFont;
@@ -103,11 +102,9 @@ namespace TrenchBroom {
             QColor defaultText();
             QColor highlightText();
             QColor disabledText();
+            QColor disabledCellText();
             QColor disabledText(const QWidget* widget);
-            QColor borderColor();
-            QColor separatorColor();
+            QColor window();
         }
     }
 }
-
-#endif

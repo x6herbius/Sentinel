@@ -28,12 +28,13 @@
 #include "View/QtUtils.h"
 
 #include <QAbstractButton>
+#include <QMenu>
 
 namespace TrenchBroom {
     namespace View {
-        CompilationProfileManager::CompilationProfileManager(std::weak_ptr<MapDocument> document, Model::CompilationConfig& config, QWidget* parent) :
+        CompilationProfileManager::CompilationProfileManager(std::weak_ptr<MapDocument> document, Model::CompilationConfig config, QWidget* parent) :
         QWidget(parent),
-        m_config(config),
+        m_config(std::move(config)),
         m_profileList(nullptr),
         m_profileEditor() {
             setBaseWindowColor(this);
@@ -44,8 +45,8 @@ namespace TrenchBroom {
             m_profileList = new CompilationProfileListBox(m_config, listPanel->getPanel());
             m_profileEditor = new CompilationProfileEditor(std::move(document), editorPanel->getPanel());
 
-            auto* addProfileButton = createBitmapButton("Add.png", "Add profile");
-            m_removeProfileButton = createBitmapButton("Remove.png", "Remove the selected profile");
+            auto* addProfileButton = createBitmapButton("Add.svg", "Add profile");
+            m_removeProfileButton = createBitmapButton("Remove.svg", "Remove the selected profile");
             auto* buttonLayout = createMiniToolBarLayout(addProfileButton, m_removeProfileButton);
 
             auto* listLayout = new QVBoxLayout();
@@ -73,8 +74,14 @@ namespace TrenchBroom {
             listPanel->setMinimumSize(200, 200);
 
             connect(m_profileList, &ControlListBox::itemSelectionChanged, this, &CompilationProfileManager::profileSelectionChanged);
+            connect(m_profileList, &CompilationProfileListBox::profileContextMenuRequested, this, &CompilationProfileManager::profileContextMenuRequested);
+            connect(m_profileEditor, &CompilationProfileEditor::profileChanged, this, [&](){
+                // update the list box item labels
+                m_profileList->updateProfiles();
+                emit profileChanged();
+            });
             connect(addProfileButton, &QAbstractButton::clicked, this, &CompilationProfileManager::addProfile);
-            connect(m_removeProfileButton, &QAbstractButton::clicked, this, &CompilationProfileManager::removeProfile);
+            connect(m_removeProfileButton, &QAbstractButton::clicked, this, qOverload<>(&CompilationProfileManager::removeProfile));
 
             if (m_profileList->count() > 0) {
                 m_profileList->setCurrentRow(0);
@@ -90,26 +97,50 @@ namespace TrenchBroom {
             }
         }
 
+        const Model::CompilationConfig& CompilationProfileManager::config() const {
+            return m_config;
+        }
+
         void CompilationProfileManager::addProfile() {
             m_config.addProfile(std::make_unique<Model::CompilationProfile>("unnamed", "${MAP_DIR_PATH}"));
+            m_profileList->reloadProfiles();
             m_profileList->setCurrentRow(static_cast<int>(m_config.profileCount() - 1));
         }
 
         void CompilationProfileManager::removeProfile() {
             const auto index = m_profileList->currentRow();
             assert(index >= 0);
+            removeProfile(static_cast<size_t>(index));
+        }
 
-            if (m_config.profileCount() == 1) {
-                m_profileList->setCurrentRow(-1);
-                m_config.removeProfile(static_cast<size_t>(index));
-            } else if (index > 0) {
-                m_profileList->setCurrentRow(index - 1);
-                m_config.removeProfile(static_cast<size_t>(index));
-            } else {
-                m_profileList->setCurrentRow(1);
-                m_config.removeProfile(static_cast<size_t>(index));
-                m_profileList->setCurrentRow(0);
+        void CompilationProfileManager::removeProfile(const size_t index) {
+            m_config.removeProfile(index);
+            m_profileList->reloadProfiles();
+
+            if (m_profileList->count() > 0) {
+                if (static_cast<int>(index) >= m_profileList->count()) {
+                    m_profileList->setCurrentRow(static_cast<int>(index - 1));
+                } else {
+                    m_profileList->setCurrentRow(static_cast<int>(index));
+                }
             }
+        }
+
+        void CompilationProfileManager::removeProfile(Model::CompilationProfile* profile) {
+            removeProfile(m_config.indexOfProfile(profile));
+        }
+
+        void CompilationProfileManager::duplicateProfile(Model::CompilationProfile* profile) {
+            m_config.addProfile(profile->clone());
+            m_profileList->reloadProfiles();
+            m_profileList->setCurrentRow(static_cast<int>(m_config.profileCount() - 1));
+        }
+
+        void CompilationProfileManager::profileContextMenuRequested(const QPoint& globalPos, Model::CompilationProfile* profile) {
+            QMenu menu(this);
+            menu.addAction(tr("Duplicate"), this, [=](){ duplicateProfile(profile); });
+            menu.addAction(tr("Remove"), this, [=](){ removeProfile(profile); });
+            menu.exec(globalPos);
         }
 
         void CompilationProfileManager::profileSelectionChanged() {

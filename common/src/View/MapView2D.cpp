@@ -19,13 +19,16 @@
 
 #include "MapView2D.h"
 
+#include "Exceptions.h"
 #include "Logger.h"
 #include "Macros.h"
 #include "Assets/EntityDefinitionManager.h"
-#include "Model/Brush.h"
 #include "Model/BrushBuilder.h"
-#include "Model/CollectContainedNodesVisitor.h"
+#include "Model/BrushError.h"
+#include "Model/BrushNode.h"
+#include "Model/EditorContext.h"
 #include "Model/HitAdapter.h"
+#include "Model/ModelUtils.h"
 #include "Model/PickResult.h"
 #include "Model/PointFile.h"
 #include "Renderer/Compass2D.h"
@@ -57,7 +60,8 @@
 #include "View/VertexTool.h"
 #include "View/VertexToolController.h"
 
-#include <kdl/vector_utils.h>
+#include <kdl/overload.h>
+#include <kdl/result.h>
 
 #include <vecmath/util.h>
 
@@ -94,23 +98,27 @@ namespace TrenchBroom {
         }
 
         void MapView2D::initializeCamera(const ViewPlane viewPlane) {
+            auto document = kdl::mem_lock(m_document);
+            const auto worldBounds = vm::bbox3f(document->worldBounds());
+
             switch (viewPlane) {
                 case MapView2D::ViewPlane_XY:
                     m_camera->setDirection(vm::vec3f::neg_z(), vm::vec3f::pos_y());
-                    m_camera->moveTo(vm::vec3f(0.0f, 0.0f, 16384.0f));
+                    m_camera->moveTo(vm::vec3f(0.0f, 0.0f, worldBounds.max.z()));
                     break;
                 case MapView2D::ViewPlane_XZ:
                     m_camera->setDirection(vm::vec3f::pos_y(), vm::vec3f::pos_z());
-                    m_camera->moveTo(vm::vec3f(0.0f, -16384.0f, 0.0f));
+                    m_camera->moveTo(vm::vec3f(0.0f, worldBounds.min.y(), 0.0f));
                     break;
                 case MapView2D::ViewPlane_YZ:
                     m_camera->setDirection(vm::vec3f::neg_x(), vm::vec3f::pos_z());
-                    m_camera->moveTo(vm::vec3f(16384.0f, 0.0f, 0.0f));
+                    m_camera->moveTo(vm::vec3f(worldBounds.max.x(), 0.0f, 0.0f));
                     break;
             }
             m_camera->setNearPlane(1.0f);
-            m_camera->setFarPlane(32768.0f);
-
+            // NOTE: GridRenderer draws at the far side of the map bounds, so add some extra margin so it's
+            // not fighting the far plane.
+            m_camera->setFarPlane(worldBounds.size().x() + 16.0f);
         }
 
         void MapView2D::initializeToolChain(MapViewToolBox& toolBox) {
@@ -141,7 +149,7 @@ namespace TrenchBroom {
             update();
         }
 
-        PickRequest MapView2D::doGetPickRequest(const int x, const int y) const {
+        PickRequest MapView2D::doGetPickRequest(const float x, const float y) const {
             return PickRequest(vm::ray3(m_camera->pickRay(x, y)), *m_camera);
         }
 
@@ -191,42 +199,8 @@ namespace TrenchBroom {
 
         void MapView2D::doSelectTall() {
             const auto document = kdl::mem_lock(m_document);
-            const vm::bbox3& worldBounds = document->worldBounds();
-
-            const FloatType min = dot(worldBounds.min, vm::vec3(m_camera->direction()));
-            const FloatType max = dot(worldBounds.max, vm::vec3(m_camera->direction()));
-
-            const vm::plane3 minPlane(min, vm::vec3(m_camera->direction()));
-            const vm::plane3 maxPlane(max, vm::vec3(m_camera->direction()));
-
-            const std::vector<Model::Brush*>& selectionBrushes = document->selectedNodes().brushes();
-            assert(!selectionBrushes.empty());
-
-            const Model::BrushBuilder brushBuilder(document->world(), worldBounds);
-            std::vector<Model::Brush*> tallBrushes;
-            tallBrushes.reserve(selectionBrushes.size());
-
-            for (const Model::Brush* selectionBrush : selectionBrushes) {
-                std::vector<vm::vec3> tallVertices;
-                tallVertices.reserve(2 * selectionBrush->vertexCount());
-
-                for (const Model::BrushVertex* vertex : selectionBrush->vertices()) {
-                    tallVertices.push_back(minPlane.project_point(vertex->position()));
-                    tallVertices.push_back(maxPlane.project_point(vertex->position()));
-                }
-
-                Model::Brush* tallBrush = brushBuilder.createBrush(tallVertices, Model::BrushFaceAttributes::NoTextureName);
-                tallBrushes.push_back(tallBrush);
-            }
-
-            Transaction transaction(document, "Select Tall");
-            document->deleteObjects();
-
-            Model::CollectContainedNodesVisitor<std::vector<Model::Brush*>::const_iterator> visitor(std::begin(tallBrushes), std::end(tallBrushes), document->editorContext());
-            document->world()->acceptAndRecurse(visitor);
-            document->select(visitor.nodes());
-
-            kdl::vec_clear_and_delete(tallBrushes);
+            const vm::axis::type cameraAxis = vm::find_abs_max_component(m_camera->direction());
+            document->selectTall(cameraAxis);
         }
 
         void MapView2D::doFocusCameraOnSelection(const bool animate) {
@@ -306,10 +280,10 @@ namespace TrenchBroom {
             const auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::Brush::BrushHit).occluded().selected().first();
-            if (hit.isMatch()) {
-                const auto* face = Model::hitToFace(hit);
-                return grid.moveDeltaForBounds(face->boundary(), bounds, worldBounds, pickRay());
+            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().selected().first();
+            if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                const auto& face = faceHandle->face();
+                return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());
             } else {
                 const auto referenceBounds = document->referenceBounds();
                 const auto& pickRay = MapView2D::pickRay();
@@ -369,6 +343,16 @@ namespace TrenchBroom {
         }
 
         void MapView2D::doRenderExtras(Renderer::RenderContext&, Renderer::RenderBatch&) {}
+
+        void MapView2D::doRenderSoftWorldBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
+            if (!renderContext.softMapBounds().is_empty()) {
+                auto document = kdl::mem_lock(m_document);
+
+                Renderer::RenderService renderService(renderContext, renderBatch);
+                renderService.setForegroundColor(pref(Preferences::SoftMapBoundsColor));
+                renderService.renderBounds(renderContext.softMapBounds());
+            }
+        }
 
         void MapView2D::doLinkCamera(CameraLinkHelper& helper) {
             helper.addCamera(m_camera.get());

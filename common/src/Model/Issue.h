@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Issue
-#define TrenchBroom_Issue
+#pragma once
 
 #include "Model/IssueType.h"
 
@@ -28,6 +27,7 @@
 namespace TrenchBroom {
     namespace Model {
         class BrushFace;
+        class BrushNode;
         class EditorContext;
         class Node;
 
@@ -46,8 +46,6 @@ namespace TrenchBroom {
             IssueType type() const;
             Node* node() const;
 
-
-            class MatchSelectableIssueNodes;
             bool addSelectableNodes(const EditorContext& editorContext, std::vector<Model::Node*>& nodes) const;
 
             bool hidden() const;
@@ -64,25 +62,25 @@ namespace TrenchBroom {
 
         class BrushFaceIssue : public Issue {
         private:
-            BrushFace* const m_face;
+            const size_t m_faceIndex;
         protected:
-            explicit BrushFaceIssue(BrushFace* face);
+            explicit BrushFaceIssue(BrushNode* node, size_t faceIndex);
         public:
             ~BrushFaceIssue() override;
-            BrushFace* face() const;
+            size_t faceIndex() const;
+            const BrushFace& face() const;
         private:
             size_t doGetLineNumber() const override;
         };
 
-        class AttributeIssue : public Issue {
+        class EntityPropertyIssue : public Issue {
         public:
             using Issue::Issue;
 
-            ~AttributeIssue() override;
-            virtual const std::string& attributeName() const = 0;
-            const std::string& attributeValue() const;
+            ~EntityPropertyIssue() override;
+            virtual const std::string& propertyKey() const = 0;
+            const std::string& propertyValue() const;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_Issue) */

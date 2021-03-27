@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef M8TextureReader_h
-#define M8TextureReader_h
+#pragma once
 
 #include "IO/TextureReader.h"
 
@@ -36,9 +35,8 @@ namespace TrenchBroom {
         public:
             M8TextureReader(const NameStrategy& nameStrategy, const FileSystem& fs, Logger& logger);
         private:
-            Assets::Texture* doReadTexture(std::shared_ptr<File> file) const override;
+            Assets::Texture doReadTexture(std::shared_ptr<File> file) const override;
         };
     }
 }
 
-#endif /* M8TextureReader_h */

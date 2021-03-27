@@ -17,10 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationConfig_h
-#define CompilationConfig_h
-
-#include "Notifier.h"
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -33,8 +30,6 @@ namespace TrenchBroom {
         private:
             std::vector<std::unique_ptr<CompilationProfile>> m_profiles;
         public:
-            mutable Notifier<> profilesDidChange;
-        public:
             CompilationConfig();
             explicit CompilationConfig(std::vector<std::unique_ptr<CompilationProfile>> profiles);
             CompilationConfig(const CompilationConfig& other);
@@ -42,9 +37,12 @@ namespace TrenchBroom {
 
             CompilationConfig& operator=(CompilationConfig other);
             friend void swap(CompilationConfig& lhs, CompilationConfig& rhs);
+            bool operator==(const CompilationConfig& other) const;
+            bool operator!=(const CompilationConfig& other) const;
 
             size_t profileCount() const;
             CompilationProfile* profile(size_t index) const;
+            size_t indexOfProfile(CompilationProfile* profile) const;
 
             void addProfile(std::unique_ptr<CompilationProfile> profile);
             void removeProfile(size_t index);
@@ -52,4 +50,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* CompilationConfig_h */

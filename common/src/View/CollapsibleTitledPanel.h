@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_CollapsibleTitledPanel
-#define TrenchBroom_CollapsibleTitledPanel
+#pragma once
 
 #include "View/TitleBar.h"
 
@@ -60,10 +59,12 @@ namespace TrenchBroom {
             void collapse();
             bool expanded() const;
             void setExpanded(bool expanded);
+
+            QByteArray saveState() const;
+            bool restoreState(const QByteArray& state);
         private:
             void updateExpanded();
         };
     }
 }
 
-#endif /* defined(TrenchBroom_CollapsibleTitledPanel) */

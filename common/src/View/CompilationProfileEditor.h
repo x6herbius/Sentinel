@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationProfileEditor_h
-#define CompilationProfileEditor_h
+#pragma once
 
 #include <QWidget>
 
@@ -31,6 +30,7 @@ class QStackedWidget;
 namespace TrenchBroom {
     namespace Model {
         class CompilationProfile;
+        class CompilationTask;
     }
 
     namespace View {
@@ -38,6 +38,9 @@ namespace TrenchBroom {
         class MapDocument;
         class MultiCompletionLineEdit;
 
+        /**
+         * Editor UI for a single compilation profile.
+         */
         class CompilationProfileEditor : public QWidget {
             Q_OBJECT
         private:
@@ -53,7 +56,6 @@ namespace TrenchBroom {
             QAbstractButton* m_moveTaskDownButton;
         public:
             explicit CompilationProfileEditor(std::weak_ptr<MapDocument> document, QWidget* parent = nullptr);
-            ~CompilationProfileEditor() override;
         private:
             QWidget* createEditorPage(QWidget* parent);
 
@@ -63,18 +65,24 @@ namespace TrenchBroom {
 
             void addTask();
             void removeTask();
+            void removeTask(int index);
+            void duplicateTask(int index);
             void moveTaskUp();
+            void moveTaskUp(int index);
             void moveTaskDown();
+            void moveTaskDown(int index);
 
             void taskSelectionChanged();
         public:
             void setProfile(Model::CompilationProfile* profile);
         private:
-            void profileWillBeRemoved();
-            void profileDidChange();
             void refresh();
+        signals:
+            /**
+             * Emitted when the profile name/working directory change, or tasks are added/removed/reordered.
+             */
+            void profileChanged();
         };
     }
 }
 
-#endif /* CompilationProfileEditor_h */

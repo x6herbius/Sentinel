@@ -17,28 +17,29 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
+#include "Exceptions.h"
 #include "Model/Tag.h"
 #include "Model/TagManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/Layer.h"
+#include "Model/LayerNode.h"
 #include "Model/MapFormat.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
+
+#include <kdl/result.h>
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Model {
         TEST_CASE("TaggingTest.testTagBrush", "[TaggingTest]") {
             const vm::bbox3 worldBounds{4096.0};
-            World world{MapFormat::Standard};
+            WorldNode world{Model::Entity{}, MapFormat::Standard};
 
-            BrushBuilder builder{&world, worldBounds};
-            Brush* brush = builder.createCube(64.0, "left", "right", "front", "back", "top", "bottom");
+            BrushBuilder builder{MapFormat::Standard, worldBounds};
+            BrushNode* brushNode = new BrushNode(builder.createCube(64.0, "left", "right", "front", "back", "top", "bottom").value());
 
-            world.defaultLayer()->addChild(brush);
+            world.defaultLayer()->addChild(brushNode);
 
             Tag tag1{"tag1", {}};
             Tag tag2{"tag2", {}};
@@ -46,20 +47,20 @@ namespace TrenchBroom {
             tag1.setIndex(0);
             tag2.setIndex(1);
 
-            ASSERT_FALSE(brush->hasTag(tag1));
-            ASSERT_FALSE(brush->hasTag(tag2));
+            CHECK_FALSE(brushNode->hasTag(tag1));
+            CHECK_FALSE(brushNode->hasTag(tag2));
 
-            ASSERT_TRUE(brush->addTag(tag1));
-            ASSERT_FALSE(brush->addTag(tag1));
+            CHECK(brushNode->addTag(tag1));
+            CHECK_FALSE(brushNode->addTag(tag1));
 
-            ASSERT_TRUE(brush->hasTag(tag1));
-            ASSERT_FALSE(brush->hasTag(tag2));
+            CHECK(brushNode->hasTag(tag1));
+            CHECK_FALSE(brushNode->hasTag(tag2));
 
-            ASSERT_TRUE(brush->removeTag(tag1));
-            ASSERT_FALSE(brush->removeTag(tag1));
+            CHECK(brushNode->removeTag(tag1));
+            CHECK_FALSE(brushNode->removeTag(tag1));
 
-            ASSERT_FALSE(brush->hasTag(tag1));
-            ASSERT_FALSE(brush->hasTag(tag2));
+            CHECK_FALSE(brushNode->hasTag(tag1));
+            CHECK_FALSE(brushNode->hasTag(tag2));
         }
     }
 }

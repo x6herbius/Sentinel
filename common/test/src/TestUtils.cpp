@@ -18,15 +18,29 @@
  */
 
 #include "TestUtils.h"
+#include "TestLogger.h"
 
 #include "Assets/Texture.h"
 #include "Ensure.h"
-#include "Model/Brush.h"
+#include "IO/DiskIO.h"
+#include "IO/GameConfigParser.h"
 #include "Model/BrushFace.h"
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
+#include "Model/GameImpl.h"
+#include "Model/GroupNode.h"
+#include "Model/ParaxialTexCoordSystem.h"
+#include "View/MapDocument.h"
+#include "View/MapDocumentCommandFacade.h"
+
+#include <kdl/result.h>
+#include <kdl/string_compare.h>
 
 #include <vecmath/polygon.h>
 #include <vecmath/scalar.h>
+#include <vecmath/segment.h>
 
+#include <sstream>
 #include <string>
 
 namespace TrenchBroom {
@@ -81,71 +95,179 @@ namespace TrenchBroom {
     }
 
     TEST_CASE("TestUtilsTest.testTexCoordsEqual", "[TestUtilsTest]") {
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(0.0, 0.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(1.0, 0.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(2.00001, 0.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-10.0, 2.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(2.0, -3.0), vm::vec2f(-10.0, 2.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(-2.0, -3.0), vm::vec2f(-10.0, 2.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-1.0, 1.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-0.00001, 0.0)));
-        ASSERT_TRUE(texCoordsEqual(vm::vec2f(0.25, 0.0), vm::vec2f(-0.75, 0.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(0.0, 0.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(1.0, 0.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(2.00001, 0.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-10.0, 2.0)));
+        CHECK(texCoordsEqual(vm::vec2f(2.0, -3.0), vm::vec2f(-10.0, 2.0)));
+        CHECK(texCoordsEqual(vm::vec2f(-2.0, -3.0), vm::vec2f(-10.0, 2.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-1.0, 1.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(-0.00001, 0.0)));
+        CHECK(texCoordsEqual(vm::vec2f(0.25, 0.0), vm::vec2f(-0.75, 0.0)));
 
-        ASSERT_FALSE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(0.1, 0.1)));
-        ASSERT_FALSE(texCoordsEqual(vm::vec2f(-0.25, 0.0), vm::vec2f(0.25, 0.0)));
+        CHECK_FALSE(texCoordsEqual(vm::vec2f(0.0, 0.0), vm::vec2f(0.1, 0.1)));
+        CHECK_FALSE(texCoordsEqual(vm::vec2f(-0.25, 0.0), vm::vec2f(0.25, 0.0)));
     }
 
     TEST_CASE("TestUtilsTest.UVListsEqual", "[TestUtilsTest]") {
-        EXPECT_TRUE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {1,0}, {0, 1}}));
-        EXPECT_TRUE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{10,0}, {11,0}, {10, 1}})); // translation by whole texture increments OK
+        CHECK(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {1,0}, {0, 1}}));
+        CHECK(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{10,0}, {11,0}, {10, 1}})); // translation by whole texture increments OK
 
-        EXPECT_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{10.5,0}, {11.5,0}, {10.5, 1}})); // translation by partial texture increments not OK
-        EXPECT_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {0,1}, {1, 0}})); // wrong order
-        EXPECT_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {2,0}, {0, 2}})); // unwanted scaling
+        CHECK_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{10.5,0}, {11.5,0}, {10.5, 1}})); // translation by partial texture increments not OK
+        CHECK_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {0,1}, {1, 0}})); // wrong order
+        CHECK_FALSE(UVListsEqual({{0,0}, {1,0}, {0, 1}},  {{0,0}, {2,0}, {0, 2}})); // unwanted scaling
     }
 
     TEST_CASE("TestUtilsTest.pointExactlyIntegral", "[TestUtilsTest]") {
-        ASSERT_TRUE(pointExactlyIntegral(vm::vec3d(0.0, 0.0, 0.0)));
-        ASSERT_TRUE(pointExactlyIntegral(vm::vec3d(1024.0, 1204.0, 1024.0)));
-        ASSERT_TRUE(pointExactlyIntegral(vm::vec3d(-10000.0, -10000.0, -10000.0)));
+        CHECK(pointExactlyIntegral(vm::vec3d(0.0, 0.0, 0.0)));
+        CHECK(pointExactlyIntegral(vm::vec3d(1024.0, 1204.0, 1024.0)));
+        CHECK(pointExactlyIntegral(vm::vec3d(-10000.0, -10000.0, -10000.0)));
 
         const double near1024 = vm::nextgreater(1024.0);
-        ASSERT_FALSE(pointExactlyIntegral(vm::vec3d(1024.0, near1024, 1024.0)));
-        ASSERT_FALSE(pointExactlyIntegral(vm::vec3d(1024.5, 1024.5, 1024.5)));
+        CHECK_FALSE(pointExactlyIntegral(vm::vec3d(1024.0, near1024, 1024.0)));
+        CHECK_FALSE(pointExactlyIntegral(vm::vec3d(1024.5, 1024.5, 1024.5)));
     }
 
     namespace Model {
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3& faceNormal) {
-            assert(brush != nullptr);
-            BrushFace* face = brush->findFace(faceNormal);
-            assert(face != nullptr);
-
-            ASSERT_EQ(expected, face->textureName());
+        BrushFace createParaxial(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const std::string& textureName) {
+            const BrushFaceAttributes attributes(textureName);
+            return BrushFace::create(point0, point1, point2, attributes, std::make_unique<ParaxialTexCoordSystem>(point0, point1, point2, attributes)).value();
         }
 
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3) {
+        std::vector<vm::vec3> asVertexList(const std::vector<vm::segment3>& edges) {
+            std::vector<vm::vec3> result;
+            vm::segment3::get_vertices(std::begin(edges), std::end(edges), std::back_inserter(result));
+            return result;
+        }
+
+        std::vector<vm::vec3> asVertexList(const std::vector<vm::polygon3>& faces) {
+            std::vector<vm::vec3> result;
+            vm::polygon3::get_vertices(std::begin(faces), std::end(faces), std::back_inserter(result));
+            return result;
+        }
+
+        void assertTexture(const std::string& expected, const BrushNode* brushNode, const vm::vec3& faceNormal) {
+            assertTexture(expected, brushNode->brush(), faceNormal);
+        }
+
+        void assertTexture(const std::string& expected, const BrushNode* brushNode, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3) {
+            return assertTexture(expected, brushNode, std::vector<vm::vec3d>({ v1, v2, v3 }));
+        }
+
+        void assertTexture(const std::string& expected, const BrushNode* brushNode, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4) {
+            return assertTexture(expected, brushNode, std::vector<vm::vec3d>({ v1, v2, v3, v4 }));
+        }
+
+        void assertTexture(const std::string& expected, const BrushNode* brushNode, const std::vector<vm::vec3d>& vertices) {
+            return assertTexture(expected, brushNode, vm::polygon3d(vertices));
+        }
+
+        void assertTexture(const std::string& expected, const BrushNode* brushNode, const vm::polygon3d& vertices) {
+            assertTexture(expected, brushNode->brush(), vertices);
+        }
+
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3& faceNormal) {
+            const auto faceIndex = brush.findFace(faceNormal);
+            REQUIRE(faceIndex);
+            
+            const BrushFace& face = brush.face(*faceIndex);
+            CHECK(face.attributes().textureName() == expected);
+        }
+
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3) {
             return assertTexture(expected, brush, std::vector<vm::vec3d>({ v1, v2, v3 }));
         }
 
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4) {
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4) {
             return assertTexture(expected, brush, std::vector<vm::vec3d>({ v1, v2, v3, v4 }));
         }
 
-        void assertTexture(const std::string& expected, const Brush* brush, const std::vector<vm::vec3d>& vertices) {
+        void assertTexture(const std::string& expected, const Brush& brush, const std::vector<vm::vec3d>& vertices) {
             return assertTexture(expected, brush, vm::polygon3d(vertices));
         }
 
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::polygon3d& vertices) {
-            assert(brush != nullptr);
-            BrushFace* face = brush->findFace(vertices, 0.0001);
-            assert(face != nullptr);
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::polygon3d& vertices) {
+            const auto faceIndex = brush.findFace(vertices, 0.0001);
+            REQUIRE(faceIndex);
 
-            ASSERT_EQ(expected, face->textureName());
+            const BrushFace& face = brush.face(*faceIndex);
+            CHECK(face.attributes().textureName() == expected);
+        }
+
+        void transformNode(Node& node, const vm::mat4x4& transformation, const vm::bbox3& worldBounds) {
+            node.accept(kdl::overload(
+                [](const WorldNode*) {},
+                [](const LayerNode*) {},
+                [&](auto&& thisLambda, GroupNode* groupNode) {
+                    auto group = groupNode->group();
+                    group.transform(transformation);
+                    groupNode->setGroup(std::move(group));
+
+                    groupNode->visitChildren(thisLambda);
+                },
+                [&](auto&& thisLambda, EntityNode* entityNode) {
+                    auto entity = entityNode->entity();
+                    entity.transform(transformation);
+                    entityNode->setEntity(std::move(entity));
+
+                    entityNode->visitChildren(thisLambda);
+                },
+                [&](BrushNode* brushNode) {
+                    auto brush = brushNode->brush();
+                    REQUIRE(brush.transform(worldBounds, transformation, false).is_success());
+                    brushNode->setBrush(std::move(brush));
+                }
+            ));
+        }
+
+        GameAndConfig loadGame(const std::string& gameName) {
+            TestLogger logger;
+            const auto configPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/games") + IO::Path(gameName) + IO::Path("GameConfig.cfg");
+            const auto gamePath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/test/Model/Game") + IO::Path(gameName);
+            const auto configStr = IO::Disk::readTextFile(configPath);
+            auto configParser = IO::GameConfigParser(configStr, configPath);
+            auto config = std::make_unique<Model::GameConfig>(configParser.parse());
+            auto game = std::make_shared<Model::GameImpl>(*config, gamePath, logger);
+
+            // We would ideally just return game, but GameImpl captures a raw reference
+            // to the GameConfig.
+            return { std::move(game), std::move(config) };
         }
     }
 
-    int getComponentOfPixel(const Assets::Texture* texture, const std::size_t x, const std::size_t y, const Component component) {
-        const auto format = texture->format();
+    namespace View {
+        void addNode(MapDocument& document, Model::Node* parent, Model::Node* node) {
+            document.addNodes({{parent, {node}}});
+        }
+
+        void removeNode(MapDocument& document, Model::Node* node) {
+            document.removeNodes({node});
+        }
+
+        bool reparentNodes(MapDocument& document, Model::Node* newParent, std::vector<Model::Node*> nodes) {
+            return document.reparentNodes({{newParent, std::move(nodes)}});
+        }
+
+        DocumentGameConfig loadMapDocument(const IO::Path& mapPath, const std::string& gameName, const Model::MapFormat mapFormat) {
+            auto [document, game, gameConfig] = newMapDocument(gameName, mapFormat);
+
+            document->loadDocument(mapFormat, document->worldBounds(), document->game(), IO::Disk::getCurrentWorkingDir() + mapPath);
+
+            return {std::move(document), std::move(game), std::move(gameConfig)};
+        }
+
+        DocumentGameConfig newMapDocument(const std::string& gameName, const Model::MapFormat mapFormat) {
+            auto [game, gameConfig] = Model::loadGame(gameName);
+
+            auto document = MapDocumentCommandFacade::newMapDocument();
+            document->newDocument(mapFormat, vm::bbox3(8192.0), game);
+
+            return {std::move(document), std::move(game), std::move(gameConfig)};
+        }
+    }
+
+    int getComponentOfPixel(const Assets::Texture& texture, const std::size_t x, const std::size_t y, const Component component) {
+        const auto format = texture.format();
 
         ensure(GL_BGRA == format || GL_RGBA == format, "expected GL_BGRA or GL_RGBA");
 
@@ -166,22 +288,22 @@ namespace TrenchBroom {
             }
         }
 
-        const auto& mip0DataBuffer = texture->buffersIfUnprepared().at(0);
-        assert(texture->width() * texture->height() * 4 == mip0DataBuffer.size());
-        assert(x < texture->width());
-        assert(y < texture->height());
+        const auto& mip0DataBuffer = texture.buffersIfUnprepared().at(0);
+        assert(texture.width() * texture.height() * 4 == mip0DataBuffer.size());
+        assert(x < texture.width());
+        assert(y < texture.height());
 
         const uint8_t* mip0Data = mip0DataBuffer.data();
-        return static_cast<int>(mip0Data[(texture->width() * 4u * y) + (x * 4u) + componentIndex]);
+        return static_cast<int>(mip0Data[(texture.width() * 4u * y) + (x * 4u) + componentIndex]);
     }
 
-    void checkColor(const Assets::Texture* texturePtr, const std::size_t x, const std::size_t y,
+    void checkColor(const Assets::Texture& texture, const std::size_t x, const std::size_t y,
         const int r, const int g, const int b, const int a, const ColorMatch match) {
 
-        const auto actualR = getComponentOfPixel(texturePtr, x, y, Component::R);
-        const auto actualG = getComponentOfPixel(texturePtr, x, y, Component::G);
-        const auto actualB = getComponentOfPixel(texturePtr, x, y, Component::B);
-        const auto actualA = getComponentOfPixel(texturePtr, x, y, Component::A);
+        const auto actualR = getComponentOfPixel(texture, x, y, Component::R);
+        const auto actualG = getComponentOfPixel(texture, x, y, Component::G);
+        const auto actualB = getComponentOfPixel(texture, x, y, Component::B);
+        const auto actualA = getComponentOfPixel(texture, x, y, Component::A);
 
         if (match == ColorMatch::Approximate) {
             // allow some error for lossy formats, e.g. JPG
@@ -195,5 +317,32 @@ namespace TrenchBroom {
             CHECK(b == actualB);
             CHECK(a == actualA);
         }
+    }
+
+    // GlobMatcher
+
+    GlobMatcher::GlobMatcher(const std::string& glob) : m_glob(glob) {}
+
+    bool GlobMatcher::match(const std::string& value) const {
+        return kdl::cs::str_matches_glob(value, m_glob);
+    }
+
+    std::string GlobMatcher::describe() const {
+        std::stringstream ss;
+        ss << "matches glob \"" << m_glob << "\"";
+        return ss.str();
+    }
+
+    GlobMatcher MatchesGlob(const std::string& glob) {
+        return GlobMatcher(glob);
+    }
+
+    TEST_CASE("TestUtilsTest.testUnorderedApproxVecMatcher", "[TestUtilsTest]") {
+        using V = std::vector<vm::vec3>;
+        CHECK_THAT((V{{1, 1, 1}}), UnorderedApproxVecMatches(V{{1.01, 1.01, 1.01}}, 0.02));
+        CHECK_THAT((V{{0, 0, 0}, {1, 1, 1}}), UnorderedApproxVecMatches(V{{1.01, 1.01, 1.01}, {-0.01, -0.01, -0.01}}, 0.02));
+
+        CHECK_THAT((V{{1, 1, 1}}), !UnorderedApproxVecMatches(V{{1.01, 1.01, 1.01}, {1, 1, 1}}, 0.02)); // different number of elements
+        CHECK_THAT((V{{1, 1, 1}}), !UnorderedApproxVecMatches(V{{1.05, 1.01, 1.01}}, 0.02)); // too far
     }
 }

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_FlagsEditor
-#define TrenchBroom_FlagsEditor
+#pragma once
 
 #include <QWidget>
 #include <QStringList>
@@ -54,9 +53,17 @@ namespace TrenchBroom {
 
             int lineHeight() const;
         signals:
-            void flagChanged(size_t index, int setFlag, int mixedFlag);
+            /**
+             * Sent when a checkbox is clicked.
+             * If (value & setFlag) != 0 it means the checkbox's bit value was just set, otherwise it was unset.
+             *
+             * @param index the index of the checkbox (not the bit position)
+             * @param value the bit value represented by the checkbox
+             * @param setFlag the bitwise OR of the values of all currently checked checkboxes (same as `getSetFlagValue()`)
+             * @param mixedFlag the bitwise OR of the values of all currently mixed checkboxes (same as `getMixedFlagValue()`)
+             */
+            void flagChanged(size_t index, int value, int setFlag, int mixedFlag);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_FlagsEditor) */

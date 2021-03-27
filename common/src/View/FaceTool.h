@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FaceTool_h
-#define FaceTool_h
+#pragma once
 
 #include "FloatType.h"
 #include "View/VertexToolBase.h"
@@ -40,7 +39,7 @@ namespace TrenchBroom {
             FaceTool(std::weak_ptr<MapDocument> document);
         public:
             // FIXME: use vector_set
-            std::vector<Model::Brush*> findIncidentBrushes(const vm::polygon3& handle) const;
+            std::vector<Model::BrushNode*> findIncidentBrushes(const vm::polygon3& handle) const;
         private:
             using VertexToolBase::findIncidentBrushes;
         public:
@@ -58,4 +57,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* FaceTool_h */

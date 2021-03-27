@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_UVView
-#define TrenchBroom_UVView
+#pragma once
 
 #include "FloatType.h"
 #include "Model/HitType.h"
@@ -40,6 +39,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
+        class BrushFaceHandle;
         class Node;
     }
 
@@ -67,7 +67,7 @@ namespace TrenchBroom {
         class UVView : public RenderView, public ToolBoxConnector {
             Q_OBJECT
         public:
-            static const Model::HitType::Type FaceHit;
+            static const Model::HitType::Type FaceHitType;
         private:
             std::weak_ptr<MapDocument> m_document;
 
@@ -89,7 +89,7 @@ namespace TrenchBroom {
             void selectionDidChange(const Selection& selection);
             void documentWasCleared(MapDocument* document);
             void nodesDidChange(const std::vector<Model::Node*>& nodes);
-            void brushFacesDidChange(const std::vector<Model::BrushFace*>& faces);
+            void brushFacesDidChange(const std::vector<Model::BrushFaceHandle>& faces);
             void gridDidChange();
             void cameraDidChange(const Renderer::Camera* camera);
             void preferenceDidChange(const IO::Path& path);
@@ -97,6 +97,7 @@ namespace TrenchBroom {
             void doUpdateViewport(int x, int y, int width, int height) override;
             void doRender() override;
             bool doShouldRenderFocusIndicator() const override;
+            const Color& getBackgroundColor() override;
 
             void setupGL(Renderer::RenderContext& renderContext);
 
@@ -111,10 +112,9 @@ namespace TrenchBroom {
             void processEvent(const MouseEvent& event) override;
             void processEvent(const CancelEvent& event) override;
         private:
-            PickRequest doGetPickRequest(int x, int y) const override;
+            PickRequest doGetPickRequest(float x, float y) const override;
             Model::PickResult doPick(const vm::ray3& pickRay) const override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_UVView) */

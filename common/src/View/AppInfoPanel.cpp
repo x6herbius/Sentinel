@@ -21,6 +21,7 @@
 
 #include "IO/ResourceUtils.h"
 #include "View/BorderLine.h"
+#include "View/ClickableLabel.h"
 #include "View/GetVersion.h"
 #include "View/QtUtils.h"
 
@@ -56,6 +57,8 @@ namespace TrenchBroom {
             makeInfo(version);
             makeInfo(build);
             makeInfo(qtVersion);
+            build->setWordWrap(true);
+            build->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
 
             const auto tooltip = tr("Click to copy to clipboard");
             version->setToolTip(tooltip);
@@ -86,13 +89,6 @@ namespace TrenchBroom {
             QClipboard *clipboard = QApplication::clipboard();
             const QString str = QString("TrenchBroom ") % getBuildVersion() % QString(" Build ") % getBuildIdStr();
             clipboard->setText(str);
-        }
-
-        ClickableLabel::ClickableLabel(const QString& text, QWidget* parent)
-        : QLabel(text, parent) {}
-
-        void ClickableLabel::mousePressEvent(QMouseEvent*) {
-            emit clicked();
         }
     }
 }

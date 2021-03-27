@@ -25,7 +25,7 @@
 #include "Assets/EntityModel.h"
 #include "Assets/ModelDefinition.h"
 #include "IO/EntityModelLoader.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Renderer/TexturedIndexRangeRenderer.h"
 
 namespace TrenchBroom {
@@ -172,8 +172,7 @@ namespace TrenchBroom {
 
         void EntityModelManager::resetTextureMode() {
             if (m_resetTextureMode) {
-                for (const auto& entry : m_models) {
-                    auto& model = entry.second;
+                for (const auto& [path, model] : m_models) {
                     model->setTextureMode(m_minFilter, m_magFilter);
                 }
                 m_resetTextureMode = false;

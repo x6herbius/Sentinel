@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Shaders
-#define TrenchBroom_Shaders
+#pragma once
 
 #include "Renderer/ShaderConfig.h"
 
@@ -31,6 +30,7 @@ namespace TrenchBroom {
             extern const ShaderConfig MiniMapEdgeShader;
             extern const ShaderConfig EntityModelShader;
             extern const ShaderConfig FaceShader;
+            extern const ShaderConfig EdgeShader;
             extern const ShaderConfig ColoredTextShader;
             extern const ShaderConfig TextBackgroundShader;
             extern const ShaderConfig TextureBrowserShader;
@@ -40,12 +40,11 @@ namespace TrenchBroom {
             extern const ShaderConfig CompassShader;
             extern const ShaderConfig CompassOutlineShader;
             extern const ShaderConfig CompassBackgroundShader;
-            extern const ShaderConfig EntityLinkShader;
-            extern const ShaderConfig EntityLinkArrowShader;
+            extern const ShaderConfig LinkLineShader;
+            extern const ShaderConfig LinkArrowShader;
             extern const ShaderConfig TriangleShader;
             extern const ShaderConfig UVViewShader;
         }
     }
 }
 
-#endif /* defined(TrenchBroom_Shaders) */

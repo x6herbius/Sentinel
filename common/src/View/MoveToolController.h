@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MoveToolController
-#define TrenchBroom_MoveToolController
+#pragma once
 
 #include "View/ToolController.h"
 
@@ -67,8 +66,12 @@ namespace TrenchBroom {
         protected:
             const Grid& m_grid;
         public:
-            explicit MoveToolController(const Grid& grid) : m_grid(grid) {}
-            virtual ~MoveToolController() override {}
+            explicit MoveToolController(const Grid& grid) :
+            m_lastMoveType(MT_Default),
+            m_restricted(false),
+            m_grid(grid) {}
+
+            ~MoveToolController() override {}
         protected:
             virtual void doModifierKeyChange(const InputState& inputState) override {
                 if (Super::thisToolDragging()) {
@@ -228,4 +231,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_MoveToolController) */

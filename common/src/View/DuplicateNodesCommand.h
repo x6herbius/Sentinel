@@ -17,11 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_DuplicateNodesCommand
-#define TrenchBroom_DuplicateNodesCommand
+#pragma once
 
 #include "Macros.h"
-#include "View/DocumentCommand.h"
+#include "View/UndoableCommand.h"
 
 #include <map>
 #include <memory>
@@ -33,7 +32,7 @@ namespace TrenchBroom {
     }
 
     namespace View {
-        class DuplicateNodesCommand : public DocumentCommand {
+        class DuplicateNodesCommand : public UndoableCommand {
         public:
             static const CommandType Type;
         private:
@@ -50,11 +49,7 @@ namespace TrenchBroom {
             std::unique_ptr<CommandResult> doPerformDo(MapDocumentCommandFacade* document) override;
             std::unique_ptr<CommandResult> doPerformUndo(MapDocumentCommandFacade* document) override;
 
-            class CloneParentQuery;
-            bool cloneParent(const Model::Node* node) const;
-
-            bool doIsRepeatable(MapDocumentCommandFacade* document) const override;
-            std::unique_ptr<UndoableCommand> doRepeat(MapDocumentCommandFacade* document) const override;
+            bool shouldCloneParentWhenCloningNode(const Model::Node* node) const;
 
             bool doCollateWith(UndoableCommand* command) override;
 
@@ -63,4 +58,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_DuplicateNodesCommand) */

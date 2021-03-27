@@ -17,36 +17,46 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_EntityDefinitionParser_h
-#define TrenchBroom_EntityDefinitionParser_h
+#pragma once
 
-#include <map>
+#include "Color.h"
+
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace TrenchBroom {
     namespace Assets {
-        class AttributeDefinition;
+        class PropertyDefinition;
         class EntityDefinition;
     }
 
     namespace IO {
+        struct EntityDefinitionClassInfo;
         class ParserStatus;
 
+        // exposed for testing
+        std::vector<EntityDefinitionClassInfo> resolveInheritance(ParserStatus& status, const std::vector<EntityDefinitionClassInfo>& classInfos);
+
         class EntityDefinitionParser {
+        private:
+            Color m_defaultEntityColor;
         protected:
             using EntityDefinitionList = std::vector<Assets::EntityDefinition*>;
-            using AttributeDefinitionPtr = std::shared_ptr<Assets::AttributeDefinition>;
-            using AttributeDefinitionList = std::vector<AttributeDefinitionPtr>;
-            using AttributeDefinitionMap = std::map<std::string, AttributeDefinitionPtr>;
+            using PropertyDefinitionPtr = std::shared_ptr<Assets::PropertyDefinition>;
+            using PropertyDefinitionList = std::vector<PropertyDefinitionPtr>;
+            using PropertyDefinitionMap = std::unordered_map<std::string, PropertyDefinitionPtr>;
         public:
+            EntityDefinitionParser(const Color& defaultEntityColor);
             virtual ~EntityDefinitionParser();
+            
             EntityDefinitionList parseDefinitions(ParserStatus& status);
         private:
-            virtual EntityDefinitionList doParseDefinitions(ParserStatus& status) = 0;
+            std::unique_ptr<Assets::EntityDefinition> createDefinition(const EntityDefinitionClassInfo& classInfo) const;
+            std::vector<Assets::EntityDefinition*> createDefinitions(ParserStatus& status, const std::vector<EntityDefinitionClassInfo>& classInfos) const;
+ 
+            virtual std::vector<EntityDefinitionClassInfo> parseClassInfos(ParserStatus& status) = 0;
         };
     }
 }
-
-#endif

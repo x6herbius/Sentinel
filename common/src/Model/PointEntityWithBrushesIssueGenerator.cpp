@@ -21,8 +21,9 @@
 
 #include "Ensure.h"
 #include "Assets/EntityDefinition.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Model/Issue.h"
 #include "Model/IssueQuickFix.h"
 #include "Model/MapFacade.h"
@@ -38,7 +39,7 @@ namespace TrenchBroom {
         public:
             static const IssueType Type;
         public:
-            explicit PointEntityWithBrushesIssue(Entity* entity) :
+            explicit PointEntityWithBrushesIssue(EntityNode* entity) :
             Issue(entity) {}
         private:
             IssueType doGetType() const override {
@@ -46,8 +47,8 @@ namespace TrenchBroom {
             }
 
             std::string doGetDescription() const override {
-                const Entity* entity = static_cast<Entity*>(node());
-                return entity->classname() + " contains brushes";
+                const EntityNode* entity = static_cast<EntityNode*>(node());
+                return entity->name() + " contains brushes";
             }
         };
 
@@ -67,7 +68,7 @@ namespace TrenchBroom {
                     nodesToReparent[node->parent()] = node->children();
 
                     affectedNodes.push_back(node);
-                    kdl::vec_append(affectedNodes, node->children());
+                    affectedNodes = kdl::vec_concat(std::move(affectedNodes), node->children());
                 }
 
                 facade->deselectAll();
@@ -81,11 +82,11 @@ namespace TrenchBroom {
             addQuickFix(new PointEntityWithBrushesIssueQuickFix());
         }
 
-        void PointEntityWithBrushesIssueGenerator::doGenerate(Entity* entity, IssueList& issues) const {
-            ensure(entity != nullptr, "entity is null");
-            const Assets::EntityDefinition* definition = entity->definition();
-            if (definition != nullptr && definition->type() == Assets::EntityDefinitionType::PointEntity && entity->hasChildren())
-                issues.push_back(new PointEntityWithBrushesIssue(entity));
+        void PointEntityWithBrushesIssueGenerator::doGenerate(EntityNode* entityNode, IssueList& issues) const {
+            ensure(entityNode != nullptr, "entity is null");
+            const Assets::EntityDefinition* definition = entityNode->entity().definition();
+            if (definition != nullptr && definition->type() == Assets::EntityDefinitionType::PointEntity && entityNode->hasChildren())
+                issues.push_back(new PointEntityWithBrushesIssue(entityNode));
         }
     }
 }

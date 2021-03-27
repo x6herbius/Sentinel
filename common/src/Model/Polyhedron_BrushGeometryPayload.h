@@ -17,13 +17,13 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef Polyhedron_BrushGeometryPayload_h
-#define Polyhedron_BrushGeometryPayload_h
+#pragma once
 
 //#include "Renderer/GL.h"
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace TrenchBroom {
     namespace Model {
@@ -37,12 +37,11 @@ namespace TrenchBroom {
         };
 
         struct BrushFacePayload {
-            using Type = BrushFace*;
+            using Type = std::optional<size_t>;
             static Type defaultValue() {
-                return nullptr;
+                return std::nullopt;
             }
         };
     }
 }
 
-#endif /* Polyhedron_BrushGeometryPayload_h */

@@ -69,7 +69,7 @@ namespace TrenchBroom {
 
             auto* layout = new QHBoxLayout();
             layout->setContentsMargins(0, 0, 0, 0);
-            layout->setSpacing(LayoutConstants::NarrowHMargin);
+            layout->setSpacing(LayoutConstants::MediumHMargin);
 
             layout->addWidget(text, 0, Qt::AlignVCenter);
             layout->addWidget(m_offset, 0, Qt::AlignVCenter);
@@ -89,10 +89,10 @@ namespace TrenchBroom {
         }
 
         void MoveObjectsToolPage::applyMove() {
-            const vm::vec3 delta = vm::parse<FloatType, 3>(m_offset->text().toStdString());
-
-            auto document = kdl::mem_lock(m_document);
-            document->translateObjects(delta);
+            if (const auto delta = vm::parse<FloatType, 3>(m_offset->text().toStdString())) {
+                auto document = kdl::mem_lock(m_document);
+                document->translateObjects(*delta);
+            }
         }
     }
 }

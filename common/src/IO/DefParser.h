@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_DefParser
-#define TrenchBroom_DefParser
+#pragma once
 
 #include "FloatType.h"
 #include "Color.h"
@@ -31,6 +30,7 @@
 #include <vecmath/bbox.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,8 +58,7 @@ namespace TrenchBroom {
 
         class DefTokenizer : public Tokenizer<DefToken::Type> {
         public:
-            DefTokenizer(const char* begin, const char* end);
-            explicit DefTokenizer(const std::string& str);
+            explicit DefTokenizer(std::string_view str);
         private:
             static const std::string WordDelims;
             Token emitToken() override;
@@ -69,25 +68,23 @@ namespace TrenchBroom {
         private:
             using Token = DefTokenizer::Token;
 
-            Color m_defaultEntityColor;
             DefTokenizer m_tokenizer;
             std::map<std::string, EntityDefinitionClassInfo> m_baseClasses;
         public:
-            DefParser(const char* begin, const char* end, const Color& defaultEntityColor);
-            DefParser(const std::string& str, const Color& defaultEntityColor);
+            DefParser(std::string_view str, const Color& defaultEntityColor);
         private:
             TokenNameMap tokenNames() const override;
-            EntityDefinitionList doParseDefinitions(ParserStatus& status) override;
+            std::vector<EntityDefinitionClassInfo> parseClassInfos(ParserStatus& status) override;
 
-            Assets::EntityDefinition* parseDefinition(ParserStatus& status);
-            AttributeDefinitionPtr parseSpawnflags(ParserStatus& status);
-            void parseAttributes(ParserStatus& status, EntityDefinitionClassInfo& classInfo, std::vector<std::string>& superClasses);
-            bool parseAttribute(ParserStatus& status, EntityDefinitionClassInfo& classInfo, std::vector<std::string>& superClasses);
+            std::optional<EntityDefinitionClassInfo> parseClassInfo(ParserStatus& status);
+            PropertyDefinitionPtr parseSpawnflags(ParserStatus& status);
+            void parseProperties(ParserStatus& status, EntityDefinitionClassInfo& classInfo);
+            bool parseProperty(ParserStatus& status, EntityDefinitionClassInfo& classInfo);
 
-            void parseDefaultAttribute(ParserStatus& status);
-            std::string parseBaseAttribute(ParserStatus& status);
-            AttributeDefinitionPtr parseChoiceAttribute(ParserStatus& status);
-            Assets::ModelDefinition parseModel(ParserStatus& status);
+            void parseDefaultProperty(ParserStatus& status);
+            std::string parseBaseProperty(ParserStatus& status);
+            PropertyDefinitionPtr parseChoicePropertyDefinition(ParserStatus& status);
+            Assets::ModelDefinition parseModelDefinition(ParserStatus& status);
 
             std::string parseDescription();
 
@@ -100,4 +97,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_DefParser) */

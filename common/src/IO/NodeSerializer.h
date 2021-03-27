@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_NodeSerializer
-#define TrenchBroom_NodeSerializer
+#pragma once
 
 #include "Model/IdType.h"
 
@@ -28,39 +27,39 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
+        class BrushNode;
         class BrushFace;
-        class EntityAttribute;
-        class Group;
-        class Layer;
+        class EntityProperty;
+        class GroupNode;
+        class LayerNode;
         class Node;
-        class World;
+        class WorldNode;
     }
 
     namespace IO {
+        /**
+         * Interface for stream-based serialization of a map, with public functions to
+         * write different types of nodes to the output stream.
+         *
+         * The usage flow looks like:
+         *
+         * - construct a NodeSerializer
+         * - call setExporting() to configure whether to write "omit from export" layers
+         * - call beginFile() with all of the nodes that will be later serialized
+         *   so subclasses can parallelize precomputing the serialization
+         * - call e.g defaultLayer() to write that layer to the output
+         * - call endFile()
+         *
+         * You may not reuse the NodeSerializer after that point.
+         */
         class NodeSerializer {
-        private:
-            class BrushSerializer;
         protected:
-            static const int FloatPrecision = 17;
             using ObjectNo = unsigned int;
         private:
-            class IdManager {
-            private:
-                using IdMap = std::unordered_map<const Model::Node*, std::string>;
-                mutable IdMap m_ids;
-            public:
-                const std::string& getId(const Model::Node* t) const;
-            private:
-                Model::IdType makeId() const;
-                std::string idToString(const Model::IdType nodeId) const;
-            };
-
-            IdManager m_layerIds;
-            IdManager m_groupIds;
-
             ObjectNo m_entityNo;
             ObjectNo m_brushNo;
+
+            bool m_exporting;
         public:
             NodeSerializer();
             virtual ~NodeSerializer();
@@ -68,54 +67,60 @@ namespace TrenchBroom {
             ObjectNo entityNo() const;
             ObjectNo brushNo() const;
         public:
-            void beginFile();
+            bool exporting() const;
+            void setExporting(bool exporting);
+        public:
+            /**
+             * Prepares to serialize the given nodes and all of their children.
+             * The order is ignored.
+             *
+             * The rootNodes parameter allows subclasses to optionally precompute the
+             * serializations of all nodes in parallel.
+             *
+             * Any nodes serialized after calling beginFile() must have either been
+             * in the rootNodes vector or be a descendant of one of these nodes.
+             */
+            void beginFile(const std::vector<const Model::Node*>& rootNodes);
             void endFile();
         public:
-            void defaultLayer(Model::World& world);
-            void customLayer(Model::Layer* layer);
-            void group(Model::Group* group, const std::vector<Model::EntityAttribute>& parentAttributes);
+            void defaultLayer(const Model::WorldNode& world);
+            void customLayer(const Model::LayerNode* layer);
+            void group(const Model::GroupNode* group, const std::vector<Model::EntityProperty>& parentProperties);
 
-            void entity(Model::Node* node, const std::vector<Model::EntityAttribute>& attributes, const std::vector<Model::EntityAttribute>& parentAttributes, Model::Node* brushParent);
-            void entity(Model::Node* node, const std::vector<Model::EntityAttribute>& attributes, const std::vector<Model::EntityAttribute>& parentAttributes, const std::vector<Model::Brush*>& entityBrushes);
+            void entity(const Model::Node* node, const std::vector<Model::EntityProperty>& properties, const std::vector<Model::EntityProperty>& parentProperties, const Model::Node* brushParent);
+            void entity(const Model::Node* node, const std::vector<Model::EntityProperty>& properties, const std::vector<Model::EntityProperty>& parentProperties, const std::vector<Model::BrushNode*>& entityBrushes);
         private:
-            void beginEntity(const Model::Node* node, const std::vector<Model::EntityAttribute>& attributes, const std::vector<Model::EntityAttribute>& extraAttributes);
+            void beginEntity(const Model::Node* node, const std::vector<Model::EntityProperty>& properties, const std::vector<Model::EntityProperty>& extraAttributes);
             void beginEntity(const Model::Node* node);
-            void endEntity(Model::Node* node);
+            void endEntity(const Model::Node* node);
 
-            void entityAttributes(const std::vector<Model::EntityAttribute>& attributes);
-            void entityAttribute(const Model::EntityAttribute& attribute);
+            void entityProperties(const std::vector<Model::EntityProperty>& properties);
+            void entityProperty(const Model::EntityProperty& property);
 
-            void brushes(const std::vector<Model::Brush*>& brushes);
-            void brush(Model::Brush* brush);
-
-            void beginBrush(const Model::Brush* brush);
-            void endBrush(Model::Brush* brush);
+            void brushes(const std::vector<Model::BrushNode*>& brushNodes);
+            void brush(const Model::BrushNode* brushNode);
         public:
-            void brushFaces(const std::vector<Model::BrushFace*>& faces);
+            void brushFaces(const std::vector<Model::BrushFace>& faces);
         private:
-            void brushFace(Model::BrushFace* face);
-        private:
-            class GetParentAttributes;
+            void brushFace(const Model::BrushFace& face);
         public:
-            std::vector<Model::EntityAttribute> parentAttributes(const Model::Node* node);
+            std::vector<Model::EntityProperty> parentProperties(const Model::Node* groupNode);
         private:
-            std::vector<Model::EntityAttribute> layerAttributes(const Model::Layer* layer);
-            std::vector<Model::EntityAttribute> groupAttributes(const Model::Group* group);
+            std::vector<Model::EntityProperty> layerProperties(const Model::LayerNode* layerNode);
+            std::vector<Model::EntityProperty> groupProperties(const Model::GroupNode* groupNode);
         protected:
-            std::string escapeEntityAttribute(const std::string& str) const;
+            std::string escapeEntityProperties(const std::string& str) const;
         private:
-            virtual void doBeginFile() = 0;
+            virtual void doBeginFile(const std::vector<const Model::Node*>& nodes) = 0;
             virtual void doEndFile() = 0;
 
             virtual void doBeginEntity(const Model::Node* node) = 0;
-            virtual void doEndEntity(Model::Node* node) = 0;
-            virtual void doEntityAttribute(const Model::EntityAttribute& attribute) = 0;
+            virtual void doEndEntity(const Model::Node* node) = 0;
+            virtual void doEntityProperty(const Model::EntityProperty& property) = 0;
 
-            virtual void doBeginBrush(const Model::Brush* brush) = 0;
-            virtual void doEndBrush(Model::Brush* brush) = 0;
-            virtual void doBrushFace(Model::BrushFace* face) = 0;
+            virtual void doBrush(const Model::BrushNode* brushNode) = 0;
+            virtual void doBrushFace(const Model::BrushFace& face) = 0;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_NodeSerializer) */

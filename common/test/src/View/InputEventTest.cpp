@@ -17,10 +17,6 @@ You should have received a copy of the GNU General Public License
 along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "View/InputEvent.h"
 
 #include <kdl/overload.h>
@@ -34,6 +30,8 @@ along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
 #include <QtGlobal>
 #include <QKeyEvent>
 
+#include "Catch2.h"
+
 namespace TrenchBroom {
     namespace View {
         TEST_CASE("KeyEventTest.collateWith", "[KeyEventTest]") {
@@ -43,7 +41,7 @@ namespace TrenchBroom {
                 for (std::size_t j = 0; j < 2; ++j) {
                     auto lhs = KeyEvent(eventTypes[i]);
                     const auto rhs = KeyEvent(eventTypes[j]);
-                    ASSERT_FALSE(lhs.collateWith(rhs));
+                    CHECK_FALSE(lhs.collateWith(rhs));
                 }
             }
         }
@@ -78,7 +76,7 @@ namespace TrenchBroom {
                     auto lhs = MouseEvent(eventTypes[i], MouseEvent::Button::None, MouseEvent::WheelAxis::None, 0, 0, 0.0f);
                     const auto rhs = MouseEvent(eventTypes[j], MouseEvent::Button::None, MouseEvent::WheelAxis::None, 0, 0, 0.0f);
                     
-                    ASSERT_EQ(collationMatrix[i][j], lhs.collateWith(rhs));
+                    CHECK(lhs.collateWith(rhs) == collationMatrix[i][j]);
                 }
             }
             
@@ -86,42 +84,42 @@ namespace TrenchBroom {
                 // motion collation
                 auto lhs = MouseEvent(MouseEvent::Type::Motion, MouseEvent::Button::None, MouseEvent::WheelAxis::None, 2, 3, 0.0f);
                 const auto rhs = MouseEvent(MouseEvent::Type::Motion, MouseEvent::Button::None, MouseEvent::WheelAxis::None, 5, 5, 0.0f);
-                ASSERT_TRUE(lhs.collateWith(rhs));
-                ASSERT_EQ(5, lhs.posX);
-                ASSERT_EQ(5, lhs.posY);
+                CHECK(lhs.collateWith(rhs));
+                CHECK(lhs.posX == 5);
+                CHECK(lhs.posY == 5);
             }
             
             {
                 // drag collation
                 auto lhs = MouseEvent(MouseEvent::Type::Drag, MouseEvent::Button::None, MouseEvent::WheelAxis::None, 2, 3, 0.0f);
                 const auto rhs = MouseEvent(MouseEvent::Type::Drag, MouseEvent::Button::None, MouseEvent::WheelAxis::None, 5, 5, 0.0f);
-                ASSERT_TRUE(lhs.collateWith(rhs));
-                ASSERT_EQ(5, lhs.posX);
-                ASSERT_EQ(5, lhs.posY);
+                CHECK(lhs.collateWith(rhs));
+                CHECK(lhs.posX == 5);
+                CHECK(lhs.posY == 5);
             }
             
             {
                 // horizontal wheel collation
                 auto lhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Horizontal, 0, 0, 3.0f);
                 const auto rhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Horizontal, 0, 0, -5.0f);
-                ASSERT_TRUE(lhs.collateWith(rhs));
-                ASSERT_EQ(-2.0f, lhs.scrollDistance);
+                CHECK(lhs.collateWith(rhs));
+                CHECK(lhs.scrollDistance == -2.0f);
             }
             
             {
                 // vertical wheel collation
                 auto lhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Vertical, 0, 0, 3.0f);
                 const auto rhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Vertical, 0, 0, -5.0f);
-                ASSERT_TRUE(lhs.collateWith(rhs));
-                ASSERT_EQ(-2.0f, lhs.scrollDistance);
+                CHECK(lhs.collateWith(rhs));
+                CHECK(lhs.scrollDistance == -2.0f);
             }
             
             {
                 // unmatched axis wheel collation
                 auto lhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Horizontal, 0, 0, 3.0f);
                 const auto rhs = MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Vertical, 0, 0, -5.0f);
-                ASSERT_FALSE(lhs.collateWith(rhs));
-                ASSERT_EQ(3.0f, lhs.scrollDistance);
+                CHECK_FALSE(lhs.collateWith(rhs));
+                CHECK(lhs.scrollDistance == 3.0f);
             }
         }
         
@@ -136,17 +134,17 @@ namespace TrenchBroom {
             }
             
             void processEvent(const KeyEvent& act) override {
-                ASSERT_FALSE(m_expectedEvents.empty());
-                std::visit(kdl::overload{
-                    [&](const KeyEvent& exp) { ASSERT_EQ(exp, act); },
-                    [&](const auto&)       { ASSERT_TRUE(false); }
-                }, m_expectedEvents.front());
+                CHECK_FALSE(m_expectedEvents.empty());
+                std::visit(kdl::overload(
+                    [&](const KeyEvent& exp) { CHECK(act == exp); },
+                    [&](const auto&)       { CHECK(false); }
+                ), m_expectedEvents.front());
                 m_expectedEvents.pop_front();
             }
             
             void processEvent(const MouseEvent& act) override {
-                ASSERT_FALSE(m_expectedEvents.empty());
-                std::visit(kdl::overload{
+                CHECK_FALSE(m_expectedEvents.empty());
+                std::visit(kdl::overload(
                     [&](const MouseEvent& exp) {
                         CHECK(exp.type == act.type);
                         CHECK(exp.button == act.button);
@@ -155,17 +153,17 @@ namespace TrenchBroom {
                         CHECK(exp.posY == act.posY);
                         CHECK(exp.scrollDistance == Approx(act.scrollDistance));
                     },
-                    [&](const auto&) { ASSERT_TRUE(false); }
-                }, m_expectedEvents.front());
+                    [&](const auto&) { CHECK(false); }
+                ), m_expectedEvents.front());
                 m_expectedEvents.pop_front();
             }
             
             void processEvent(const CancelEvent& act) override {
-                ASSERT_FALSE(m_expectedEvents.empty());
-                std::visit(kdl::overload{
-                    [&](const CancelEvent& exp) { ASSERT_EQ(exp, act); },
-                    [&](const auto&)        { ASSERT_TRUE(false); }
-                }, m_expectedEvents.front());
+                CHECK_FALSE(m_expectedEvents.empty());
+                std::visit(kdl::overload(
+                    [&](const CancelEvent& exp) { CHECK(act == exp); },
+                    [&](const auto&)        { CHECK(false); }
+                ), m_expectedEvents.front());
                 m_expectedEvents.pop_front();
             }
             
@@ -178,7 +176,7 @@ namespace TrenchBroom {
         void checkEventQueue(InputEventRecorder& r, Args&&... args) {
             TestEventProcessor p(std::forward<Args>(args)...);
             r.processEvents(p);
-            ASSERT_TRUE(p.allConsumed());
+            CHECK(p.allConsumed());
         }
         
         inline QWheelEvent makeWheelEvent(const QPoint& angleDelta) {
@@ -191,11 +189,9 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordKeyEvents", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qKeyPress = QKeyEvent(QEvent::KeyPress, 0, 0, 0, 0);
-            const auto qKeyRelease = QKeyEvent(QEvent::KeyRelease, 0, 0, 0, 0);
 
-            r.recordEvent(&qKeyPress);
-            r.recordEvent(&qKeyRelease);
+            r.recordEvent(QKeyEvent(QEvent::KeyPress, 0, 0, 0, 0));
+            r.recordEvent(QKeyEvent(QEvent::KeyRelease, 0, 0, 0, 0));
             
             checkEventQueue(r,
                 KeyEvent(KeyEvent::Type::Down),
@@ -204,11 +200,9 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordLeftClick", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,  MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -218,15 +212,11 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordLeftDoubleClick", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease1 = QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseDoubleClick = QMouseEvent(QEvent::MouseButtonDblClick, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease2 = QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseRelease1);
-            r.recordEvent(&qMouseDoubleClick);
-            r.recordEvent(&qMouseRelease2);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonDblClick, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
 
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,        MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -239,11 +229,9 @@ namespace TrenchBroom {
 
         TEST_CASE("InputEventRecorderTest.recordCtrlLeftClick", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, Qt::MetaModifier);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, Qt::MetaModifier));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,  MouseEvent::Button::Right, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -253,11 +241,9 @@ namespace TrenchBroom {
 
         TEST_CASE("InputEventRecorderTest.recordRightClick", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::RightButton, Qt::RightButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::RightButton, Qt::RightButton, 0);
 
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::RightButton, Qt::RightButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 2.0f, 5.0f }, {}, {}, Qt::RightButton, Qt::RightButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,  MouseEvent::Button::Right, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -267,12 +253,10 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordMotionWithCollation", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMouseMotion1 = QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::NoButton, Qt::NoButton, 0);
-            const auto qMouseMotion2 = QMouseEvent(QEvent::MouseMove, { 12.0f, 8.0f }, {}, {}, Qt::NoButton, Qt::NoButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMouseMotion1);
-            r.recordEvent(&qMouseMotion2);
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::NoButton, Qt::NoButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 12.0f, 8.0f }, {}, {}, Qt::NoButton, Qt::NoButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Motion, MouseEvent::Button::None, MouseEvent::WheelAxis::None, 12, 8, 0.0f));
@@ -284,13 +268,13 @@ namespace TrenchBroom {
             const auto qWheel2 = makeWheelEvent({ 3, 0 });
 
             const float expectedScrollLines = \
-                static_cast<float>((InputEventRecorder::scrollLinesForEvent(&qWheel1) +
-                                    InputEventRecorder::scrollLinesForEvent(&qWheel2)).x());
-            EXPECT_GT(expectedScrollLines, 0.0f);
+                static_cast<float>((InputEventRecorder::scrollLinesForEvent(qWheel1) +
+                                    InputEventRecorder::scrollLinesForEvent(qWheel2)).x());
+            REQUIRE(expectedScrollLines > 0.0f);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qWheel1);
-            r.recordEvent(&qWheel2);
+            r.recordEvent(qWheel1);
+            r.recordEvent(qWheel2);
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Horizontal, 0, 0, expectedScrollLines));
@@ -302,13 +286,13 @@ namespace TrenchBroom {
             const auto qWheel2 = makeWheelEvent({ 0, 4 });
 
             const float expectedScrollLines = \
-                static_cast<float>((InputEventRecorder::scrollLinesForEvent(&qWheel1) +
-                                    InputEventRecorder::scrollLinesForEvent(&qWheel2)).y());
-            EXPECT_GT(expectedScrollLines, 0.0f);
+                static_cast<float>((InputEventRecorder::scrollLinesForEvent(qWheel1) +
+                                    InputEventRecorder::scrollLinesForEvent(qWheel2)).y());
+            REQUIRE(expectedScrollLines > 0.0f);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qWheel1);
-            r.recordEvent(&qWheel2);
+            r.recordEvent(qWheel1);
+            r.recordEvent(qWheel2);
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Vertical, 0, 0, expectedScrollLines));
@@ -319,17 +303,17 @@ namespace TrenchBroom {
             const auto qWheel1 = makeWheelEvent({ 1, 3 });
             const auto qWheel2 = makeWheelEvent({ 3, 0 });
 
-            const QPointF expectedScrollLines1 = InputEventRecorder::scrollLinesForEvent(&qWheel1);
-            EXPECT_GT(expectedScrollLines1.x(), 0.0f);
-            EXPECT_GT(expectedScrollLines1.y(), 0.0f);
+            const QPointF expectedScrollLines1 = InputEventRecorder::scrollLinesForEvent(qWheel1);
+            REQUIRE(expectedScrollLines1.x() > 0.0f);
+            REQUIRE(expectedScrollLines1.y() > 0.0f);
 
-            const QPointF expectedScrollLines2 = InputEventRecorder::scrollLinesForEvent(&qWheel2);
-            EXPECT_GT(expectedScrollLines2.x(), 0.0f);
-            EXPECT_EQ(expectedScrollLines2.y(), 0.0f);
+            const QPointF expectedScrollLines2 = InputEventRecorder::scrollLinesForEvent(qWheel2);
+            REQUIRE(expectedScrollLines2.x() > 0.0f);
+            REQUIRE(0.0f == expectedScrollLines2.y());
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qWheel1);
-            r.recordEvent(&qWheel2);
+            r.recordEvent(qWheel1);
+            r.recordEvent(qWheel2);
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Scroll, MouseEvent::Button::None, MouseEvent::WheelAxis::Horizontal, 0, 0, static_cast<float>(expectedScrollLines1.x())),
@@ -339,14 +323,11 @@ namespace TrenchBroom {
 
         TEST_CASE("InputEventRecorderTest.recordLeftClickWithQuickSmallMotion", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion = QMouseEvent(QEvent::MouseMove, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseMotion);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,   MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -357,15 +338,12 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordLeftClickWithSlowSmallMotion", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion = QMouseEvent(QEvent::MouseMove, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseMotion);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             std::this_thread::sleep_for(200ms);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 4.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,   MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -376,14 +354,11 @@ namespace TrenchBroom {
 
         TEST_CASE("InputEventRecorderTest.recordLeftClickWithAccidentalDrag", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion = QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseMotion);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,      MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -395,15 +370,12 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordLeftDrag", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion = QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseMotion);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             std::this_thread::sleep_for(200ms);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,      MouseEvent::Button::Left, MouseEvent::WheelAxis::None, 2, 5, 0.0f),
@@ -415,17 +387,13 @@ namespace TrenchBroom {
         
         TEST_CASE("InputEventRecorderTest.recordLeftDragWithCollation", "[InputEventRecorderTest]") {
             InputEventRecorder r;
-            const auto qMousePress = QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion1 = QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseMotion2 = QMouseEvent(QEvent::MouseMove, { 12.0f, 8.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
-            const auto qMouseRelease = QMouseEvent(QEvent::MouseButtonRelease, { 12.0f, 8.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0);
 
             using namespace std::chrono_literals;
-            r.recordEvent(&qMousePress);
-            r.recordEvent(&qMouseMotion1);
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonPress, { 2.0f, 5.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 6.0f, 3.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             std::this_thread::sleep_for(200ms);
-            r.recordEvent(&qMouseMotion2);
-            r.recordEvent(&qMouseRelease);
+            r.recordEvent(QMouseEvent(QEvent::MouseMove, { 12.0f, 8.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
+            r.recordEvent(QMouseEvent(QEvent::MouseButtonRelease, { 12.0f, 8.0f }, {}, {}, Qt::LeftButton, Qt::LeftButton, 0));
             
             checkEventQueue(r,
                 MouseEvent(MouseEvent::Type::Down,      MouseEvent::Button::Left, MouseEvent::WheelAxis::None,  2, 5, 0.0f),

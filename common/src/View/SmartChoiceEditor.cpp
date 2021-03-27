@@ -18,9 +18,10 @@
  */
 
 #include "SmartChoiceEditor.h"
-#include "Assets/AttributeDefinition.h"
-#include "Model/AttributableNode.h"
+#include "Assets/PropertyDefinition.h"
+#include "Model/EntityNodeBase.h"
 #include "View/MapDocument.h"
+#include "View/QtUtils.h"
 #include "View/ViewConstants.h"
 
 #include <kdl/set_temp.h>
@@ -36,23 +37,23 @@
 namespace TrenchBroom {
     namespace View {
         SmartChoiceEditor::SmartChoiceEditor(std::weak_ptr<MapDocument> document, QWidget* parent) :
-        SmartAttributeEditor(std::move(document), parent),
-        m_comboBox(nullptr),
-        m_ignoreEditTextChanged(false) {
+            SmartPropertyEditor(std::move(document), parent),
+            m_comboBox(nullptr),
+            m_ignoreEditTextChanged(false) {
             createGui();
         }
 
         void SmartChoiceEditor::comboBoxActivated(const int /* index */) {
             const kdl::set_temp ignoreTextChanged(m_ignoreEditTextChanged);
 
-            const auto valueDescStr = m_comboBox->currentText().toStdString();
+            const auto valueDescStr = mapStringFromUnicode(document()->encoding(), m_comboBox->currentText());
             const auto valueStr = valueDescStr.substr(0, valueDescStr.find_first_of(':') - 1);
-            document()->setAttribute(name(), valueStr);
+            document()->setProperty(propertyKey(), valueStr);
         }
 
         void SmartChoiceEditor::comboBoxEditTextChanged(const QString& text) {
             if (!m_ignoreEditTextChanged) {
-                document()->setAttribute(name(), text.toStdString());
+                document()->setProperty(propertyKey(), mapStringFromUnicode(document()->encoding(), text));
             }
         }
 
@@ -80,26 +81,26 @@ namespace TrenchBroom {
             setLayout(layout);
         }
 
-        void SmartChoiceEditor::doUpdateVisual(const std::vector<Model::AttributableNode*>& attributables) {
+        void SmartChoiceEditor::doUpdateVisual(const std::vector<Model::EntityNodeBase*>& nodes) {
             ensure(m_comboBox != nullptr, "comboBox is null");
 
             const kdl::set_temp ignoreTextChanged(m_ignoreEditTextChanged);
             m_comboBox->clear();
 
-            const auto* attrDef = Model::AttributableNode::selectAttributeDefinition(name(), attributables);
-            if (attrDef == nullptr || attrDef->type() != Assets::AttributeDefinition::Type_ChoiceAttribute) {
+            const auto* propDef = Model::selectPropertyDefinition(propertyKey(), nodes);
+            if (propDef == nullptr || propDef->type() != Assets::PropertyDefinitionType::ChoiceProperty) {
                 m_comboBox->setDisabled(true);
             } else {
                 m_comboBox->setDisabled(false);
-                const auto* choiceDef = static_cast<const Assets::ChoiceAttributeDefinition*>(attrDef);
+                const auto* choiceDef = static_cast<const Assets::ChoicePropertyDefinition*>(propDef);
                 const auto& options = choiceDef->options();
 
-                for (const Assets::ChoiceAttributeOption& option : options) {
-                    m_comboBox->addItem(QString::fromStdString(option.value() + " : " + option.description()));
+                for (const Assets::ChoicePropertyOption& option : options) {
+                    m_comboBox->addItem(mapStringToUnicode(document()->encoding(), option.value() + " : " + option.description()));
                 }
 
-                const auto value = Model::AttributableNode::selectAttributeValue(name(), attributables);
-                m_comboBox->setCurrentText(QString::fromStdString(value));
+                const auto value = Model::selectPRopertyValue(propertyKey(), nodes);
+                m_comboBox->setCurrentText(mapStringToUnicode(document()->encoding(), value));
             }
         }
     }

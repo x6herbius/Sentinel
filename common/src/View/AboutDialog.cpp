@@ -56,7 +56,7 @@ namespace TrenchBroom {
         }
 
         void AboutDialog::createGui() {
-            const QString creditsString = tr("github.com/kduske/TrenchBroom\n\n"
+            const QString creditsString = tr("github.com/TrenchBroom/TrenchBroom\n\n"
                                              "<b>Developers</b>\n"
                                              "Kristian Duske\n"
                                              "Eric Wasylishen\n\n"
@@ -86,14 +86,12 @@ namespace TrenchBroom {
                                              "GLEW (OpenGL extension library)\n"
                                              "tinyxml2 (XML parsing library)\n"
                                              "miniz (Archive library)\n"
-                                             "any-lite (C++ library)\n"
-                                             "optional-lite (C++ library)\n"
-                                             "Google Test (C++ testing framework)\n"
-                                             "Google Mock (C++ mocking framework)\n"
+                                             "Catch 2 (C++ testing framework)\n"
                                              "StackWalker (C++ stack trace analyzer)\n"
                                              "CMake (Cross platform build manager)\n"
                                              "Pandoc (Universal document converter)\n"
-                                             "Source Sans Pro (Font)\n").replace("\n", "<br/>");
+                                             "Source Sans Pro (Font)\n"
+                                             "Font Awesome 5 Free (Icons)\n").replace("\n", "<br/>");
             setWindowIconTB(this);
 
             auto* infoPanel = new AppInfoPanel();

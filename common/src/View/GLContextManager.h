@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_GLContextManager
-#define TrenchBroom_GLContextManager
+#pragma once
 
 #include "Macros.h"
 
@@ -45,9 +44,9 @@ namespace TrenchBroom {
             std::string m_glRenderer;
             std::string m_glVersion;
 
+            std::unique_ptr<Renderer::ShaderManager> m_shaderManager;
             std::unique_ptr<Renderer::VboManager> m_vboManager;
             std::unique_ptr<Renderer::FontManager> m_fontManager;
-            std::unique_ptr<Renderer::ShaderManager> m_shaderManager;
         public:
             GLContextManager();
             ~GLContextManager();
@@ -64,4 +63,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_GLContextManager) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_UVEditor
-#define TrenchBroom_UVEditor
+#pragma once
 
 #include <memory>
 
@@ -45,6 +44,7 @@ namespace TrenchBroom {
             QSpinBox* m_ySubDivisionEditor;
 
             QAbstractButton* m_resetTextureButton;
+            QAbstractButton* m_resetTextureToWorldButton;
             QAbstractButton* m_flipTextureHButton;
             QAbstractButton* m_flipTextureVButton;
             QAbstractButton* m_rotateTextureCCWButton;
@@ -65,6 +65,7 @@ namespace TrenchBroom {
             void unbindObservers();
 
             void resetTextureClicked();
+            void resetTextureToWorldClicked();
             void flipTextureHClicked();
             void flipTextureVClicked();
             void rotateTextureCCWClicked();
@@ -74,4 +75,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_UVEditor) */

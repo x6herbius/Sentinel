@@ -17,37 +17,43 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_NodeReader
-#define TrenchBroom_NodeReader
+#pragma once
 
 #include "IO/MapReader.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace TrenchBroom {
     namespace IO {
         class ParserStatus;
 
+        /**
+         * MapReader subclass for loading the clipboard contents, rather than an entire .map
+         */
         class NodeReader : public MapReader {
         private:
-            Model::ModelFactory& m_factory;
             std::vector<Model::Node*> m_nodes;
         public:
-            NodeReader(const std::string& str, Model::ModelFactory& factory);
+            /**
+             * Creates a new parser where the given string is expected to be formatted in the given source map format,
+             * and the created objects are converted to the given target format.
+             *
+             * @param str the string to parse
+             * @param sourceMapFormat the expected format of the given string
+             * @param targetMapFormat the format to convert the created objects to
+             */
+            NodeReader(std::string_view str, Model::MapFormat sourceMapFormat, Model::MapFormat targetMapFormat);
 
-            static std::vector<Model::Node*> read(const std::string& str, Model::ModelFactory& factory, const vm::bbox3& worldBounds, ParserStatus& status);
-            const std::vector<Model::Node*>& read(const vm::bbox3& worldBounds, ParserStatus& status);
+            static std::vector<Model::Node*> read(const std::string& str, Model::MapFormat preferredMapFormat, const vm::bbox3& worldBounds, ParserStatus& status);
+        private:
+            static std::vector<Model::Node*> readAsFormat(Model::MapFormat sourceMapFormat, Model::MapFormat targetMapFormat, const std::string& str, const vm::bbox3& worldBounds, ParserStatus& status);
         private: // implement MapReader interface
-            Model::ModelFactory& initialize(Model::MapFormat format) override;
-            Model::Node* onWorldspawn(const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status) override;
-            void onWorldspawnFilePosition(size_t lineNumber, size_t lineCount, ParserStatus& status) override;
-            void onLayer(Model::Layer* layer, ParserStatus& status) override;
-            void onNode(Model::Node* parent, Model::Node* node, ParserStatus& status) override;
-            void onUnresolvedNode(const ParentInfo& parentInfo, Model::Node* node, ParserStatus& status) override;
-            void onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& status) override;
+            Model::Node* onWorldNode(std::unique_ptr<Model::WorldNode> worldNode, ParserStatus& status) override;
+            void onLayerNode(std::unique_ptr<Model::Node> layerNode, ParserStatus& status) override;
+            void onNode(Model::Node* parentNode, std::unique_ptr<Model::Node> node, ParserStatus& status) override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_NodeReader) */

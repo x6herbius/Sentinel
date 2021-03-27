@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TabBook
-#define TrenchBroom_TabBook
+#pragma once
 
 #include <QWidget>
 
@@ -44,9 +43,10 @@ namespace TrenchBroom {
         public:
             explicit TabBook(QWidget* parent = nullptr);
 
+            TabBar* tabBar();
+
             void addPage(TabBookPage* page, const QString& title);
             void switchToPage(int index);
-            void setTabBarHeight(int height);
 
         signals:
             void pageChanged(int page);
@@ -54,4 +54,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_TabBook) */

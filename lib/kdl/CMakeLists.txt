@@ -15,7 +15,9 @@ target_include_directories(kdl INTERFACE
         $<BUILD_INTERFACE:${KDL_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:kdl/include/kdl>)
 
-target_link_libraries(kdl INTERFACE)
+# parallel.h uses <thread>, etc., which requires this on Linux
+find_package(Threads REQUIRED)
+target_link_libraries(kdl INTERFACE Threads::Threads)
 
 target_sources(kdl INTERFACE
     "${KDL_INCLUDE_DIR}/kdl/binary_relation.h"
@@ -25,13 +27,19 @@ target_sources(kdl INTERFACE
     "${KDL_INCLUDE_DIR}/kdl/compact_trie.h"
     "${KDL_INCLUDE_DIR}/kdl/enum_array.h"
     "${KDL_INCLUDE_DIR}/kdl/result.h"
+    "${KDL_INCLUDE_DIR}/kdl/result_combine.h"
+    "${KDL_INCLUDE_DIR}/kdl/result_for_each.h"
     "${KDL_INCLUDE_DIR}/kdl/result_forward.h"
+    "${KDL_INCLUDE_DIR}/kdl/result_io.h"
     "${KDL_INCLUDE_DIR}/kdl/intrusive_circular_list_forward.h"
     "${KDL_INCLUDE_DIR}/kdl/intrusive_circular_list.h"
     "${KDL_INCLUDE_DIR}/kdl/invoke.h"
     "${KDL_INCLUDE_DIR}/kdl/map_utils.h"
     "${KDL_INCLUDE_DIR}/kdl/memory_utils.h"
+    "${KDL_INCLUDE_DIR}/kdl/meta_utils.h"
+    "${KDL_INCLUDE_DIR}/kdl/opt_utils.h"
     "${KDL_INCLUDE_DIR}/kdl/overload.h"
+    "${KDL_INCLUDE_DIR}/kdl/parallel.h"
     "${KDL_INCLUDE_DIR}/kdl/set_adapter.h"
     "${KDL_INCLUDE_DIR}/kdl/set_temp.h"
     "${KDL_INCLUDE_DIR}/kdl/skip_iterator.h"
@@ -40,16 +48,23 @@ target_sources(kdl INTERFACE
     "${KDL_INCLUDE_DIR}/kdl/string_format.h"
     "${KDL_INCLUDE_DIR}/kdl/string_utils.h"
     "${KDL_INCLUDE_DIR}/kdl/transform_range.h"
+    "${KDL_INCLUDE_DIR}/kdl/tuple_io.h"
     "${KDL_INCLUDE_DIR}/kdl/vector_set_forward.h"
     "${KDL_INCLUDE_DIR}/kdl/vector_set.h"
     "${KDL_INCLUDE_DIR}/kdl/vector_utils.h"
+    "${KDL_INCLUDE_DIR}/kdl/zip_iterator.h"
 )
 
 target_compile_features(kdl INTERFACE cxx_std_17)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    target_compile_options(kdl INTERFACE -Wall -Wextra -Wconversion -pedantic -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-padded -Wno-exit-time-destructors)
+    target_compile_options(kdl INTERFACE -Wall -Wextra -Wconversion -Wshadow-all -pedantic -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-padded -Wno-exit-time-destructors)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(kdl INTERFACE -Wall -Wextra -Wconversion -pedantic)
+    target_compile_options(kdl INTERFACE -Wall -Wextra -Wconversion -Wshadow=local -pedantic)
+
+    # gcc <= 7 warns about unused structured bindings, see https://github.com/TrenchBroom/TrenchBroom/issues/3751
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)
+        target_compile_options(kdl INTERFACE -Wno-unused-variable)
+    endif()
 elseif(MSVC EQUAL 1)
     target_compile_options(kdl INTERFACE /W4 /EHsc /MP)
 

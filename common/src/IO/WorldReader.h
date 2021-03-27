@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_WorldReader
-#define TrenchBroom_WorldReader
+#pragma once
 
 #include "IO/MapReader.h"
 
@@ -28,29 +27,28 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class World;
+        class WorldNode;
     }
 
     namespace IO {
         class ParserStatus;
 
+        /**
+         * MapReader subclass for loading a whole .map file.
+         */
         class WorldReader : public MapReader {
-            std::unique_ptr<Model::World> m_world;
+            std::unique_ptr<Model::WorldNode> m_world;
         public:
-            WorldReader(const char* begin, const char* end);
-            explicit WorldReader(const std::string& str);
+            explicit WorldReader(std::string_view str, Model::MapFormat sourceAndTargetMapFormat);
 
-            std::unique_ptr<Model::World> read(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status);
+            std::unique_ptr<Model::WorldNode> read(const vm::bbox3& worldBounds, ParserStatus& status);
+        private:            
+            void sanitizeLayerSortIndicies(ParserStatus& status);            
         private: // implement MapReader interface
-            Model::ModelFactory& initialize(Model::MapFormat format) override;
-            Model::Node* onWorldspawn(const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status) override;
-            void onWorldspawnFilePosition(size_t lineNumber, size_t lineCount, ParserStatus& status) override;
-            void onLayer(Model::Layer* layer, ParserStatus& status) override;
-            void onNode(Model::Node* parent, Model::Node* node, ParserStatus& status) override;
-            void onUnresolvedNode(const ParentInfo& parentInfo, Model::Node* node, ParserStatus& status) override;
-            void onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& status) override;
+            Model::Node* onWorldNode(std::unique_ptr<Model::WorldNode> worldNode, ParserStatus& status) override;
+            void onLayerNode(std::unique_ptr<Model::Node> layerNode, ParserStatus& status) override;
+            void onNode(Model::Node* parentNode, std::unique_ptr<Model::Node> node, ParserStatus& status) override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_WorldReader) */

@@ -17,29 +17,25 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_NodeCollection
-#define TrenchBroom_NodeCollection
+#pragma once
 
 #include <vector>
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
-        class Entity;
-        class Group;
-        class Layer;
+        class BrushNode;
+        class EntityNode;
+        class GroupNode;
+        class LayerNode;
         class Node;
 
         class NodeCollection {
         private:
-            class AddNode;
-            class RemoveNode;
-        private:
             std::vector<Node*> m_nodes;
-            std::vector<Layer*> m_layers;
-            std::vector<Group*> m_groups;
-            std::vector<Entity*> m_entities;
-            std::vector<Brush*> m_brushes;
+            std::vector<LayerNode*> m_layers;
+            std::vector<GroupNode*> m_groups;
+            std::vector<EntityNode*> m_entities;
+            std::vector<BrushNode*> m_brushes;
         public:
             bool empty() const;
             size_t nodeCount() const;
@@ -56,6 +52,7 @@ namespace TrenchBroom {
             bool hasOnlyEntities() const;
             bool hasBrushes() const;
             bool hasOnlyBrushes() const;
+            bool hasBrushesRecursively() const;
 
             std::vector<Node*>::iterator begin();
             std::vector<Node*>::iterator end();
@@ -63,10 +60,11 @@ namespace TrenchBroom {
             std::vector<Node*>::const_iterator end() const;
 
             const std::vector<Node*>& nodes() const;
-            const std::vector<Layer*>& layers() const;
-            const std::vector<Group*>& groups() const;
-            const std::vector<Entity*>& entities() const;
-            const std::vector<Brush*>& brushes() const;
+            const std::vector<LayerNode*>& layers() const;
+            const std::vector<GroupNode*>& groups() const;
+            const std::vector<EntityNode*>& entities() const;
+            const std::vector<BrushNode*>& brushes() const;
+            std::vector<BrushNode*> brushesRecursively() const;
 
             void addNodes(const std::vector<Node*>& nodes);
             void addNode(Node* node);
@@ -79,4 +77,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_NodeCollection) */

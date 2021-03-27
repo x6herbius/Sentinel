@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapRenderer
-#define TrenchBroom_MapRenderer
+#pragma once
 
 #include "Macros.h"
 
@@ -40,15 +39,16 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class Brush;
-        class BrushFace;
-        class Group;
-        class Layer;
+        class BrushNode;
+        class BrushFaceHandle;
+        class GroupNode;
+        class LayerNode;
         class Node;
     }
 
     namespace Renderer {
         class EntityLinkRenderer;
+        class GroupLinkRenderer;
         class ObjectRenderer;
         class RenderBatch;
         class RenderContext;
@@ -59,7 +59,7 @@ namespace TrenchBroom {
             class LockedBrushRendererFilter;
             class UnselectedBrushRendererFilter;
 
-            using RendererMap = std::map<Model::Layer*, ObjectRenderer*>;
+            using RendererMap = std::map<Model::LayerNode*, ObjectRenderer*>;
 
             std::weak_ptr<View::MapDocument> m_document;
 
@@ -67,6 +67,7 @@ namespace TrenchBroom {
             std::unique_ptr<ObjectRenderer> m_selectionRenderer;
             std::unique_ptr<ObjectRenderer> m_lockedRenderer;
             std::unique_ptr<EntityLinkRenderer> m_entityLinkRenderer;
+            std::unique_ptr<GroupLinkRenderer> m_groupLinkRenderer;
         public:
             explicit MapRenderer(std::weak_ptr<View::MapDocument> document);
             ~MapRenderer();
@@ -92,12 +93,12 @@ namespace TrenchBroom {
             void renderLockedOpaque(RenderContext& renderContext, RenderBatch& renderBatch);
             void renderLockedTransparent(RenderContext& renderContext, RenderBatch& renderBatch);
             void renderEntityLinks(RenderContext& renderContext, RenderBatch& renderBatch);
+            void renderGroupLinks(RenderContext& renderContext, RenderBatch& renderBatch);
 
             void setupRenderers();
             void setupDefaultRenderer(ObjectRenderer& renderer);
             void setupSelectionRenderer(ObjectRenderer& renderer);
             void setupLockedRenderer(ObjectRenderer& renderer);
-            void setupEntityLinkRenderer();
 
             typedef enum {
                 Renderer_Default            = 1,
@@ -108,8 +109,6 @@ namespace TrenchBroom {
                 Renderer_All                = Renderer_Default | Renderer_Selection | Renderer_Locked
             } Renderer;
 
-            class CollectRenderableNodes;
-
             /**
              * This moves nodes between default / selection / locked renderers as needed,
              * but doesn't otherwise invalidate them.
@@ -118,8 +117,9 @@ namespace TrenchBroom {
              */
             void updateRenderers(Renderer renderers);
             void invalidateRenderers(Renderer renderers);
-            void invalidateBrushesInRenderers(Renderer renderers, const std::vector<Model::Brush*>& brushes);
+            void invalidateBrushesInRenderers(Renderer renderers, const std::vector<Model::BrushNode*>& brushes);
             void invalidateEntityLinkRenderer();
+            void invalidateGroupLinkRenderer();
             void reloadEntityModels();
         private: // notification
             void bindObservers();
@@ -135,10 +135,10 @@ namespace TrenchBroom {
             void nodeVisibilityDidChange(const std::vector<Model::Node*>& nodes);
             void nodeLockingDidChange(const std::vector<Model::Node*>& nodes);
 
-            void groupWasOpened(Model::Group* group);
-            void groupWasClosed(Model::Group* group);
+            void groupWasOpened(Model::GroupNode* group);
+            void groupWasClosed(Model::GroupNode* group);
 
-            void brushFacesDidChange(const std::vector<Model::BrushFace*>& faces);
+            void brushFacesDidChange(const std::vector<Model::BrushFaceHandle>& faces);
 
             void selectionDidChange(const View::Selection& selection);
 
@@ -147,11 +147,9 @@ namespace TrenchBroom {
             void modsDidChange();
 
             void editorContextDidChange();
-            void mapViewConfigDidChange();
 
             void preferenceDidChange(const IO::Path& path);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_MapRenderer) */

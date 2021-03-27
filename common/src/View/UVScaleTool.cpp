@@ -46,8 +46,8 @@
 
 namespace TrenchBroom {
     namespace View {
-        const Model::HitType::Type UVScaleTool::XHandleHit = Model::HitType::freeType();
-        const Model::HitType::Type UVScaleTool::YHandleHit = Model::HitType::freeType();
+        const Model::HitType::Type UVScaleTool::XHandleHitType = Model::HitType::freeType();
+        const Model::HitType::Type UVScaleTool::YHandleHitType = Model::HitType::freeType();
 
         UVScaleTool::UVScaleTool(std::weak_ptr<MapDocument> document, UVViewHelper& helper) :
         ToolControllerBase(),
@@ -64,7 +64,7 @@ namespace TrenchBroom {
         }
 
         void UVScaleTool::doPick(const InputState& inputState, Model::PickResult& pickResult) {
-            static const Model::HitType::Type HitTypes[] = { XHandleHit, YHandleHit };
+            static const Model::HitType::Type HitTypes[] = { XHandleHitType, YHandleHitType };
             if (m_helper.valid()) {
                 m_helper.pickTextureGrid(inputState.pickRay(), HitTypes, pickResult);
             }
@@ -77,12 +77,11 @@ namespace TrenchBroom {
         }
 
         vm::vec2f UVScaleTool::getHitPoint(const vm::ray3& pickRay) const {
-            const auto* face = m_helper.face();
-            const auto& boundary = face->boundary();
+            const auto& boundary = m_helper.face()->boundary();
             const auto facePointDist = vm::intersect_ray_plane(pickRay, boundary);
             const auto facePoint = vm::point_at_distance(pickRay, facePointDist);
 
-            const auto toTex = face->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
+            const auto toTex = m_helper.face()->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
             return vm::vec2f(toTex * facePoint);
         }
 
@@ -94,14 +93,13 @@ namespace TrenchBroom {
                 return false;
             }
 
-            auto* face = m_helper.face();
-            if (!face->attribs().valid()) {
+            if (!m_helper.face()->attributes().valid()) {
                 return false;
             }
 
             const auto& pickResult = inputState.pickResult();
-            const auto& xHit = pickResult.query().type(XHandleHit).occluded().first();
-            const auto& yHit = pickResult.query().type(YHandleHit).occluded().first();
+            const auto& xHit = pickResult.query().type(XHandleHitType).occluded().first();
+            const auto& yHit = pickResult.query().type(YHandleHitType).occluded().first();
 
             if (!xHit.isMatch() && !yHit.isMatch()) {
                 return false;
@@ -130,8 +128,7 @@ namespace TrenchBroom {
             const auto newHandleDistFaceCoords = newHandlePosSnapped    - originHandlePosFaceCoords;
             const auto curHandleDistTexCoords  = curHandlePosTexCoords  - originHandlePosTexCoords;
 
-            auto* face = m_helper.face();
-            auto newScale = face->scale();
+            auto newScale = m_helper.face()->attributes().scale();
             for (size_t i = 0; i < 2; ++i) {
                 if (m_selector[i]) {
                     const auto value = newHandleDistFaceCoords[i] / curHandleDistTexCoords[i];
@@ -174,18 +171,16 @@ namespace TrenchBroom {
         }
 
         vm::vec2f UVScaleTool::getHandlePos() const {
-            const auto* face = m_helper.face();
-            const auto toWorld = face->fromTexCoordSystemMatrix(face->offset(), face->scale(), true);
-            const auto toTex   = face->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
+            const auto toWorld = m_helper.face()->fromTexCoordSystemMatrix(m_helper.face()->attributes().offset(), m_helper.face()->attributes().scale(), true);
+            const auto toTex   = m_helper.face()->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
 
             return vm::vec2f(toTex * toWorld * vm::vec3(getScaledTranslatedHandlePos()));
         }
 
         vm::vec2f UVScaleTool::snap(const vm::vec2f& position) const {
-            const auto* face = m_helper.face();
-            const auto toTex = face->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
+            const auto toTex = m_helper.face()->toTexCoordSystemMatrix(vm::vec2f::zero(), vm::vec2f::one(), true);
 
-            const auto vertices = face->vertices();
+            const auto vertices = m_helper.face()->vertices();
             auto distance = std::accumulate(std::begin(vertices), std::end(vertices), vm::vec2f::max(),
                                              [&toTex, &position](const vm::vec2f& current, const Model::BrushVertex* vertex) {
                                                  const vm::vec2f vertex2(toTex * vertex->position());
@@ -206,14 +201,13 @@ namespace TrenchBroom {
                 return;
             }
 
-            const auto* face = m_helper.face();
-            if (!face->attribs().valid()) {
+            if (!m_helper.face()->attributes().valid()) {
                 return;
             }
 
             // don't overdraw the origin handles
             const auto& pickResult = inputState.pickResult();
-            if (!pickResult.query().type(UVOriginTool::XHandleHit | UVOriginTool::YHandleHit).occluded().first().isMatch()) {
+            if (!pickResult.query().type(UVOriginTool::XHandleHitType | UVOriginTool::YHandleHitType).occluded().first().isMatch()) {
                 const Color color(1.0f, 0.0f, 0.0f, 1.0f);
 
                 Renderer::DirectEdgeRenderer handleRenderer(Renderer::VertexArray::move(getHandleVertices(pickResult)), Renderer::PrimType::Lines);
@@ -222,8 +216,8 @@ namespace TrenchBroom {
         }
 
         std::vector<UVScaleTool::EdgeVertex> UVScaleTool::getHandleVertices(const Model::PickResult& pickResult) const {
-            const auto& xHandleHit = pickResult.query().type(XHandleHit).occluded().first();
-            const auto& yHandleHit = pickResult.query().type(YHandleHit).occluded().first();
+            const auto& xHandleHit = pickResult.query().type(XHandleHitType).occluded().first();
+            const auto& yHandleHit = pickResult.query().type(YHandleHitType).occluded().first();
             const auto stripeSize = m_helper.stripeSize();
 
             const auto xIndex = xHandleHit.isMatch() ? xHandleHit.target<int>() : 0;

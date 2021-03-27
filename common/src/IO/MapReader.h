@@ -17,125 +17,142 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapReader
-#define TrenchBroom_MapReader
+#pragma once
 
 #include "FloatType.h"
 #include "IO/StandardMapParser.h"
+#include "Model/Brush.h"
+#include "Model/BrushFace.h"
 #include "Model/IdType.h"
+
+#include <kdl/result.h>
 
 #include <vecmath/forward.h>
 #include <vecmath/bbox.h>
 
-#include <map>
-#include <string>
+#include <optional>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 namespace TrenchBroom {
     namespace Model {
-        class AttributableNode;
-        class Brush;
-        class BrushFace;
-        class EntityAttribute;
-        class Group;
-        class Layer;
-        class ModelFactory;
+        class EntityNode;
+        class EntityNodeBase;
+        class BrushNode;
+        class EntityProperty;
+        class GroupNode;
+        class LayerNode;
+        enum class MapFormat;
         class Node;
+        class WorldNode;
     }
 
     namespace IO {
         class ParserStatus;
 
+        /**
+         * Abstract superclass containing common code for:
+         *
+         *  - WorldReader (loading a whole .map)
+         *  - NodeReader (reading part of a map, for pasting into an existing map)
+         *  - BrushFaceReader (reading faces when copy/pasting texture alignment)
+         *
+         * The flow of control is:
+         *
+         * 1. MapParser callbacks get called with the raw data, which we just store (m_objectInfos).
+         * 2. Convert the raw data to nodes in parallel (createNodes) and record any additional information
+         *    necessary to restore the parent / child relationships.
+         * 3. Validate the created nodes.
+         * 4. Post process the nodes to find the correct parent nodes (createNodes).
+         * 5. Call the appropriate callbacks (onWorldspawn, onLayer, ...).
+         */
         class MapReader : public StandardMapParser {
-        protected:
-            class ParentInfo {
-            public:
-                typedef enum {
-                    Type_Layer,
-                    Type_Group,
-                    Type_None
-                } Type;
-
-                Type m_type;
-                Model::IdType m_id;
-            public:
-                static ParentInfo layer(Model::IdType layerId);
-                static ParentInfo group(Model::IdType groupId);
-            private:
-                ParentInfo(Type type, Model::IdType id);
-            public:
-                bool layer() const;
-                bool group() const;
-                Model::IdType id() const;
+        public: // only public so that helper methods can see these declarations
+            struct EntityInfo {
+                std::vector<Model::EntityProperty> properties;
+                size_t startLine;
+                size_t lineCount;
             };
+
+            struct BrushInfo {
+                std::vector<Model::BrushFace> faces;
+                size_t startLine;
+                size_t lineCount;
+                std::optional<size_t> parentIndex;
+            };
+
+            using ObjectInfo = std::variant<EntityInfo, BrushInfo>;
         private:
-            typedef enum {
-                EntityType_Layer,
-                EntityType_Group,
-                EntityType_Worldspawn,
-                EntityType_Default
-            } EntityType;
-
-            using LayerMap = std::map<Model::IdType, Model::Layer*>;
-            using GroupMap = std::map<Model::IdType, Model::Group*>;
-
-            using NodeParentPair = std::pair<Model::Node*, ParentInfo>;
-            using NodeParentList = std::vector<NodeParentPair>;
-
             vm::bbox3 m_worldBounds;
-            Model::ModelFactory* m_factory;
-
-            Model::Node* m_brushParent;
-            Model::Node* m_currentNode;
-            std::vector<Model::BrushFace*> m_faces;
-
-            LayerMap m_layers;
-            GroupMap m_groups;
-            NodeParentList m_unresolvedNodes;
+        private: // data populated in response to MapParser callbacks
+            std::vector<ObjectInfo> m_objectInfos;
+            std::optional<size_t> m_currentEntityInfo;
         protected:
-            MapReader(const char* begin, const char* end);
-            explicit MapReader(const std::string& str);
+            /**
+             * Creates a new reader where the given string is expected to be formatted in the given source map format,
+             * and the created objects are converted to the given target format.
+             *
+             * @param str the string to parse
+             * @param sourceMapFormat the expected format of the given string
+             * @param targetMapFormat the format to convert the created objects to
+             */
+            MapReader(std::string_view str, Model::MapFormat sourceMapFormat, Model::MapFormat targetMapFormat);
 
-            void readEntities(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status);
-            void readBrushes(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status);
-            void readBrushFaces(Model::MapFormat format, const vm::bbox3& worldBounds, ParserStatus& status);
-        public:
-            ~MapReader() override;
-        private: // implement MapParser interface
-            void onFormatSet(Model::MapFormat format) override;
-            void onBeginEntity(size_t line, const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status) override;
+            /**
+             * Attempts to parse as one or more entities.
+             *
+             * @throws ParserException if parsing fails
+             */
+            void readEntities(const vm::bbox3& worldBounds, ParserStatus& status);
+            /**
+             * Attempts to parse as one or more brushes without any enclosing entity.
+             *
+             * @throws ParserException if parsing fails
+             */
+            void readBrushes(const vm::bbox3& worldBounds, ParserStatus& status);
+            /**
+             * Attempts to parse as one or more brush faces.
+             *
+             * @throws ParserException if parsing fails
+             */
+            void readBrushFaces(const vm::bbox3& worldBounds, ParserStatus& status);
+        protected: // implement MapParser interface
+            void onBeginEntity(size_t line, std::vector<Model::EntityProperty> properties, ParserStatus& status) override;
             void onEndEntity(size_t startLine, size_t lineCount, ParserStatus& status) override;
             void onBeginBrush(size_t line, ParserStatus& status) override;
-            void onEndBrush(size_t startLine, size_t lineCount, const ExtraAttributes& extraAttributes, ParserStatus& status) override;
-            void onBrushFace(size_t line, const vm::vec3& point1, const vm::vec3& point2, const vm::vec3& point3, const Model::BrushFaceAttributes& attribs, const vm::vec3& texAxisX, const vm::vec3& texAxisY, ParserStatus& status) override;
+            void onEndBrush(size_t startLine, size_t lineCount, ParserStatus& status) override;
+            void onStandardBrushFace(size_t line, Model::MapFormat targetMapFormat, const vm::vec3& point1, const vm::vec3& point2, const vm::vec3& point3, const Model::BrushFaceAttributes& attribs, ParserStatus& status) override;
+            void onValveBrushFace(size_t line, Model::MapFormat targetMapFormat, const vm::vec3& point1, const vm::vec3& point2, const vm::vec3& point3, const Model::BrushFaceAttributes& attribs, const vm::vec3& texAxisX, const vm::vec3& texAxisY, ParserStatus& status) override;
         private: // helper methods
-            void createLayer(size_t line, const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status);
-            void createGroup(size_t line, const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status);
-            void createEntity(size_t line, const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status);
-            void createBrush(size_t startLine, size_t lineCount, const ExtraAttributes& extraAttributes, ParserStatus& status);
+            void createNodes(ParserStatus& status);
+        private: // subclassing interface - these will be called in the order that nodes should be inserted
+            /**
+             * Called for the first worldspawn entity. Subclasses cannot capture the given world node but must
+             * create their own instead.
+             *
+             * If a world node was created, then this function is guaranteed to be called before any other callback.
+             *
+             * Returns a pointer to a node which should become the parent of any node that belongs to the world.
+             * This could be the default layer of the world node, or a dummy entity.
+             */
+            virtual Model::Node* onWorldNode(std::unique_ptr<Model::WorldNode> worldNode, ParserStatus& status) = 0;
 
-            ParentInfo::Type storeNode(Model::Node* node, const std::vector<Model::EntityAttribute>& attributes, ParserStatus& status);
-            void stripParentAttributes(Model::AttributableNode* attributable, ParentInfo::Type parentType);
+            /**
+             * Called for each custom layer.
+             */
+            virtual void onLayerNode(std::unique_ptr<Model::Node> layerNode, ParserStatus& status) = 0;
 
-            void resolveNodes(ParserStatus& status);
-            Model::Node* resolveParent(const ParentInfo& parentInfo) const;
+            /**
+             * Called for each group, entity entity or brush node. The given parent can be null.
+             */
+            virtual void onNode(Model::Node* parentNode, std::unique_ptr<Model::Node> node, ParserStatus& status) = 0;
 
-            EntityType entityType(const std::vector<Model::EntityAttribute>& attributes) const;
-
-            void setFilePosition(Model::Node* node, size_t startLine, size_t lineCount);
-        protected:
-            void setExtraAttributes(Model::Node* node, const ExtraAttributes& extraAttributes);
-        private: // subclassing interface
-            virtual Model::ModelFactory& initialize(Model::MapFormat format) = 0;
-            virtual Model::Node* onWorldspawn(const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& status) = 0;
-            virtual void onWorldspawnFilePosition(size_t startLine, size_t lineCount, ParserStatus& status) = 0;
-            virtual void onLayer(Model::Layer* layer, ParserStatus& status) = 0;
-            virtual void onNode(Model::Node* parent, Model::Node* node, ParserStatus& status) = 0;
-            virtual void onUnresolvedNode(const ParentInfo& parentInfo, Model::Node* node, ParserStatus& status) = 0;
-            virtual void onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& status) = 0;
-            virtual void onBrushFace(Model::BrushFace* face, ParserStatus& status);
+            /**
+             * Called for each brush face.
+             */
+            virtual void onBrushFace(Model::BrushFace face, ParserStatus& status);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_MapReader) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_LayerEditor
-#define TrenchBroom_LayerEditor
+#pragma once
 
 #include <memory>
 #include <string>
@@ -29,7 +28,7 @@ class QAbstractButton;
 
 namespace TrenchBroom {
     namespace Model {
-        class Layer;
+        class LayerNode;
     }
 
     namespace View {
@@ -44,39 +43,56 @@ namespace TrenchBroom {
 
             QAbstractButton* m_addLayerButton;
             QAbstractButton* m_removeLayerButton;
-            QAbstractButton* m_showAllLayersButton;
+            QAbstractButton* m_moveLayerUpButton;
+            QAbstractButton* m_moveLayerDownButton;
         public:
             explicit LayerEditor(std::weak_ptr<MapDocument> document, QWidget* parent = nullptr);
-        private:
-            void onSetCurrentLayer(Model::Layer* layer);
-            void onLayerRightClick(Model::Layer* layer);
+        private:            
+            void onSetCurrentLayer(Model::LayerNode* layer);
+            bool canSetCurrentLayer(Model::LayerNode* layer) const;
 
-            class CollectMoveableNodes;
+            void onLayerRightClick(Model::LayerNode* layer);
+
             void onMoveSelectionToLayer();
             bool canMoveSelectionToLayer() const;
 
-            void onToggleLayerVisibleFromMenu();
-            void onToggleLayerVisibleFromList(Model::Layer* layer);
             bool canToggleLayerVisible() const;
-            void toggleLayerVisible(Model::Layer* layer);
+            void toggleLayerVisible(Model::LayerNode* layer);
 
-            void onToggleLayerLockedFromMenu();
-            void onToggleLayerLockedFromList(Model::Layer* layer);
             bool canToggleLayerLocked() const;
-            void toggleLayerLocked(Model::Layer* layer);
+            void toggleLayerLocked(Model::LayerNode* layer);
+
+            void toggleOmitLayerFromExport(Model::LayerNode* layer);
+
+            void isolateLayer(Model::LayerNode* layer);
 
             void onSelectAllInLayer();
+            bool canSelectAllInLayer() const;
 
             void onAddLayer();
-            std::string queryLayerName();
 
             void onRemoveLayer();
             bool canRemoveLayer() const;
 
+            void onRenameLayer();
+            bool canRenameLayer() const;
+
             void onShowAllLayers();
+            bool canShowAllLayers() const;
+
+            void onHideAllLayers();
+            bool canHideAllLayers() const;
+
+            void onLockAllLayers();
+            bool canLockAllLayers() const;
+
+            void onUnlockAllLayers();
+            bool canUnlockAllLayers() const;
+
+            bool canMoveLayer(int direction) const;
+            void moveLayer(Model::LayerNode* layer, int direction);
         private:
-            Model::Layer* findVisibleAndUnlockedLayer(const Model::Layer* except) const;
-            void moveSelectedNodesToLayer(std::shared_ptr<MapDocument> document, Model::Layer* layer);
+            Model::LayerNode* findVisibleAndUnlockedLayer(const Model::LayerNode* except) const;
             void createGui();
         private slots:
             void updateButtons();
@@ -84,4 +100,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_LayerEditor) */

@@ -24,6 +24,7 @@
 #include "FloatType.h"
 #include "Assets/Texture.h"
 #include "Model/BrushFace.h"
+#include "Model/BrushFaceHandle.h"
 #include "Model/Polyhedron.h"
 #include "Renderer/ActiveShader.h"
 #include "Renderer/Camera.h"
@@ -54,7 +55,7 @@
 
 namespace TrenchBroom {
     namespace View {
-        const Model::HitType::Type UVView::FaceHit = Model::HitType::freeType();
+        const Model::HitType::Type UVView::FaceHitType = Model::HitType::freeType();
 
         UVView::UVView(std::weak_ptr<MapDocument> document, GLContextManager& contextManager) :
         RenderView(contextManager),
@@ -116,11 +117,11 @@ namespace TrenchBroom {
 
         void UVView::selectionDidChange(const Selection&) {
             auto document = kdl::mem_lock(m_document);
-            const std::vector<Model::BrushFace*>& faces = document->selectedBrushFaces();
+            const auto faces = document->selectedBrushFaces();
             if (faces.size() != 1) {
-                m_helper.setFace(nullptr);
+                m_helper.setFaceHandle(std::nullopt);
             } else {
-                m_helper.setFace(faces.back());
+                m_helper.setFaceHandle(faces.back());
             }
 
             if (m_helper.valid()) {
@@ -133,7 +134,7 @@ namespace TrenchBroom {
         }
 
         void UVView::documentWasCleared(MapDocument*) {
-            m_helper.setFace(nullptr);
+            m_helper.setFaceHandle(std::nullopt);
             m_toolBox.disable();
             update();
         }
@@ -142,7 +143,7 @@ namespace TrenchBroom {
             update();
         }
 
-        void UVView::brushFacesDidChange(const std::vector<Model::BrushFace*>&) {
+        void UVView::brushFacesDidChange(const std::vector<Model::BrushFaceHandle>&) {
             update();
         }
 
@@ -186,6 +187,10 @@ namespace TrenchBroom {
             return false;
         }
 
+        const Color& UVView::getBackgroundColor() {
+            return pref(Preferences::BrowserBackgroundColor);
+        }
+
         void UVView::setupGL(Renderer::RenderContext& renderContext) {
             const Renderer::Camera::Viewport& viewport = renderContext.camera().viewport();
             const qreal r = devicePixelRatioF();
@@ -196,7 +201,11 @@ namespace TrenchBroom {
 
             glAssert(glViewport(x, y, width, height))
 
-            glAssert(glEnable(GL_MULTISAMPLE))
+            if (pref(Preferences::EnableMSAA)) {
+                glAssert(glEnable(GL_MULTISAMPLE))
+            } else {
+                glAssert(glDisable(GL_MULTISAMPLE))
+            }
             glAssert(glEnable(GL_BLEND))
             glAssert(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA))
             glAssert(glShadeModel(GL_SMOOTH))
@@ -215,8 +224,7 @@ namespace TrenchBroom {
             m_vertexArray(Renderer::VertexArray::move(getVertices())) {}
         private:
             std::vector<Vertex> getVertices() const {
-                const auto* face = m_helper.face();
-                const auto normal = vm::vec3f(face->boundary().normal);
+                const auto normal = vm::vec3f(m_helper.face()->boundary().normal);
 
                 const auto& camera = m_helper.camera();
                 const auto& v = camera.zoomedViewport();
@@ -233,10 +241,10 @@ namespace TrenchBroom {
                 const auto pos4 = -w2 * r -h2 * u + p;
 
                 return {
-                    Vertex(pos1, normal, face->textureCoords(vm::vec3(pos1))),
-                    Vertex(pos2, normal, face->textureCoords(vm::vec3(pos2))),
-                    Vertex(pos3, normal, face->textureCoords(vm::vec3(pos3))),
-                    Vertex(pos4, normal, face->textureCoords(vm::vec3(pos4)))
+                    Vertex(pos1, normal, m_helper.face()->textureCoords(vm::vec3(pos1))),
+                    Vertex(pos2, normal, m_helper.face()->textureCoords(vm::vec3(pos2))),
+                    Vertex(pos3, normal, m_helper.face()->textureCoords(vm::vec3(pos3))),
+                    Vertex(pos4, normal, m_helper.face()->textureCoords(vm::vec3(pos4)))
                 };
             }
         private:
@@ -245,12 +253,11 @@ namespace TrenchBroom {
             }
 
             void doRender(Renderer::RenderContext& renderContext) override {
-                const auto* face = m_helper.face();
-                const auto& offset = face->offset();
-                const auto& scale = face->scale();
-                const auto toTex = face->toTexCoordSystemMatrix(offset, scale, true);
+                const auto& offset = m_helper.face()->attributes().offset();
+                const auto& scale = m_helper.face()->attributes().scale();
+                const auto toTex = m_helper.face()->toTexCoordSystemMatrix(offset, scale, true);
 
-                const auto* texture = face->texture();
+                const auto* texture = m_helper.face()->texture();
                 ensure(texture != nullptr, "texture is null");
 
                 texture->activate();
@@ -275,8 +282,7 @@ namespace TrenchBroom {
         };
 
         void UVView::renderTexture(Renderer::RenderContext&, Renderer::RenderBatch& renderBatch) {
-            const Model::BrushFace* face = m_helper.face();
-            const Assets::Texture* texture = face->texture();
+            const Assets::Texture* texture = m_helper.face()->texture();
             if (texture == nullptr)
                 return;
 
@@ -286,8 +292,7 @@ namespace TrenchBroom {
         void UVView::renderFace(Renderer::RenderContext&, Renderer::RenderBatch& renderBatch) {
             assert(m_helper.valid());
 
-            const auto* face = m_helper.face();
-            const auto faceVertices = face->vertices();
+            const auto faceVertices = m_helper.face()->vertices();
 
             using Vertex = Renderer::GLVertexTypes::P3::Vertex;
             std::vector<Vertex> edgeVertices;
@@ -306,12 +311,11 @@ namespace TrenchBroom {
         void UVView::renderTextureAxes(Renderer::RenderContext&, Renderer::RenderBatch& renderBatch) {
             assert(m_helper.valid());
 
-            const auto* face = m_helper.face();
-            const auto& normal = face->boundary().normal;
+            const auto& normal = m_helper.face()->boundary().normal;
 
-            const auto xAxis  = vm::vec3f(face->textureXAxis() - dot(face->textureXAxis(), normal) * normal);
-            const auto yAxis  = vm::vec3f(face->textureYAxis() - dot(face->textureYAxis(), normal) * normal);
-            const auto center = vm::vec3f(face->boundsCenter());
+            const auto xAxis  = vm::vec3f(m_helper.face()->textureXAxis() - dot(m_helper.face()->textureXAxis(), normal) * normal);
+            const auto yAxis  = vm::vec3f(m_helper.face()->textureYAxis() - dot(m_helper.face()->textureYAxis(), normal) * normal);
+            const auto center = vm::vec3f(m_helper.face()->boundsCenter());
 
             const auto length = 32.0f / m_helper.cameraZoom();
 
@@ -341,7 +345,7 @@ namespace TrenchBroom {
             ToolBoxConnector::processEvent(event);
         }
 
-        PickRequest UVView::doGetPickRequest(const int x, const int y) const {
+        PickRequest UVView::doGetPickRequest(const float x, const float y) const {
             return PickRequest(vm::ray3(m_camera.pickRay(x, y)), m_camera);
         }
 
@@ -350,11 +354,10 @@ namespace TrenchBroom {
             if (!m_helper.valid())
                 return pickResult;
 
-            Model::BrushFace* face = m_helper.face();
-            const FloatType distance = face->intersectWithRay(pickRay);
+            const FloatType distance = m_helper.face()->intersectWithRay(pickRay);
             if (!vm::is_nan(distance)) {
                 const vm::vec3 hitPoint = vm::point_at_distance(pickRay, distance);
-                pickResult.addHit(Model::Hit(UVView::FaceHit, distance, hitPoint, face));
+                pickResult.addHit(Model::Hit(UVView::FaceHitType, distance, hitPoint, m_helper.face()));
             }
             return pickResult;
         }

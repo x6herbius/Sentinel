@@ -22,11 +22,11 @@
 #include "Macros.h"
 #include "PreferenceManager.h"
 #include "Preferences.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Renderer/RenderBatch.h"
+#include "View/BrushVertexCommands.h"
 #include "View/Grid.h"
 #include "View/MapDocument.h"
-#include "View/VertexCommand.h"
 
 #include <kdl/string_format.h>
 
@@ -46,15 +46,15 @@ namespace TrenchBroom {
         m_faceHandles(std::make_unique<FaceHandleManager>()),
         m_guideRenderer(document) {}
 
-        std::vector<Model::Brush*> VertexTool::findIncidentBrushes(const vm::vec3& handle) const {
+        std::vector<Model::BrushNode*> VertexTool::findIncidentBrushes(const vm::vec3& handle) const {
             return findIncidentBrushes(*m_vertexHandles, handle);
         }
 
-        std::vector<Model::Brush*> VertexTool::findIncidentBrushes(const vm::segment3& handle) const {
+        std::vector<Model::BrushNode*> VertexTool::findIncidentBrushes(const vm::segment3& handle) const {
             return findIncidentBrushes(*m_edgeHandles, handle);
         }
 
-        std::vector<Model::Brush*> VertexTool::findIncidentBrushes(const vm::polygon3& handle) const {
+        std::vector<Model::BrushNode*> VertexTool::findIncidentBrushes(const vm::polygon3& handle) const {
             return findIncidentBrushes(*m_faceHandles, handle);
         }
 
@@ -85,9 +85,9 @@ namespace TrenchBroom {
 
         bool VertexTool::startMove(const std::vector<Model::Hit>& hits) {
             const auto& hit = hits.front();
-            if (hit.hasType(EdgeHandleManager::HandleHit | FaceHandleManager::HandleHit)) {
+            if (hit.hasType(EdgeHandleManager::HandleHitType | FaceHandleManager::HandleHitType)) {
                 m_vertexHandles->deselectAll();
-                if (hit.hasType(EdgeHandleManager::HandleHit)) {
+                if (hit.hasType(EdgeHandleManager::HandleHitType)) {
                     const vm::segment3& handle = std::get<0>(hit.target<const EdgeHandleManager::HitType&>());
                     m_edgeHandles->select(handle);
                     m_mode = Mode_Split_Edge;
@@ -113,10 +113,8 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
 
             if (m_mode == Mode_Move) {
-                const auto handles = m_vertexHandles->selectedHandles();
-                const auto brushMap = buildBrushMap(*m_vertexHandles, std::begin(handles), std::end(handles));
-
-                const MapDocument::MoveVerticesResult result = document->moveVertices(brushMap, delta);
+                auto handles = m_vertexHandles->selectedHandles();
+                const auto result = document->moveVertices(std::move(handles), delta);
                 if (result.success) {
                     if (!result.hasRemainingVertices) {
                         return MR_Cancel;
@@ -128,7 +126,7 @@ namespace TrenchBroom {
                     return MR_Deny;
                 }
             } else {
-                std::vector<Model::Brush*> brushes;
+                std::vector<Model::BrushNode*> brushes;
                 if (m_mode == Mode_Split_Edge) {
                     if (m_edgeHandles->selectedHandleCount() == 1) {
                         const vm::segment3 handle = m_edgeHandles->selectedHandles().front();
@@ -143,8 +141,8 @@ namespace TrenchBroom {
                 }
 
                 if (!brushes.empty()) {
-                    const std::map<vm::vec3, std::vector<Model::Brush*>> vertices { std::make_pair(m_dragHandlePosition + delta, brushes) };
-                    if (document->addVertices(vertices)) {
+                    const auto newVertexPosition = m_dragHandlePosition + delta;
+                    if (document->addVertex(newVertexPosition)) {
                         m_mode = Mode_Move;
                         m_edgeHandles->deselectAll();
                         m_faceHandles->deselectAll();
@@ -174,11 +172,11 @@ namespace TrenchBroom {
 
         vm::vec3 VertexTool::getHandlePosition(const Model::Hit& hit) const {
             assert(hit.isMatch());
-            assert(hit.hasType(VertexHandleManager::HandleHit | EdgeHandleManager::HandleHit | FaceHandleManager::HandleHit));
+            assert(hit.hasType(VertexHandleManager::HandleHitType | EdgeHandleManager::HandleHitType | FaceHandleManager::HandleHitType));
 
-            if (hit.hasType(VertexHandleManager::HandleHit)) {
+            if (hit.hasType(VertexHandleManager::HandleHitType)) {
                 return hit.target<vm::vec3>();
-            } else if (hit.hasType(EdgeHandleManager::HandleHit)) {
+            } else if (hit.hasType(EdgeHandleManager::HandleHitType)) {
                 return std::get<1>(hit.target<EdgeHandleManager::HitType>());
             } else {
                 return std::get<1>(hit.target<FaceHandleManager::HitType>());
@@ -200,11 +198,9 @@ namespace TrenchBroom {
         void VertexTool::removeSelection() {
             assert(canRemoveSelection());
 
-            const auto handles = m_vertexHandles->selectedHandles();
-            const auto brushMap = buildBrushMap(*m_vertexHandles, std::begin(handles), std::end(handles));
-
-            Transaction transaction(m_document, kdl::str_plural(handleManager().selectedHandleCount(), "Remove Vertex", "Remove Vertices"));
-            kdl::mem_lock(m_document)->removeVertices(brushMap);
+            auto handles = m_vertexHandles->selectedHandles();
+            const auto commandName = kdl::str_plural(handles.size(), "Remove Brush Vertex", "Remove Brush Vertices");
+            kdl::mem_lock(m_document)->removeVertices(commandName, std::move(handles));
         }
 
         void VertexTool::renderGuide(Renderer::RenderContext&, Renderer::RenderBatch& renderBatch, const vm::vec3& position) const {
@@ -219,7 +215,7 @@ namespace TrenchBroom {
             m_edgeHandles->clear();
             m_faceHandles->clear();
 
-            const std::vector<Model::Brush*>& brushes = selectedBrushes();
+            const std::vector<Model::BrushNode*>& brushes = selectedBrushes();
             m_edgeHandles->addHandles(std::begin(brushes), std::end(brushes));
             m_faceHandles->addHandles(std::begin(brushes), std::end(brushes));
 
@@ -236,34 +232,24 @@ namespace TrenchBroom {
         }
 
         void VertexTool::addHandles(const std::vector<Model::Node*>& nodes) {
-            AddHandles<vm::vec3> addVertexHandles(*m_vertexHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), addVertexHandles);
-
-            AddHandles<vm::segment3> addEdgeHandles(*m_edgeHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), addEdgeHandles);
-
-            AddHandles<vm::polygon3> addFaceHandles(*m_faceHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), addFaceHandles);
+            VertexToolBase::addHandles(nodes, *m_vertexHandles);
+            VertexToolBase::addHandles(nodes, *m_edgeHandles);
+            VertexToolBase::addHandles(nodes, *m_faceHandles);
         }
 
         void VertexTool::removeHandles(const std::vector<Model::Node*>& nodes) {
-            RemoveHandles<vm::vec3> removeVertexHandles(*m_vertexHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), removeVertexHandles);
-
-            RemoveHandles<vm::segment3> removeEdgeHandles(*m_edgeHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), removeEdgeHandles);
-
-            RemoveHandles<vm::polygon3> removeFaceHandles(*m_faceHandles);
-            Model::Node::accept(std::begin(nodes), std::end(nodes), removeFaceHandles);
+            VertexToolBase::removeHandles(nodes, *m_vertexHandles);
+            VertexToolBase::removeHandles(nodes, *m_edgeHandles);
+            VertexToolBase::removeHandles(nodes, *m_faceHandles);
         }
 
-        void VertexTool::addHandles(VertexCommand* command) {
+        void VertexTool::addHandles(BrushVertexCommandBase* command) {
             command->addHandles(*m_vertexHandles);
             command->addHandles(*m_edgeHandles);
             command->addHandles(*m_faceHandles);
         }
 
-        void VertexTool::removeHandles(VertexCommand* command) {
+        void VertexTool::removeHandles(BrushVertexCommandBase* command) {
             command->removeHandles(*m_vertexHandles);
             command->removeHandles(*m_edgeHandles);
             command->removeHandles(*m_faceHandles);

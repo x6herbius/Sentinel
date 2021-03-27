@@ -39,7 +39,7 @@ namespace TrenchBroom {
         TextureReader(nameStrategy, fs, logger),
         m_palette(palette) {}
 
-        Assets::Texture* WalTextureReader::doReadTexture(std::shared_ptr<File> file) const {
+        Assets::Texture WalTextureReader::doReadTexture(std::shared_ptr<File> file) const {
             const auto& path = file->path();
             auto reader = file->reader().buffer();
 
@@ -53,11 +53,11 @@ namespace TrenchBroom {
                     return readQ2Wal(reader, path);
                 }
             } catch (const ReaderException&) {
-                return new Assets::Texture(textureName(path), 16, 16);
+                return Assets::Texture(textureName(path), 16, 16);
             }
         }
 
-        Assets::Texture* WalTextureReader::readQ2Wal(Reader& reader, const Path& path) const {
+        Assets::Texture WalTextureReader::readQ2Wal(BufferedReader& reader, const Path& path) const {
             static const size_t MaxMipLevels = 4;
             static Color averageColor;
             static Assets::TextureBufferList buffers(MaxMipLevels);
@@ -68,20 +68,20 @@ namespace TrenchBroom {
             const size_t height = reader.readSize<uint32_t>();
 
             if (!checkTextureDimensions(width, height)) {
-                return new Assets::Texture(textureName(path), 16, 16);
+                return Assets::Texture(textureName(path), 16, 16);
             }
 
             if (!m_palette.initialized()) {
-                return new Assets::Texture(textureName(name, path), width, height);
+                return Assets::Texture(textureName(name, path), width, height);
             }
 
             const auto mipLevels = readMipOffsets(MaxMipLevels, offsets, width, height, reader);
             Assets::setMipBufferSize(buffers, mipLevels, width, height, GL_RGBA);
             readMips(m_palette, mipLevels, offsets, width, height, reader, buffers, averageColor, Assets::PaletteTransparency::Opaque);
-            return new Assets::Texture(textureName(name, path), width, height, averageColor, std::move(buffers), GL_RGBA, Assets::TextureType::Opaque);
+            return Assets::Texture(textureName(name, path), width, height, averageColor, std::move(buffers), GL_RGBA, Assets::TextureType::Opaque);
         }
 
-        Assets::Texture* WalTextureReader::readDkWal(Reader& reader, const Path& path) const {
+        Assets::Texture WalTextureReader::readDkWal(BufferedReader& reader, const Path& path) const {
             static const size_t MaxMipLevels = 9;
             static Color averageColor;
             static Assets::TextureBufferList buffers(MaxMipLevels);
@@ -97,7 +97,7 @@ namespace TrenchBroom {
             const auto height = reader.readSize<uint32_t>();
 
             if (!checkTextureDimensions(width, height)) {
-                return new Assets::Texture(textureName(path), 16, 16);
+                return Assets::Texture(textureName(path), 16, 16);
             }
 
             const auto mipLevels = readMipOffsets(MaxMipLevels, offsets, width, height, reader);
@@ -108,7 +108,7 @@ namespace TrenchBroom {
             auto paletteReader = reader.subReaderFromCurrent(3 * 256);
             const auto embeddedPalette = Assets::Palette::fromRaw(paletteReader);
             const auto hasTransparency = readMips(embeddedPalette, mipLevels, offsets, width, height, reader, buffers, averageColor, Assets::PaletteTransparency::Index255Transparent);
-            return new Assets::Texture(textureName(name, path), width, height, averageColor, std::move(buffers), GL_RGBA, hasTransparency ? Assets::TextureType::Masked : Assets::TextureType::Opaque);
+            return Assets::Texture(textureName(name, path), width, height, averageColor, std::move(buffers), GL_RGBA, hasTransparency ? Assets::TextureType::Masked : Assets::TextureType::Opaque);
         }
 
         size_t WalTextureReader::readMipOffsets(const size_t maxMipLevels, size_t offsets[], const size_t width, const size_t height, Reader& reader) const {
@@ -128,7 +128,7 @@ namespace TrenchBroom {
             return mipLevels;
         }
 
-        bool WalTextureReader::readMips(const Assets::Palette& palette, const size_t mipLevels, const size_t offsets[], const size_t width, const size_t height, Reader& reader, Assets::TextureBufferList& buffers, Color& averageColor, const Assets::PaletteTransparency transparency) {
+        bool WalTextureReader::readMips(const Assets::Palette& palette, const size_t mipLevels, const size_t offsets[], const size_t width, const size_t height, BufferedReader& reader, Assets::TextureBufferList& buffers, Color& averageColor, const Assets::PaletteTransparency transparency) {
             static Color tempColor;
 
             auto hasTransparency = false;

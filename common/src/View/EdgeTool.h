@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef EdgeTool_h
-#define EdgeTool_h
+#pragma once
 
 #include "FloatType.h"
 #include "View/VertexToolBase.h"
@@ -31,7 +30,7 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
+        class BrushNode;
         class PickResult;
     }
 
@@ -46,7 +45,7 @@ namespace TrenchBroom {
         public:
             EdgeTool(std::weak_ptr<MapDocument> document);
         public:
-            std::vector<Model::Brush*> findIncidentBrushes(const vm::segment3& handle) const;
+            std::vector<Model::BrushNode*> findIncidentBrushes(const vm::segment3& handle) const;
         private:
             using VertexToolBase::findIncidentBrushes;
         public:
@@ -64,4 +63,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* EdgeTool_h */

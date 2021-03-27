@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TrenchBroomApp
-#define TrenchBroom_TrenchBroomApp
+#pragma once
 
 #include "Notifier.h"
 
@@ -61,6 +60,7 @@ namespace TrenchBroom {
 
             FrameManager* frameManager();
         private:
+            static QPalette darkPalette();
             bool loadStyleSheets();
             void loadStyle();
         public:
@@ -103,4 +103,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_TrenchBroomApp) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TextureReader_h
-#define TrenchBroom_TextureReader_h
+#pragma once
 
 #include "Macros.h"
 
@@ -65,12 +64,24 @@ namespace TrenchBroom {
                 deleteCopyAndMove(TextureNameStrategy)
             };
 
+            /**
+             * Determines a texture name from a path removing a prefix of the path and returning the remaining
+             * suffix as a string, with the extension removed.
+             *
+             * Note that the length of a prefix refers to the number of path components and not to the number of
+             * characetrs.
+             *
+             * For example, given the path /this/that/over/here/texture.png and a prefix length of 3, this strategy
+             * will return here/texture as the texture name.
+             *
+             * Given a path with fewer than or the same number of components as the prefix length, an empty string is
+             * returned.
+             */
             class PathSuffixNameStrategy : public NameStrategy {
             private:
-                size_t m_suffixLength;
-                bool m_deleteExtension;
+                size_t m_prefixLength;
             public:
-                PathSuffixNameStrategy(size_t suffixLength, bool deleteExtension);
+                PathSuffixNameStrategy(size_t prefixLength);
             private:
                 NameStrategy* doClone() const override;
                 std::string doGetTextureName(const std::string& textureName, const Path& path) const override;
@@ -104,9 +115,9 @@ namespace TrenchBroom {
              * the default texture is returned.
              *
              * @param file the file containing the texture
-             * @return an Assets::Texture object allocated with new
+             * @return an Assets::Texture object
              */
-            Assets::Texture* readTexture(std::shared_ptr<File> file) const;
+            Assets::Texture readTexture(std::shared_ptr<File> file) const;
         protected:
             std::string textureName(const std::string& textureName, const Path& path) const;
             std::string textureName(const Path& path) const;
@@ -116,9 +127,9 @@ namespace TrenchBroom {
              * report errors loading textures except for unrecoverable errors (out of memory, bugs, etc.).
              *
              * @param file the file containing the texture
-             * @return an Assets::Texture object allocated with new
+             * @return an Assets::Texture object
              */
-            virtual Assets::Texture* doReadTexture(std::shared_ptr<File> file) const = 0;
+            virtual Assets::Texture doReadTexture(std::shared_ptr<File> file) const = 0;
         protected:
             static bool checkTextureDimensions(size_t width, size_t height);
         public:
@@ -129,4 +140,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif

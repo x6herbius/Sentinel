@@ -17,18 +17,21 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Polyhedron_Misc_h
-#define TrenchBroom_Polyhedron_Misc_h
+#pragma once
 
 #include "Polyhedron.h"
 
+#include <kdl/vector_utils.h>
+
 #include <vecmath/vec.h>
+#include <vecmath/vec_io.h>
 #include <vecmath/ray.h>
 #include <vecmath/plane.h>
 #include <vecmath/bbox.h>
 #include <vecmath/scalar.h>
 #include <vecmath/util.h>
 
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -45,62 +48,13 @@ namespace TrenchBroom {
         }
 
         template <typename T, typename FP, typename VP>
-        Polyhedron<T,FP,VP>::Callback::~Callback() = default;
+        Polyhedron<T,FP,VP>::CopyCallback::~CopyCallback() = default;
 
         template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::vertexWasCreated(Vertex* /* vertex */) {}
+        void Polyhedron<T,FP,VP>::CopyCallback::vertexWasCopied(const Vertex* /* original */, Vertex* /* copy */) const {}
 
         template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::vertexWillBeDeleted(Vertex* /* vertex */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::vertexWasAdded(Vertex* /* vertex */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::vertexWillBeRemoved(Vertex* /* vertex */) {}
-
-        template <typename T, typename FP, typename VP>
-        vm::plane<T,3> Polyhedron<T,FP,VP>::Callback::getPlane(const Face* face) const {
-            const auto& boundary = face->boundary();
-            assert(boundary.size() >= 3u);
-
-            for (const HalfEdge* curEdge : boundary) {
-                const auto* e1 = curEdge;
-                const auto* e2 = e1->next();
-                const auto* e3 = e2->next();
-
-                const auto& p1 = e1->origin()->position();
-                const auto& p2 = e2->origin()->position();
-                const auto& p3 = e3->origin()->position();
-
-                const auto [valid, result] = vm::from_points(p2, p1, p3);
-                if (valid) {
-                    return result;
-                }
-            }
-
-            // TODO: We should really throw an exception here.
-            assert(false);
-            return ::vm::plane<T,3>(); // Ooops!
-        }
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::faceWasCreated(Face* /* face */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::faceWillBeDeleted(Face* /* face */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::faceDidChange(Face* /* face */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::faceWasFlipped(Face* /* face */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::faceWasSplit(Face* /* original */, Face* /* clone */) {}
-
-        template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::Callback::facesWillBeMerged(Face* /* remaining */, Face* /* toDelete */) {}
+        void Polyhedron<T,FP,VP>::CopyCallback::faceWasCopied(const Face* /* original */, Face* /* copy */) const {}
 
         template <typename T, typename FP, typename VP>
         Polyhedron<T,FP,VP>::Polyhedron() {
@@ -109,14 +63,14 @@ namespace TrenchBroom {
 
         template <typename T, typename FP, typename VP>
         Polyhedron<T,FP,VP>::Polyhedron(std::initializer_list<vm::vec<T,3>> positions) {
-            addPoints(std::begin(positions), std::end(positions));
+            addPoints(std::vector<vm::vec<T,3>>(std::begin(positions), std::end(positions)));
         }
 
         template <typename T, typename FP, typename VP>
         Polyhedron<T,FP,VP>::Polyhedron(const vm::bbox<T,3>& bounds) :
             m_bounds(bounds) {
             if (m_bounds.min == m_bounds.max) {
-                addPoint(m_bounds.min);
+                addPoint(m_bounds.min, vm::constants<T>::point_status_epsilon());
                 return;
             }
 
@@ -159,7 +113,7 @@ namespace TrenchBroom {
             f1b.push_back(f1h2);
             f1b.push_back(f1h3);
             f1b.push_back(f1h4);
-            m_faces.push_back(new Face(std::move(f1b)));
+            m_faces.push_back(new Face(std::move(f1b), vm::plane<T,3>(p1, vm::vec<T,3>::neg_y())));
 
             // Left face
             HalfEdge* f2h1 = new HalfEdge(v1);
@@ -171,7 +125,7 @@ namespace TrenchBroom {
             f2b.push_back(f2h2);
             f2b.push_back(f2h3);
             f2b.push_back(f2h4);
-            m_faces.push_back(new Face(std::move(f2b)));
+            m_faces.push_back(new Face(std::move(f2b), vm::plane<T,3>(p1, vm::vec<T,3>::neg_x())));
 
             // Bottom face
             HalfEdge* f3h1 = new HalfEdge(v1);
@@ -183,7 +137,7 @@ namespace TrenchBroom {
             f3b.push_back(f3h2);
             f3b.push_back(f3h3);
             f3b.push_back(f3h4);
-            m_faces.push_back(new Face(std::move(f3b)));
+            m_faces.push_back(new Face(std::move(f3b), vm::plane<T,3>(p1, vm::vec<T,3>::neg_z())));
 
             // Top face
             HalfEdge* f4h1 = new HalfEdge(v2);
@@ -195,7 +149,7 @@ namespace TrenchBroom {
             f4b.push_back(f4h2);
             f4b.push_back(f4h3);
             f4b.push_back(f4h4);
-            m_faces.push_back(new Face(std::move(f4b)));
+            m_faces.push_back(new Face(std::move(f4b), vm::plane<T,3>(p8, vm::vec<T,3>::pos_z())));
 
             // Back face
             HalfEdge* f5h1 = new HalfEdge(v3);
@@ -207,7 +161,7 @@ namespace TrenchBroom {
             f5b.push_back(f5h2);
             f5b.push_back(f5h3);
             f5b.push_back(f5h4);
-            m_faces.push_back(new Face(std::move(f5b)));
+            m_faces.push_back(new Face(std::move(f5b), vm::plane<T,3>(p8, vm::vec<T,3>::pos_y())));
 
             // Right face
             HalfEdge* f6h1 = new HalfEdge(v5);
@@ -219,7 +173,7 @@ namespace TrenchBroom {
             f6b.push_back(f6h2);
             f6b.push_back(f6h3);
             f6b.push_back(f6h4);
-            m_faces.push_back(new Face(std::move(f6b)));
+            m_faces.push_back(new Face(std::move(f6b), vm::plane<T,3>(p8, vm::vec<T,3>::pos_x())));
 
             m_edges.push_back(new Edge(f1h4, f2h1)); // v1, v2
             m_edges.push_back(new Edge(f2h4, f3h1)); // v1, v3
@@ -236,13 +190,18 @@ namespace TrenchBroom {
         }
 
         template <typename T, typename FP, typename VP>
-        Polyhedron<T,FP,VP>::Polyhedron(const std::vector<vm::vec<T,3>>& positions) {
-            addPoints(std::begin(positions), std::end(positions));
+        Polyhedron<T,FP,VP>::Polyhedron(std::vector<vm::vec<T,3>> positions) {
+            addPoints(std::move(positions));
         }
 
         template <typename T, typename FP, typename VP>
         Polyhedron<T,FP,VP>::Polyhedron(const Polyhedron<T,FP,VP>& other) {
-            Copy copy(other.faces(), other.edges(), other.vertices(), *this);
+            Copy copy(other.faces(), other.edges(), other.vertices(), *this, CopyCallback());
+        }
+
+        template <typename T, typename FP, typename VP>
+        Polyhedron<T,FP,VP>::Polyhedron(const Polyhedron<T,FP,VP>& other, const CopyCallback& callback) {
+            Copy copy(other.faces(), other.edges(), other.vertices(), *this, callback);
         }
 
         template <typename T, typename FP, typename VP>
@@ -306,23 +265,26 @@ namespace TrenchBroom {
         public:
             /**
              * Copies a polyhedron with the given faces, edges and vertices into the given destination polyhedron.
+             * The callback can be used to set up the face and vertex payloads.
              *
              * @param originalFaces the faces to copy
              * @param originalEdges the edges to copy
              * @param originalVertices the vertices to copy
              * @param destination the destination polyhedron that will become a copy
+             * @param callback the callback to call for every created face or vertex             *
              */
-            Copy(const FaceList& originalFaces, const EdgeList& originalEdges, const VertexList& originalVertices, Polyhedron& destination) :
+            Copy(const FaceList& originalFaces, const EdgeList& originalEdges, const VertexList& originalVertices, Polyhedron& destination, const CopyCallback& callback) :
                 m_destination(destination) {
-                copyVertices(originalVertices);
-                copyFaces(originalFaces);
+                copyVertices(originalVertices, callback);
+                copyFaces(originalFaces, callback);
                 copyEdges(originalEdges);
                 swapContents();
             }
         private:
-            void copyVertices(const VertexList& originalVertices) {
+            void copyVertices(const VertexList& originalVertices, const CopyCallback& callback) {
                 for (const Vertex* currentVertex : originalVertices) {
                     Vertex* copy = new Vertex(currentVertex->position());
+                    callback.vertexWasCopied(currentVertex, copy);
                     assert(m_vertexMap.count(currentVertex) == 0u);
                     m_vertexMap.insert(std::make_pair(currentVertex, copy));
                     m_vertices.push_back(copy);
@@ -330,20 +292,21 @@ namespace TrenchBroom {
                 }
             }
 
-            void copyFaces(const FaceList& originalFaces) {
+            void copyFaces(const FaceList& originalFaces, const CopyCallback& callback) {
                 for (const Face* currentFace : originalFaces) {
-                    copyFace(currentFace);
+                    copyFace(currentFace, callback);
                 }
             }
 
-            void copyFace(const Face* originalFace) {
+            void copyFace(const Face* originalFace, const CopyCallback& callback) {
                 HalfEdgeList myBoundary;
 
                 for (const HalfEdge* currentHalfEdge : originalFace->boundary()) {
                     myBoundary.push_back(copyHalfEdge(currentHalfEdge));
                 }
 
-                Face* copy = new Face(std::move(myBoundary));
+                Face* copy = new Face(std::move(myBoundary), originalFace->plane());
+                callback.faceWasCopied(originalFace, copy);
                 m_faces.push_back(copy);
             }
 
@@ -481,6 +444,11 @@ namespace TrenchBroom {
 
         template <typename T, typename FP, typename VP>
         const typename Polyhedron<T,FP,VP>::FaceList& Polyhedron<T,FP,VP>::faces() const {
+            return m_faces;
+        }
+
+        template <typename T, typename FP, typename VP>
+        typename Polyhedron<T,FP,VP>::FaceList& Polyhedron<T,FP,VP>::faces() {
             return m_faces;
         }
 
@@ -715,12 +683,6 @@ namespace TrenchBroom {
 
         template <typename T, typename FP, typename VP>
         bool Polyhedron<T,FP,VP>::healEdges(const T minLength) {
-            Callback callback;
-            return healEdges(callback, minLength);
-        }
-
-        template <typename T, typename FP, typename VP>
-        bool Polyhedron<T,FP,VP>::healEdges(Callback& callback, const T minLength) {
             const T minLength2 = minLength * minLength;
 
             /*
@@ -741,7 +703,10 @@ namespace TrenchBroom {
 
                 const T length2 = vm::squared_length(currentEdge->vector());
                 if (length2 < minLength2) {
-                    currentEdge = removeEdge(currentEdge, callback);
+                    currentEdge = removeEdge(currentEdge);
+                    if (currentEdge == nullptr) {
+                        return false;
+                    }
                 } else {
                     currentEdge = currentEdge->next();
                 }
@@ -759,75 +724,93 @@ namespace TrenchBroom {
         }
 
         template <typename T, typename FP, typename VP>
-        typename Polyhedron<T,FP,VP>::Edge* Polyhedron<T,FP,VP>::removeEdge(Edge* edge, Callback& callback) {
-            // First, transfer all edges from the second to the first vertex of the given edge.
-            // This results in the edge being a loop and the second vertex to be orphaned.
-            auto* firstVertex = edge->firstVertex();
-            auto* secondVertex = edge->secondVertex();
-            while (secondVertex->leaving() != nullptr) {
-                auto* leaving = secondVertex->leaving();
-                auto* newLeaving = leaving->previous()->twin();
-                leaving->setOrigin(firstVertex);
-                if (newLeaving->origin() == secondVertex) {
-                    secondVertex->setLeaving(newLeaving);
-                } else {
-                    secondVertex->setLeaving(nullptr);
-                }
-            }
+        typename Polyhedron<T,FP,VP>::Edge* Polyhedron<T,FP,VP>::removeEdge(Edge* edge) {
+            /*
 
-            // Remove the edge's first edge from its first face and delete the face if it degenerates
-            {
-                auto* firstFace = edge->firstFace();
-                auto* firstEdge = edge->firstEdge();
-                auto* nextEdge = firstEdge->next();
+                | f1 | n1
+                v1-e-v2
+                | f2 | n2
 
-                firstVertex->setLeaving(firstEdge->previous()->twin());
-                firstFace->removeFromBoundary(firstEdge);
-                nextEdge->setOrigin(firstVertex);
+                Let e be the edge to remove. If f1 is a triangle, we merge f1 into n1. Then, if
+                f2 is a triangle, we merge that into n2.
+                This can have two outcomes: 
+                
+                - v2 becomes redundant and is removed to repair the topological error. In that case,
+                  e is also removed and we are done.
+                - v2 remains, and we need to remove e manually. To do that, we transfer all edges 
+                  from v2 to v1, so e becomes a loop, and we can safely remove it after.
 
-                if (firstFace->vertexCount() == 2) {
-                    removeDegenerateFace(firstFace, callback);
-                }
-            }
+                Note that n1 and n2 can be identical. If that is the case, then v2 is immediately removed.
+                We also need to be aware that removing v2 may remove e, so we cannot access e again.
+            */
 
-            // Remove the edges's second edge from its second face and delete the face if it degenerates
-            {
-                auto* secondFace = edge->secondFace();
-                auto* secondEdge = edge->secondEdge();
+            auto* validEdge = edge->next();
+            auto* v1 = edge->firstVertex();
+            auto* v2 = edge->secondVertex();
 
-                secondFace->removeFromBoundary(secondEdge);
-
-                if (secondFace->vertexCount() == 2) {
-                    removeDegenerateFace(secondFace, callback);
-                }
-            }
-
-            callback.vertexWillBeDeleted(secondVertex);
-            m_vertices.remove(secondVertex);
-
-            auto* result = edge->next();
-            m_edges.remove(edge);
-
-            // Merge faces that may have become coplanar
-            {
-                auto* firstEdge = firstVertex->leaving();
-                auto* currentEdge = firstEdge;
+            // Lambda to check if v2 was removed. We check if v2 is still incident to v1. This is safe to do
+            // even if v2 was deleted because just check the addresses, and we also do not create additional
+            // vertices so we can be sure that v2's address does not contain a new valid vertex.
+            const auto v2WasRemoved = [&]() {
+                auto* curEdge = v1->leaving();
                 do {
-                    auto* nextEdge = currentEdge->nextIncident();
-                    auto* currentFace = firstEdge->face();
-                    auto* neighbour = firstEdge->twin()->face();
-                    if (currentFace->coplanar(neighbour)) {
-                        result = mergeNeighbours(currentEdge, result, callback);
+                    if (curEdge->destination() == v2) {
+                        return false;
                     }
-                    currentEdge = nextEdge;
-                } while (currentEdge != firstEdge);
+                    curEdge = curEdge->nextIncident();
+                } while (curEdge != v1->leaving());
+                return true;
+            };
+
+            // merge f1 into n1:
+            if (edge->firstFace()->vertexCount() == 3u && !mergeNeighbours(edge->firstEdge()->next()->twin(), validEdge)) {
+                return nullptr;
+            }
+            
+            // merge f2 into n2 if necessary:
+            if (!v2WasRemoved()) {
+                if (edge->secondFace()->vertexCount() == 3u && !mergeNeighbours(edge->secondEdge()->previous()->twin(), validEdge)) {
+                    return nullptr;
+                }
+
+                if (!v2WasRemoved()) {
+                    // Transfer all edges from v2 to v1.
+                    // This results in e being a loop and v2 to be orphaned.
+                    while (v2->leaving() != nullptr) {
+                        auto* leaving = v2->leaving();
+                        auto* newLeaving = leaving->previous()->twin();
+                        leaving->setOrigin(v1);
+                        if (newLeaving->origin() == v2) {
+                            v2->setLeaving(newLeaving);
+                        } else {
+                            v2->setLeaving(nullptr);
+                        }
+                    }
+
+                    // Remove the edge's first edge from its first face
+                    auto* f1 = edge->firstFace();
+                    auto* h1 = edge->firstEdge();
+                    auto* n = h1->next();
+                    v1->setLeaving(h1->previous()->twin());
+                    f1->removeFromBoundary(h1);
+                    n->setOrigin(v1);
+
+                    // Remove the edges's second edge from its second face
+                    auto* f2 = edge->secondFace();
+                    auto* h2 = edge->secondEdge();
+                    f2->removeFromBoundary(h2);
+
+                    // Finally, remove v2 and e
+                    m_vertices.remove(v2);
+                    m_edges.remove(edge);
+                }
             }
 
-            return result;
+            return validEdge;
         }
 
         template <typename T, typename FP, typename VP>
-        void Polyhedron<T,FP,VP>::removeDegenerateFace(Face* face, Callback& callback) {
+        void Polyhedron<T,FP,VP>::removeDegenerateFace(Face* face) {
             assert(face != nullptr);
             assert(face->vertexCount() == 2u);
 
@@ -877,12 +860,11 @@ namespace TrenchBroom {
             m_edges.remove(edge2);
 
             // Delete the degenerate face. This also deletes its boundary of halfEdge1 and halfEdge2.
-            callback.faceWillBeDeleted(face);
             m_faces.remove(face);
         }
 
         template <typename T, typename FP, typename VP>
-        typename Polyhedron<T,FP,VP>::Edge* Polyhedron<T,FP,VP>::mergeNeighbours(HalfEdge* borderFirst, Edge* validEdge, Callback& callback) {
+        bool Polyhedron<T,FP,VP>::mergeNeighbours(HalfEdge* borderFirst, Edge*& validEdge) {
             Face* face = borderFirst->face();
             Face* neighbour = borderFirst->twin()->face();
 
@@ -902,18 +884,22 @@ namespace TrenchBroom {
 
             HalfEdge* twinFirst = borderLast->twin();
 
+            Vertex* borderFirstOrigin = borderFirst->origin();
+            Vertex* twinFirstOrigin = twinFirst->origin();
+            
             // make sure we don't remove any leaving edges
-            borderFirst->origin()->setLeaving(twinLast->next());
-            twinFirst->origin()->setLeaving(borderLast->next());
+            borderFirstOrigin->setLeaving(twinLast->next());
+            twinFirstOrigin->setLeaving(borderLast->next());
 
-            HalfEdge* remainingFirst = borderLast->next();
-            HalfEdge* remainingLast = borderFirst->previous();
+            HalfEdge* remainingFirst = twinLast->next();
+            HalfEdge* remainingLast = twinFirst->previous();
 
-            HalfEdgeList edgesToRemove = face->removeFromBoundary(borderFirst, borderLast);
-            HalfEdgeList remainingEdges = face->removeFromBoundary(remainingFirst, remainingLast);
+            HalfEdgeList edgesToRemove = neighbour->removeFromBoundary(twinFirst, twinLast);
+            HalfEdgeList remainingEdges = neighbour->removeFromBoundary(remainingFirst, remainingLast);
+            assert(neighbour->boundary().empty());
 
-            // the replaced twin edges are deleted
-            neighbour->replaceBoundary(twinFirst, twinLast, std::move(remainingEdges));
+            // the replaced edges are deleted
+            face->replaceBoundary(borderFirst, borderLast, std::move(remainingEdges));
 
             // now delete any remaining vertices and edges
             // edgesToRemove are deleted when the container falls out of scope
@@ -930,21 +916,146 @@ namespace TrenchBroom {
 
                 m_edges.remove(edge);
 
-                // don't delete the origin of the first border edge!
-                if (curEdge != borderFirst) {
-                    callback.vertexWillBeDeleted(origin);
+                // don't delete the origin of the first twin edge!
+                if (curEdge != twinFirst) {
                     m_vertices.remove(origin);
                 }
 
                 curEdge = next;
             } while (curEdge != firstEdge);
 
-            callback.facesWillBeMerged(neighbour, face);
-            m_faces.remove(face);
+            m_faces.remove(neighbour);
+            
+            // Fix topological errors
+            const auto fixTopologicalErrors = [&](Vertex* vertex) {
+                if (!polyhedron()) {
+                    return false;
+                }
 
-            return validEdge;
+                if (vertex->hasTwoIncidentEdges()) {
+                    // vertex has become redundant, so we need to remove it.
+                    
+                    Face* face1 = vertex->leaving()->face();
+                    Face* face2 = vertex->leaving()->twin()->face();
+                    
+                    if (face1->vertexCount() == 3u || face2->vertexCount() == 3u) {
+                        // If either face is a triangle, then the other face has become convex. We merge the two faces.
+                        HalfEdge* borderEdge = vertex->leaving();
+                        if (borderEdge->face() != face) {
+                            // We want to retain the original face, so we make sure that we pass the correct half edge
+                            // to mergeNeighbours.
+                            borderEdge = borderEdge->twin();
+                        }
+                        return mergeNeighbours(borderEdge, validEdge);
+                    } else {
+                        assert(face1->vertexCount() > 3u && face2->vertexCount() > 3u);
+                        if (validEdge == vertex->leaving()->edge()) {
+                            validEdge = validEdge->next();
+                        }
+                        mergeIncidentEdges(vertex);
+                    }
+                }
+
+                return polyhedron();
+            };
+
+            return fixTopologicalErrors(borderFirstOrigin) && fixTopologicalErrors(twinFirstOrigin);
+        }
+
+        template <typename T, typename FP, typename VP>
+        bool Polyhedron<T,FP,VP>::mergeNeighbours(HalfEdge* borderFirst) {
+            Edge* e = nullptr;
+            return mergeNeighbours(borderFirst, e);
+        }
+
+        template <typename T, typename FP, typename VP>
+        void  Polyhedron<T,FP,VP>::mergeIncidentEdges(Vertex* vertex) {
+            assert(vertex != nullptr);
+            
+            /*
+                             face1
+             
+                 *-arriving->   *  -leaving->*
+              prev<----------vertex<---------next
+             
+                             face2
+             */
+            
+            HalfEdge* leaving = vertex->leaving();
+            assert(leaving != nullptr);
+            
+            // vertex has exactly two incident edges
+            assert(leaving != leaving->nextIncident());
+            assert(leaving == leaving->nextIncident()->nextIncident());
+            
+            // different faces on each side of the leaving edge
+            assert(leaving->face() != leaving->twin()->face());
+            
+            // only two incident faces in total
+            assert(leaving->face() == leaving->previous()->face());
+            assert(leaving->twin()->face() == leaving->twin()->next()->face());
+            
+            Face* face1 = leaving->face();
+            Face* face2 = leaving->twin()->face();
+
+            // each incident face has more than three vertices
+            assert(face1->vertexCount() > 3u);
+            assert(face2->vertexCount() > 3u);
+
+            HalfEdge* arriving = leaving->previous();
+            Vertex* next = leaving->destination();
+            
+            Edge* edgeToRemove = leaving->edge();
+            
+            face2->removeFromBoundary(leaving->twin(), leaving->twin());
+            face1->removeFromBoundary(leaving, leaving);
+            
+            arriving->twin()->setOrigin(next);
+            next->setLeaving(arriving->twin());
+            
+            m_edges.remove(edgeToRemove);
+            m_vertices.remove(vertex);
+        }
+        
+        template <typename T, typename FP, typename VP>
+        std::string Polyhedron<T,FP,VP>::exportObj() const {
+            std::vector<const Face*> faces;
+            for (const Face* face : m_faces) {
+                faces.push_back(face);
+            }
+            return exportObjSelectedFaces(faces);
+        }
+
+        template <typename T, typename FP, typename VP>
+        std::string Polyhedron<T,FP,VP>::exportObjSelectedFaces(const std::vector<const Face*>& faces) const {
+            std::stringstream ss;
+            std::vector<const Vertex*> vertices;
+
+            for (const Vertex* current : m_vertices) {
+                vertices.push_back(current);
+            }
+        
+            // write the vertices
+            for (const Vertex* v : vertices) {
+                // vec operator<< prints the vector space delimited
+                ss << "v " << v->position() << "\n";
+            }
+        
+            // write the faces
+            for (const Face* face : faces) {
+                ss << "f ";
+                for (const HalfEdge* halfEdge : face->boundary()) {
+                    const Vertex* vertex = halfEdge->origin();
+                    auto indexOptional = kdl::vec_index_of(vertices, vertex);
+                    assert(indexOptional.has_value());
+        
+                    // .obj indices are 1-based
+                    ss << (*indexOptional + 1) << " ";
+                }
+                ss << "\n";
+            }
+        
+            return ss.str();
         }
     }
 }
-
-#endif

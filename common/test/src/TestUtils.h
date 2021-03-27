@@ -17,20 +17,25 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_TestUtils_h
-#define TrenchBroom_TestUtils_h
+#pragma once
 
-#include <catch2/catch.hpp>
+#include "FloatType.h"
 
-#include "GTestCompat.h"
+#include "Model/MapFormat.h"
 
 #include <kdl/vector_set.h>
 
 #include <vecmath/forward.h>
-#include <vecmath/vec.h>
 #include <vecmath/mat.h>
+#include <vecmath/mat_io.h>
+#include <vecmath/vec.h>
+#include <vecmath/vec_io.h> // enable Catch2 to print vm::vec on test failures
 
+#include <memory>
+#include <sstream>
 #include <string>
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Assets {
@@ -42,14 +47,58 @@ namespace TrenchBroom {
     bool UVListsEqual(const std::vector<vm::vec2f>& uvs,
                       const std::vector<vm::vec2f>& transformedVertUVs);
 
+    namespace IO {
+        class Path;
+    }
+
     namespace Model {
         class Brush;
+        class BrushFace;
+        class BrushNode;
+        class Game;
+        class GameConfig;
+        class Node;
 
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3d& faceNormal);
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3);
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4);
-        void assertTexture(const std::string& expected, const Brush* brush, const std::vector<vm::vec3d>& vertices);
-        void assertTexture(const std::string& expected, const Brush* brush, const vm::polygon3d& vertices);
+        BrushFace createParaxial(const vm::vec3& point0, const vm::vec3& point1, const vm::vec3& point2, const std::string& textureName = "");
+
+        std::vector<vm::vec3> asVertexList(const std::vector<vm::segment3>& edges);
+        std::vector<vm::vec3> asVertexList(const std::vector<vm::polygon3>& faces);
+
+        void assertTexture(const std::string& expected, const BrushNode* brush, const vm::vec3d& faceNormal);
+        void assertTexture(const std::string& expected, const BrushNode* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3);
+        void assertTexture(const std::string& expected, const BrushNode* brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4);
+        void assertTexture(const std::string& expected, const BrushNode* brush, const std::vector<vm::vec3d>& vertices);
+        void assertTexture(const std::string& expected, const BrushNode* brush, const vm::polygon3d& vertices);
+
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3d& faceNormal);
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3);
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::vec3d& v1, const vm::vec3d& v2, const vm::vec3d& v3, const vm::vec3d& v4);
+        void assertTexture(const std::string& expected, const Brush& brush, const std::vector<vm::vec3d>& vertices);
+        void assertTexture(const std::string& expected, const Brush& brush, const vm::polygon3d& vertices);
+
+        void transformNode(Node& node, const vm::mat4x4& transformation, const vm::bbox3& worldBounds);
+
+        struct GameAndConfig {
+            std::shared_ptr<Model::Game> game;
+            std::unique_ptr<Model::GameConfig> gameConfig;
+        };
+        GameAndConfig loadGame(const std::string& gameName);
+    }
+
+    namespace View {
+        class MapDocument;
+        
+        void addNode(MapDocument& document, Model::Node* parent, Model::Node* node);
+        void removeNode(MapDocument& document, Model::Node* node);
+        bool reparentNodes(MapDocument& document, Model::Node* newParent, std::vector<Model::Node*> nodes);
+
+        struct DocumentGameConfig {
+            std::shared_ptr<MapDocument> document;
+            std::shared_ptr<Model::Game> game;
+            std::unique_ptr<Model::GameConfig> gameConfig;
+        };
+        DocumentGameConfig loadMapDocument(const IO::Path& mapPath, const std::string& gameName, Model::MapFormat mapFormat);
+        DocumentGameConfig newMapDocument(const std::string& gameName, Model::MapFormat mapFormat);
     }
 
     enum class Component {
@@ -60,51 +109,73 @@ namespace TrenchBroom {
         Exact, Approximate
     };
 
-    int getComponentOfPixel(const Assets::Texture* texture, std::size_t x, std::size_t y, Component component);
-    void checkColor(const Assets::Texture* texturePtr, std::size_t x, std::size_t y,
+    int getComponentOfPixel(const Assets::Texture& texture, std::size_t x, std::size_t y, Component component);
+    void checkColor(const Assets::Texture& texture, std::size_t x, std::size_t y,
                     int r, int g, int b, int a, ColorMatch match = ColorMatch::Exact);
+
+    class GlobMatcher : public Catch::MatcherBase<std::string> {
+    private:
+        std::string m_glob;
+    public:
+        explicit GlobMatcher(const std::string& glob);
+        bool match(const std::string& value) const override;
+        std::string describe() const override;
+    };
+
+    GlobMatcher MatchesGlob(const std::string& glob);
+
+    /**
+     * Catch2 matcher that compares two `std::vector`s of `vm::vec<T,S>`s,
+     * ignoring order of the `std::vector`s, and checking equality of `vm::vec<T,S>`s with an epsilon.
+     */
+    template <typename T, std::size_t S>
+    class UnorderedApproxVecMatcher : public Catch::MatcherBase<std::vector<vm::vec<T,S>>> {
+    private:
+        std::vector<vm::vec<T,S>> m_expected;
+        T m_epsilon;
+    public:
+        explicit UnorderedApproxVecMatcher(const std::vector<vm::vec<T,S>>& expected, const T epsilon) :
+            m_expected(expected),
+            m_epsilon(epsilon) {}
+
+        bool match(const std::vector<vm::vec<T,S>>& actual) const override {
+            if (actual.size() != m_expected.size()) {
+                return false;
+            }
+
+            for (auto& actualElement : actual) {
+                bool foundMatch = false;
+
+                for (size_t i = 0; i < m_expected.size(); ++i) {
+                    if (vm::is_equal(m_expected[i], actualElement, m_epsilon)) {
+                        foundMatch = true;
+                        break;
+                    }
+                }
+
+                if (!foundMatch) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        std::string describe() const override {
+            std::stringstream ss;
+            ss << "approximatetly unordered matches vecs (";
+            for (size_t i = 0; i < m_expected.size(); ++i) {
+                ss << m_expected[i];
+                if (i + 1 < m_expected.size()) {
+                    ss << ", ";
+                }
+            }
+            ss << ") with epsilon " << m_epsilon;
+            return ss.str();
+        }
+    };
+
+    template <typename T, std::size_t S>
+    UnorderedApproxVecMatcher<T,S> UnorderedApproxVecMatches(const std::vector<vm::vec<T,S>>& actual, const T epsilon) {
+        return UnorderedApproxVecMatcher(actual, epsilon);
+    }
 }
-
-template <typename L, typename R>
-void ASSERT_COLLECTIONS_EQUIVALENT(const L& lhs, const R& rhs) {
-    ASSERT_EQ(kdl::vector_set(std::begin(lhs), std::end(lhs)), kdl::vector_set(std::begin(rhs), std::end(rhs)));
-}
-
-template <typename L, typename R>
-void EXPECT_COLLECTIONS_EQUIVALENT(const L& lhs, const R& rhs) {
-    EXPECT_EQ(kdl::vector_set(std::begin(lhs), std::end(lhs)), kdl::vector_set(std::begin(rhs), std::end(rhs)));
-}
-
-template <typename T, size_t S>
-void ASSERT_VEC_EQ(const vm::vec<T,S>& lhs, const vm::vec<T,S>& rhs) {
-    ASSERT_TRUE(is_equal(lhs, rhs, static_cast<T>(0.001)));
-}
-
-template <typename T, size_t S>
-void EXPECT_VEC_EQ(const vm::vec<T,S>& lhs, const vm::vec<T,S>& rhs) {
-    EXPECT_TRUE(is_equal(lhs, rhs, static_cast<T>(0.001)));
-}
-
-template <typename T, size_t S>
-void ASSERT_VEC_NE(const vm::vec<T,S>& lhs, const vm::vec<T,S>& rhs) {
-    ASSERT_FALSE(is_equal(lhs, rhs, static_cast<T>(0.001)));
-}
-
-template <typename T, size_t C, size_t R>
-void ASSERT_MAT_EQ(const vm::mat<T,R,C>& lhs, const vm::mat<T,R,C>& rhs) {
-    ASSERT_TRUE(is_equal(lhs, rhs, static_cast<T>(0.001)));
-}
-
-template <typename T, size_t C, size_t R>
-void ASSERT_MAT_NE(const vm::mat<T,R,C>& lhs, const vm::mat<T,R,C>& rhs) {
-    ASSERT_FALSE(is_equal(lhs, rhs, static_cast<T>(0.001)));
-}
-
-#define ASSERT_WXSTR_EQ(str1, str2) ASSERT_TRUE((str1).IsSameAs((str2)))
-
-#define ASSERT_TC_EQ(tc1, tc2) ASSERT_TRUE(texCoordsEqual(tc1, tc2));
-#define EXPECT_TC_EQ(tc1, tc2) EXPECT_TRUE(texCoordsEqual(tc1, tc2));
-
-#define ASSERT_POINT_INTEGRAL(vec) ASSERT_TRUE(pointExactlyIntegral(vec))
-
-#endif

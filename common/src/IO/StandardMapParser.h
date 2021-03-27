@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_StandardMapParser
-#define TrenchBroom_StandardMapParser
+#pragma once
 
 #include "FloatType.h"
 #include "IO/MapParser.h"
@@ -30,7 +29,7 @@
 
 #include <vecmath/forward.h>
 
-#include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -60,8 +59,7 @@ namespace TrenchBroom {
             static const std::string& NumberDelim();
             bool m_skipEol;
         public:
-            QuakeMapTokenizer(const char* begin, const char* end);
-            explicit QuakeMapTokenizer(const std::string& str);
+            explicit QuakeMapTokenizer(std::string_view str);
 
             void setSkipEol(bool skipEol);
         private:
@@ -71,31 +69,36 @@ namespace TrenchBroom {
         class StandardMapParser : public MapParser, public Parser<QuakeMapToken::Type> {
         private:
             using Token = QuakeMapTokenizer::Token;
-            using AttributeNames = kdl::vector_set<std::string>;
+            using PropertyKeys = kdl::vector_set<std::string>;
 
             static const std::string BrushPrimitiveId;
             static const std::string PatchId;
 
             QuakeMapTokenizer m_tokenizer;
-            Model::MapFormat m_format;
+        protected:
+            Model::MapFormat m_sourceMapFormat;
+            Model::MapFormat m_targetMapFormat;
         public:
-            StandardMapParser(const char* begin, const char* end);
-            explicit StandardMapParser(const std::string& str);
+            /**
+             * Creates a new parser where the given string is expected to be formatted in the given source map format,
+             * and the created objects are converted to the given target format.
+             *
+             * @param str the string to parse
+             * @param sourceMapFormat the expected format of the given string
+             * @param targetMapFormat the format to convert the created objects to
+             */
+            StandardMapParser(std::string_view str, Model::MapFormat sourceMapFormat, Model::MapFormat targetMapFormat);
 
             ~StandardMapParser() override;
         protected:
-            Model::MapFormat detectFormat();
-
-            void parseEntities(Model::MapFormat format, ParserStatus& status);
-            void parseBrushes(Model::MapFormat format, ParserStatus& status);
-            void parseBrushFaces(Model::MapFormat format, ParserStatus& status);
+            void parseEntities(ParserStatus& status);
+            void parseBrushes(ParserStatus& status);
+            void parseBrushFaces(ParserStatus& status);
 
             void reset();
         private:
-            void setFormat(Model::MapFormat format);
-
             void parseEntity(ParserStatus& status);
-            void parseEntityAttribute(std::vector<Model::EntityAttribute>& attributes, AttributeNames& names, ParserStatus& status);
+            void parseEntityProperty(std::vector<Model::EntityProperty>& properties, PropertyKeys& keys, ParserStatus& status);
 
             void parseBrushOrBrushPrimitiveOrPatch(ParserStatus& status);
             void parseBrushPrimitive(ParserStatus& status, size_t startLine);
@@ -109,7 +112,6 @@ namespace TrenchBroom {
             void parseDaikatanaFace(ParserStatus& status);
             void parseValveFace(ParserStatus& status);
             void parsePrimitiveFace(ParserStatus& status);
-            bool checkFacePoints(ParserStatus& status, const vm::vec3& p1, const vm::vec3& p2, const vm::vec3& p3, size_t line) const;
 
             void parsePatch(ParserStatus& status, size_t startLine);
 
@@ -131,12 +133,9 @@ namespace TrenchBroom {
 
             float parseFloat();
             int parseInteger();
-
-            void parseExtraAttributes(ExtraAttributes& extraAttributes, ParserStatus& status);
         private: // implement Parser interface
             TokenNameMap tokenNames() const override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_StandardMapParser) */

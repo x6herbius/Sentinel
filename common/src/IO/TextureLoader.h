@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TextureLoader_h
-#define TextureLoader_h
+#pragma once
 
 #include "Macros.h"
 
@@ -59,7 +58,7 @@ namespace TrenchBroom {
             static Assets::Palette loadPalette(const FileSystem& gameFS, const Model::TextureConfig& textureConfig, Logger& logger);
             static std::unique_ptr<TextureCollectionLoader> createTextureCollectionLoader(const FileSystem& gameFS, const std::vector<Path>& fileSearchPaths, const Model::TextureConfig& textureConfig, Logger& logger);
         public:
-            std::unique_ptr<Assets::TextureCollection> loadTextureCollection(const Path& path);
+            Assets::TextureCollection loadTextureCollection(const Path& path);
             void loadTextures(const std::vector<Path>& paths, Assets::TextureManager& textureManager);
 
             deleteCopyAndMove(TextureLoader)
@@ -67,4 +66,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* TextureLoader_h */

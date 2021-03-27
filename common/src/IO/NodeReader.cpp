@@ -20,12 +20,12 @@
 #include "NodeReader.h"
 
 #include "IO/ParserStatus.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/Entity.h"
-#include "Model/EntityAttributes.h"
-#include "Model/Layer.h"
-#include "Model/ModelFactory.h"
-#include "Model/World.h"
+#include "Model/EntityNode.h"
+#include "Model/EntityProperties.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 
 #include <kdl/vector_utils.h>
 
@@ -35,81 +35,72 @@
 
 namespace TrenchBroom {
     namespace IO {
-        NodeReader::NodeReader(const std::string& str, Model::ModelFactory& factory) :
-        MapReader(str),
-        m_factory(factory) {}
+        NodeReader::NodeReader(std::string_view str, const Model::MapFormat sourceMapFormat, const Model::MapFormat targetMapFormat) :
+        MapReader(str, sourceMapFormat, targetMapFormat) {}
 
-        std::vector<Model::Node*> NodeReader::read(const std::string& str, Model::ModelFactory& factory, const vm::bbox3& worldBounds, ParserStatus& status) {
-            NodeReader reader(str, factory);
-            return reader.read(worldBounds, status);
-        }
-
-        const std::vector<Model::Node*>& NodeReader::read(const vm::bbox3& worldBounds, ParserStatus& status) {
-            try {
-                readEntities(m_factory.format(), worldBounds, status);
-            } catch (const ParserException&) {
-                kdl::vec_clear_and_delete(m_nodes);
-
-                try {
-                    reset();
-                    readBrushes(m_factory.format(), worldBounds, status);
-                } catch (const ParserException&) {
-                    kdl::vec_clear_and_delete(m_nodes);
-                    throw;
+        std::vector<Model::Node*> NodeReader::read(const std::string& str, const Model::MapFormat preferredMapFormat, const vm::bbox3& worldBounds, ParserStatus& status) {
+            // Try preferred format first
+            for (const auto compatibleMapFormat : Model::compatibleFormats(preferredMapFormat)) {
+                if (auto result = readAsFormat(compatibleMapFormat, preferredMapFormat, str, worldBounds, status); !result.empty()) {
+                    return result;
                 }
             }
-            return m_nodes;
+
+            // All formats failed
+            return {};
         }
 
-        Model::ModelFactory& NodeReader::initialize([[maybe_unused]] const Model::MapFormat format) {
-            assert(format == m_factory.format());
-            return m_factory;
-        }
-
-        Model::Node* NodeReader::onWorldspawn(const std::vector<Model::EntityAttribute>& attributes, const ExtraAttributes& extraAttributes, ParserStatus& /* status */) {
-            Model::Entity* worldspawn = m_factory.createEntity();
-            worldspawn->setAttributes(attributes);
-            setExtraAttributes(worldspawn, extraAttributes);
-
-            m_nodes.insert(std::begin(m_nodes), worldspawn);
-            return worldspawn;
-        }
-
-        void NodeReader::onWorldspawnFilePosition(const size_t lineNumber, const size_t lineCount, ParserStatus& /* status */) {
-            assert(!m_nodes.empty());
-            m_nodes.front()->setFilePosition(lineNumber, lineCount);
-        }
-
-        void NodeReader::onLayer(Model::Layer* layer, ParserStatus& /* status */) {
-            m_nodes.push_back(layer);
-        }
-
-        void NodeReader::onNode(Model::Node* parent, Model::Node* node, ParserStatus& /* status */) {
-            if (parent != nullptr) {
-                parent->addChild(node);
-            } else {
-                m_nodes.push_back(node);
+        /**
+         * Attempts to parse the string as one or more entities (in the given source format), and if that fails,
+         * as one or more brushes.
+         *
+         * Does not throw upon parsing failure, but instead logs the failure to `status` and returns {}.
+         *
+         * @returns the parsed nodes; caller is responsible for freeing them.
+         */
+        std::vector<Model::Node*> NodeReader::readAsFormat(const Model::MapFormat sourceMapFormat, const Model::MapFormat targetMapFormat, const std::string& str, const vm::bbox3& worldBounds, ParserStatus& status) {
+            {
+                NodeReader reader(str, sourceMapFormat, targetMapFormat);
+                try {
+                    reader.readEntities(worldBounds, status);
+                    status.info("Parsed successfully as " + Model::formatName(sourceMapFormat) + " entities");
+                    return reader.m_nodes;
+                } catch (const ParserException& e) {
+                    status.info("Couldn't parse as " + Model::formatName(sourceMapFormat) + " entities: " + e.what());
+                    kdl::vec_clear_and_delete(reader.m_nodes);
+                }
             }
-        }
 
-        void NodeReader::onUnresolvedNode(const ParentInfo& parentInfo, Model::Node* node, ParserStatus& status) {
-            if (parentInfo.layer()) {
-                std::stringstream msg;
-                msg << "Could not resolve parent layer '" << parentInfo.id() << "', adding to default layer";
-                status.warn(node->lineNumber(), msg.str());
-            } else {
-                std::stringstream msg;
-                msg << "Could not resolve parent group '" << parentInfo.id() << "', adding to default layer";
-                status.warn(node->lineNumber(), msg.str());
+            {
+                NodeReader reader(str, sourceMapFormat, targetMapFormat);
+                try {
+                    reader.readBrushes(worldBounds, status);
+                    status.info("Parsed successfully as " + Model::formatName(sourceMapFormat) + " brushes");
+                    return reader.m_nodes;
+                } catch (const ParserException& e) {
+                    status.info("Couldn't parse as " + Model::formatName(sourceMapFormat) + " brushes: " + e.what());
+                    kdl::vec_clear_and_delete(reader.m_nodes);
+                }
             }
-            m_nodes.push_back(node);
+            return {};
         }
 
-        void NodeReader::onBrush(Model::Node* parent, Model::Brush* brush, ParserStatus& /* status */) {
-            if (parent != nullptr) {
-                parent->addChild(brush);
+        Model::Node* NodeReader::onWorldNode(std::unique_ptr<Model::WorldNode> worldNode, ParserStatus&) {
+            // we create a fake entity node instead of using a proper world node
+            auto* entityNode = new Model::EntityNode{worldNode->entity()};
+            m_nodes.insert(std::begin(m_nodes), entityNode);
+            return entityNode;
+        }
+
+        void NodeReader::onLayerNode(std::unique_ptr<Model::Node> layerNode, ParserStatus&) {
+            m_nodes.push_back(layerNode.release());
+        }
+
+        void NodeReader::onNode(Model::Node* parentNode, std::unique_ptr<Model::Node> node, ParserStatus&) {
+            if (parentNode != nullptr) {
+                parentNode->addChild(node.release());
             } else {
-                m_nodes.push_back(brush);
+                m_nodes.push_back(node.release());
             }
         }
     }

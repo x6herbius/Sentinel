@@ -15,10 +15,13 @@
  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef KDL_INTRUSIVE_CIRCULAR_LIST_H
-#define KDL_INTRUSIVE_CIRCULAR_LIST_H
+#pragma once
 
-#include <cstddef>
+#include <cassert>
+#include <cstddef> // for ptrdiff_t
+#include <initializer_list>
+#include <iterator> // for std::forward_iterator_tag
+#include <type_traits> // for std::is_pointer
 #include <utility>
 
 namespace kdl {
@@ -100,7 +103,7 @@ namespace kdl {
     class intrusive_circular_list {
         static_assert(!std::is_pointer<T>::value, "intrusive lists do not accept pointer arguments");
     public:
-        using item = T;
+        using value_type = T;
         using get_link_info = GetLink;
         using link_info = intrusive_circular_link<T>;
     public: // iterators
@@ -222,8 +225,8 @@ namespace kdl {
         }
 
         // since items can belong to at most one list, copy is not allowed
-        intrusive_circular_list(intrusive_circular_list&) = delete;
-        intrusive_circular_list& operator=(intrusive_circular_list&) = delete;
+        intrusive_circular_list(const intrusive_circular_list&) = delete;
+        intrusive_circular_list& operator=(const intrusive_circular_list&) = delete;
 
         // move constructor
         intrusive_circular_list(intrusive_circular_list&& other) noexcept {
@@ -727,4 +730,3 @@ namespace kdl {
     };
 }
 
-#endif //KDL_INTRUSIVE_CIRCULAR_LIST_H

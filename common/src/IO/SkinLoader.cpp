@@ -38,12 +38,12 @@
 
 namespace TrenchBroom {
     namespace IO {
-        std::unique_ptr<Assets::Texture> loadSkin(const Path& path, const FileSystem& fs, Logger& logger) {
+        Assets::Texture loadSkin(const Path& path, const FileSystem& fs, Logger& logger) {
             return loadSkin(path, fs, logger, Assets::Palette());
         }
 
-        std::unique_ptr<Assets::Texture> loadSkin(const Path& path, const FileSystem& fs, Logger& logger, const Assets::Palette& palette) {
-            const TextureReader::PathSuffixNameStrategy nameStrategy(1, true);
+        Assets::Texture loadSkin(const Path& path, const FileSystem& fs, Logger& logger, const Assets::Palette& palette) {
+            const TextureReader::StaticNameStrategy nameStrategy(path.basename());
 
             try {
                 const auto file = fs.openFile(path);
@@ -51,10 +51,10 @@ namespace TrenchBroom {
 
                 if (extension == "wal") {
                     WalTextureReader reader(nameStrategy, fs, logger, palette);
-                    return std::unique_ptr<Assets::Texture>(reader.readTexture(file));
+                    return reader.readTexture(file);
                 } else {
                     FreeImageTextureReader reader(nameStrategy, fs, logger);
-                    return std::unique_ptr<Assets::Texture>(reader.readTexture(file));
+                    return reader.readTexture(file);
                 }
             } catch (Exception& e) {
                 logger.error() << "Could not load skin '" << path << "': " << e.what();
@@ -62,8 +62,8 @@ namespace TrenchBroom {
             }
         }
 
-        std::unique_ptr<Assets::Texture> loadShader(const Path& path, const FileSystem& fs, Logger& logger) {
-            const TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
+        Assets::Texture loadShader(const Path& path, const FileSystem& fs, Logger& logger) {
+            const TextureReader::PathSuffixNameStrategy nameStrategy(0u);
             
             if (!path.isEmpty()) {
                 logger.debug() << "Loading shader '" << path << "'";
@@ -71,7 +71,7 @@ namespace TrenchBroom {
                     const auto file = fs.fileExists(path.deleteExtension()) ? fs.openFile(path.deleteExtension()) : fs.openFile(path);
                     
                     Quake3ShaderTextureReader reader(nameStrategy, fs, logger);
-                    return std::unique_ptr<Assets::Texture>(reader.readTexture(file));
+                    return reader.readTexture(file);
                 } catch (const Exception& e) {
                     logger.error() << "Could not load shader '" << path << "': " << e.what();
                     // fall through to return the default texture

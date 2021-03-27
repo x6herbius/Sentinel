@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ObjectRenderer
-#define TrenchBroom_ObjectRenderer
+#pragma once
 
 #include "Renderer/BrushRenderer.h"
 #include "Renderer/EntityRenderer.h"
@@ -35,10 +34,10 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class Brush;
+        class BrushNode;
         class EditorContext;
-        class Entity;
-        class Group;
+        class EntityNode;
+        class GroupNode;
     }
 
     namespace Renderer {
@@ -57,9 +56,9 @@ namespace TrenchBroom {
             m_entityRenderer(logger, entityModelManager, editorContext),
             m_brushRenderer(brushFilter) {}
         public: // object management
-            void setObjects(const std::vector<Model::Group*>& groups, const std::vector<Model::Entity*>& entities, const std::vector<Model::Brush*>& brushes);
+            void setObjects(const std::vector<Model::GroupNode*>& groups, const std::vector<Model::EntityNode*>& entities, const std::vector<Model::BrushNode*>& brushes);
             void invalidate();
-            void invalidateBrushes(const std::vector<Model::Brush*>& brushes);
+            void invalidateBrushes(const std::vector<Model::BrushNode*>& brushes);
             void clear();
             void reloadModels();
         public: // configuration
@@ -79,7 +78,7 @@ namespace TrenchBroom {
             void setShowEntityAngles(bool showAngles);
             void setEntityAngleColor(const Color& color);
 
-            void setOverrideGroupBoundsColor(bool overrideGroupBoundsColor);
+            void setOverrideGroupColors(bool overrideGroupColors);
             void setGroupBoundsColor(const Color& color);
 
             void setOverrideEntityBoundsColor(bool overrideEntityBoundsColor);
@@ -100,4 +99,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ObjectRenderer) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VertexTool_h
-#define VertexTool_h
+#pragma once
 
 #include "Renderer/PointGuideRenderer.h"
 #include "View/VertexToolBase.h"
@@ -41,10 +40,10 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class BrushVertexCommandBase;
         class Grid;
         class Lasso;
         class Selection;
-        class VertexCommand;
 
         class VertexTool : public VertexToolBase<vm::vec3> {
         private:
@@ -64,9 +63,9 @@ namespace TrenchBroom {
         public:
             explicit VertexTool(const std::weak_ptr<MapDocument>& document);
         public:
-            std::vector<Model::Brush*> findIncidentBrushes(const vm::vec3& handle) const;
-            std::vector<Model::Brush*> findIncidentBrushes(const vm::segment3& handle) const;
-            std::vector<Model::Brush*> findIncidentBrushes(const vm::polygon3& handle) const;
+            std::vector<Model::BrushNode*> findIncidentBrushes(const vm::vec3& handle) const;
+            std::vector<Model::BrushNode*> findIncidentBrushes(const vm::segment3& handle) const;
+            std::vector<Model::BrushNode*> findIncidentBrushes(const vm::polygon3& handle) const;
         private:
             using VertexToolBase::findIncidentBrushes;
         public:
@@ -95,12 +94,11 @@ namespace TrenchBroom {
             void addHandles(const std::vector<Model::Node*>& nodes) override;
             void removeHandles(const std::vector<Model::Node*>& nodes) override;
 
-            void addHandles(VertexCommand* command) override;
-            void removeHandles(VertexCommand* command) override;
+            void addHandles(BrushVertexCommandBase* command) override;
+            void removeHandles(BrushVertexCommandBase* command) override;
         private: // General helper methods
             void resetModeAfterDeselection();
         };
     }
 }
 
-#endif /* VertexTool_h */

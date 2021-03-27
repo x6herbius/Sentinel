@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_KEYBOARDSHORTCUTITEMDELEGATE_H
-#define TRENCHBROOM_KEYBOARDSHORTCUTITEMDELEGATE_H
+#pragma once
 
 #include <QStyledItemDelegate>
 
@@ -28,8 +27,10 @@ namespace TrenchBroom {
             Q_OBJECT
         public:
             KeyboardShortcutItemDelegate();
+            QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+        private slots:
+            void commitAndCloseEditor();
         };
     }
 }
 
-#endif //TRENCHBROOM_KEYBOARDSHORTCUTITEMDELEGATE_H

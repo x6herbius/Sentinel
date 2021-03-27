@@ -17,23 +17,25 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Polyhedron_h
-#define TrenchBroom_Polyhedron_h
-
-#include "Allocator.h"
+#pragma once
 
 #include "Polyhedron_Forward.h"
 
 #include <kdl/intrusive_circular_list.h>
 
 #include <vecmath/forward.h>
-#include <vecmath/vec.h>
 #include <vecmath/bbox.h>
+#include <vecmath/plane.h>
 #include <vecmath/util.h>
+#include <vecmath/vec.h>
 
 #include <initializer_list>
 #include <limits>
+#include <optional>
+#include <string>
+#include <variant>
 #include <vector>
+#include <unordered_set>
 
 namespace TrenchBroom {
     namespace Model {
@@ -60,7 +62,7 @@ namespace TrenchBroom {
          * The payload of a vertex can be used to store user data.
          */
         template <typename T, typename FP, typename VP>
-        class Polyhedron_Vertex : public Allocator<Polyhedron_Vertex<T,FP,VP>> {
+        class Polyhedron_Vertex {
         private:
             friend class Polyhedron<T,FP,VP>;
             friend class Polyhedron_Edge<T,FP,VP>;
@@ -147,6 +149,11 @@ namespace TrenchBroom {
             void setPayload(typename VP::Type payload);
 
             /**
+             * Indicates whether this vertex has exactly two incident edges.
+             */
+            bool hasTwoIncidentEdges() const;
+            
+            /**
              * Indicates whether the given face is incident to this vertex.
              *
              * @param face the face to check, must not be null
@@ -192,7 +199,7 @@ namespace TrenchBroom {
          * list.
          */
         template <typename T, typename FP, typename VP>
-        class Polyhedron_Edge : public Allocator<Polyhedron_Edge<T,FP,VP>> {
+        class Polyhedron_Edge {
         private:
             friend class Polyhedron<T,FP,VP>;
             friend class Polyhedron_Vertex<T,FP,VP>;
@@ -353,9 +360,10 @@ namespace TrenchBroom {
              * This function assumes that the vertices of this edge are on opposite sides of the given plane.
              *
              * @param plane the plane at which to split this edge
+             * @param epsilon the epsilon value to use for point status checks
              * @return the newly created edge
              */
-            Edge* split(const vm::plane<T,3>& plane);
+            Edge* split(const vm::plane<T,3>& plane, T epsilon);
 
             /**
              * Inserts a new vertex at the given position into this edge, creating two new half edges, and a new edge.
@@ -464,7 +472,7 @@ namespace TrenchBroom {
          * belongs to.
          */
         template <typename T, typename FP, typename VP>
-        class Polyhedron_HalfEdge : public Allocator<Polyhedron_HalfEdge<T,FP,VP>> {
+        class Polyhedron_HalfEdge {
         private:
             friend class Polyhedron<T,FP,VP>;
             friend class Polyhedron_Vertex<T,FP,VP>;
@@ -504,12 +512,6 @@ namespace TrenchBroom {
              * @param origin the origin vertex, must not be null
              */
             Polyhedron_HalfEdge(Vertex* origin);
-        public:
-            /**
-             * The destructor resets the leaving half edge of its origin vertex to null if this is the leading half
-             * edge of the origin vertex.
-             */
-            ~Polyhedron_HalfEdge();
         public:
             /**
              * Returns the origin vertex of this half edge.
@@ -596,9 +598,10 @@ namespace TrenchBroom {
              *
              * @param normal the normal vector, this is expected to be a unit vector
              * @param point the point to check
+             * @param epsilon value to use for point status checks
              * @return the relative location of the given point and the plane p
              */
-            vm::plane_status pointStatus(const vm::vec<T,3>& normal, const vm::vec<T,3>& point) const;
+            vm::plane_status pointStatus(const vm::vec<T,3>& normal, const vm::vec<T,3>& point, T epsilon) const;
 
             /**
              * Determines whether this half edge is colinear to the given half edge, which is expected to have this
@@ -670,7 +673,7 @@ namespace TrenchBroom {
          * list.
          */
         template <typename T, typename FP, typename VP>
-        class Polyhedron_Face : public Allocator<Polyhedron_Face<T,FP,VP>> {
+        class Polyhedron_Face {
         private:
             friend class Polyhedron<T,FP,VP>;
             friend class Polyhedron_Vertex<T,FP,VP>;
@@ -690,6 +693,11 @@ namespace TrenchBroom {
              * more (but in some cases less if the face is degenerate).
              */
             HalfEdgeList m_boundary;
+            
+            /**
+             * The plane that contains this face, i.e., the plane that contains all vertices of this face.
+             */
+            vm::plane<T,3> m_plane;
 
             /**
              * The payload attached to this face.
@@ -706,8 +714,9 @@ namespace TrenchBroom {
              * to this. The given boundary is moved into this face.
              *
              * @param boundary the boundary of the newly created face, which must contain at least three half edges
+             * @param plane the plane that contains the newly created face
              */
-            explicit Polyhedron_Face(HalfEdgeList&& boundary);
+            explicit Polyhedron_Face(HalfEdgeList&& boundary, const vm::plane<T,3>& plane);
         public:
             /**
              * Returns the circular list of half edges that make up the boundary of this face.
@@ -718,6 +727,16 @@ namespace TrenchBroom {
              * Returns the circular list of half edges that make up the boundary of this face.
              */
             HalfEdgeList& boundary();
+            
+            /**
+             * Returns the plane that contains this face.
+             */
+            const vm::plane<T,3>& plane() const;
+            
+            /**
+             * Sets the plane that contains this face.
+             */
+            void setPlane(const vm::plane<T,3>& plane);
 
             /**
              * Returns the next face in its containing circular list.
@@ -856,23 +875,33 @@ namespace TrenchBroom {
              * @param epsilon the epsilon value to use for the position check
              * @return the relative position of the given point
              */
-            vm::plane_status pointStatus(const vm::vec<T,3>& point, T epsilon = vm::constants<T>::point_status_epsilon()) const;
+            vm::plane_status pointStatus(const vm::vec<T,3>& point, T epsilon) const;
         private:
             /**
              * Checks whether this face is coplanar with the given face, that is, if both faces lie in the same plane.
              *
              * @param other the other face
+             * @param epsilon value to use for point status checks
              * @return true if the faces are coplanar and false otherwise
              */
-            bool coplanar(const Face* other) const;
+            bool coplanar(const Face* other, T epsilon) const;
 
             /**
              * Checks whether all vertices of this face lie in the given plane.
              *
              * @param plane the plane to check
+             * @param epsilon value to use for point status checks
              * @return true if all vertices of this face lie on the given plane, and false otherwise
              */
-            bool verticesOnPlane(const vm::plane<T,3>& plane) const;
+            bool verticesOnPlane(const vm::plane<T,3>& plane, T epsilon) const;
+            
+            /**
+             * Returns the maximal distance of the vertices of this face to the given plane.
+             *
+             * @param plane the plane
+             * @return the maximal distance
+             */
+            T maximumVertexDistance(const vm::plane<T,3>& plane) const;
 
             /**
              * Flips this face by reversing the order of its half edges.
@@ -997,96 +1026,29 @@ namespace TrenchBroom {
                 const vm::vec<T,3>& operator()(const Vertex* vertex) const;
                 const vm::vec<T,3>& operator()(const HalfEdge* halfEdge) const;
             };
-
+            
             /**
-             * A callback with different lifetime events that occur while a polyhedron is modified.
+             * A callback for the copy operation. Useful for setting up face and vertex payloads.
              */
-            class Callback {
+            class CopyCallback {
             public:
-                virtual ~Callback();
-            public:
+                virtual ~CopyCallback();
+                
                 /**
-                 * Called after a new vertex was created.
+                 * Called when a vertex was copied.
                  *
-                 * @param vertex the newly created vertex
+                 * @param original the original vertex
+                 * @param copy the vertex copy
                  */
-                virtual void vertexWasCreated(Vertex* vertex);
-
+                virtual void vertexWasCopied(const Vertex* original, Vertex* copy) const;
+                
                 /**
-                 * Called before a vertex is deleted.
+                 * Called when a face was copied.
                  *
-                 * @param vertex the vertex that will be deleted
+                 * @param original the original face
+                 * @param copy the face copy
                  */
-                virtual void vertexWillBeDeleted(Vertex* vertex);
-
-                /**
-                 * Called after a vertex was added to this polyhedron.
-                 *
-                 * @param vertex the newly added vertex
-                 */
-                virtual void vertexWasAdded(Vertex* vertex);
-
-                /**
-                 * Called before a vertex will be removed from this polyhedron.
-                 *
-                 * @param vertex the vertex that will be removed
-                 */
-                virtual void vertexWillBeRemoved(Vertex* vertex);
-
-                /**
-                 * Called to compute the plane of a face. The face of a plane is the plane on which the vertices of that
-                 * face all lie. By default this method builds a plane using the given face's normal and origin.
-                 * Overriding this function allows to use other methods to get the face's plane, such as via its payload.
-                 *
-                 * @param face the face for which the plane should be computed
-                 * @return the face plane
-                 */
-                virtual vm::plane<T,3> getPlane(const Face* face) const;
-
-                /**
-                 * Called after a new face was created.
-                 *
-                 * @param face the newly created face
-                 */
-                virtual void faceWasCreated(Face* face);
-
-                /**
-                 * Called before a face is deleted.
-                 *
-                 * @param face the face to be deleted
-                 */
-                virtual void faceWillBeDeleted(Face* face);
-
-                /**
-                 * Called after a face was changed.
-                 *
-                 * @param face the face
-                 */
-                virtual void faceDidChange(Face* face);
-
-                /**
-                 * Called after a face was flipped (see Face::flip).
-                 *
-                 * @param face the face
-                 */
-                virtual void faceWasFlipped(Face* face);
-
-                /**
-                 * Called after a face was split into two faces. Both of the given faces will be retained. The first given
-                 * face is the first portion of the face that was split, and the second given face is the other portion.
-                 *
-                 * @param original the original face after it was split
-                 * @param clone the other portion that remained of the face after splitting
-                 */
-                virtual void faceWasSplit(Face* original, Face* clone);
-
-                /**
-                 * Called before two faces are merged into one face.
-                 *
-                 * @param remaining the face that will remain after merging
-                 * @param toDelete the face that will be deleted after merging
-                 */
-                virtual void facesWillBeMerged(Face* remaining, Face* toDelete);
+                virtual void faceWasCopied(const Face* original, Face* copy) const;
             };
         private:
             /**
@@ -1133,12 +1095,19 @@ namespace TrenchBroom {
              *
              * @param positions the points from which the convex hull is computed
              */
-            explicit Polyhedron(const std::vector<vm::vec<T,3>>& positions);
+            explicit Polyhedron(std::vector<vm::vec<T,3>> positions);
 
             /**
              * Copy constructor.
              */
             Polyhedron(const Polyhedron<T,FP,VP>& other);
+
+            /**
+             * Copy constructor with callback. The callback can be used to set up the face and vertex payloads.
+             *
+             * @param callback the callback to call for every created face or vertex
+             */
+            Polyhedron(const Polyhedron<T,FP,VP>& other, const CopyCallback& callback);
 
             /**
              * Move constructor.
@@ -1230,11 +1199,16 @@ namespace TrenchBroom {
             const FaceList& faces() const;
 
             /**
+             * Returns the faces of this polyhedron as a reference to the containing circular list.
+             */
+            FaceList& faces();
+
+            /**
              * Checks whether this polyhedron has any face with the given vertex positions, up to the given epsilon.
              *
              * @param positions the list of positions
              * @param epsilon the epsilon value to use for comparison
-             * @return true if this polyhedron has an edge with the given vertex positions
+             * @return true if this polyhedron has a face with the given vertex positions
              */
             bool hasFace(const std::vector<vm::vec<T,3>>& positions, T epsilon = static_cast<T>(0.0)) const;
 
@@ -1454,28 +1428,15 @@ namespace TrenchBroom {
              * @return true if this polyhedron is a convex volume afterwards
              */
             bool healEdges(const T minLength = MinEdgeLength);
-
-            /**
-             * Heals short edges by removing all edges shorter than the given minimum length. If removing an edge leads
-             * to degenerate faces, these degenerate faces are removed, too.
-             *
-             * Updates the bounds of this polyhedron afterwards.
-             *
-             * @param callback the callback to inform of lifecycle events
-             * @param minLength the minimum edge length, edges shorter than this length will be removed
-             * @return true if this polyhedron is a convex volume afterwards
-             */
-            bool healEdges(Callback& callback, const T minLength = MinEdgeLength);
         private:
             /**
              * Removes the given edge from this polyhedron. The incident faces are updated accordingly, and they are
-             * removed if they become degenerate.
+             * removed if they become degenerate. This operation can fail if it results in a non polyhedron.
              *
              * @param edge the edge to remove
-             * @param callback the callback to inform of lifecycle events
-             * @return removes the successor of the given edge in the containing circular list
+             * @return removes the successor of the given edge in the containing circular list or null if the operation fails
              */
-            Edge* removeEdge(Edge* edge, Callback& callback);
+            Edge* removeEdge(Edge* edge);
 
             /**
              * Removes the given degenerate face. A face is considered degenerate if it has only two vertices.
@@ -1483,13 +1444,14 @@ namespace TrenchBroom {
              * If the given face is not degenerate, the behavior is undefined.
              *
              * @param face the face to remove, must not be null
-             * @param callback the callback to inform of lifecycle events
              */
-            void removeDegenerateFace(Face* face, Callback& callback);
+            void removeDegenerateFace(Face* face);
 
             /**
-             * Merges two adjacent faces. The faces to be merged are those that share the edge to which the given half
-             * edge belongs.
+             * Merges two adjacent faces of a polyhedron. The faces to be merged are those that share the edge to which 
+             * the given half edge belongs.
+             *
+             * If this is not a polyhedron (has less than four faces), then the outcome is undefined.
              *
              * Let f1 be the face to which the given half edge borderFirst belongs. Let f2 be the face to which the twin
              * of the given half edge belongs, and let e be the edge to which the given half edge belongs. Then f1 and
@@ -1505,108 +1467,92 @@ namespace TrenchBroom {
              * - all vertices which have only f1 and f2 as their incident faces are deleted
              * - f2 is deleted
              *
-             * Finally, if the given validEdge is deleted by this algorithm, than its first successor that is not deleted
-             * by this algorithm is returned. This return value can be used by the caller during iteration over all edges
+             * After the faces are merged, topological errors are checked and fixed. Let v1, ..., vn be the vertices
+             * that f1 and f2 shared before the merge. Then v2, ..., vn-1 have been deleted by the merge, but we need
+             * to inspect v1 and vn further.
+             * Let v' be v1 or vn without loss of generality. If v' has only two incident edges, then v' is redundant.
+             * We inspect the two incident faces of v'. One of them is f1, which has more than three vertices now. Let
+             * f' be the other incident face. If f' is a triangle, then f' gets merged into f1, whereby f' is deleted
+             * and f1 is retained. If f' is not a triangle, then v' is removed and f1 and f' are now separated by a
+             * single edge.
+             *
+             * Finally, if the given validEdge is deleted by this algorithm, then it is set to its first successor that 
+             * is not deleted by this algorithm. This value can be used by the caller during iteration over all edges
              * of this polyhedron.
              *
+             * The merge process can fail if it turns this polyhedron into an invalid polyhedron with less than four
+             * faces.
+             *
              * @param borderFirst a half edge that belongs to the edge to which the faces to be merged are incident
-             * @param validEdge an edge that is used for iteration of all edges (see result)
-             * @param callback the callback to inform of lifecycle events
-             * @return the given valid edge, or its first successor that was not deleted by this function
+             * @param validEdge an edge that is used for iteration of all edges (see result), can be null
+             * @return true if the merge process was successful or false if it failed
              */
-            Edge* mergeNeighbours(HalfEdge* borderFirst, Edge* validEdge, Callback& callback);
-
-            /* ====================== Implementation in Polyhedron_ConvexHull.h ====================== */
-        public: // Convex hull; adding and removing points
-            /**
-             * Adds the given points to this polyhedron. The effect of adding the given points to a polyhedron is that
-             * the resulting polyhedron is the convex hull of the union of the polyhedron's vertices and the given points.
-             *
-             * @param points the points to add to this polyhedron
-             */
-            void addPoints(const std::vector<vm::vec<T,3>>& points);
+            bool mergeNeighbours(HalfEdge* borderFirst, Edge*& validEdge);
 
             /**
-             * Adds the given points to this polyhedron. The effect of adding the given points to a polyhedron is that
-             * the resulting polyhedron is the convex hull of the union of the polyhedron's vertices and the given points.
-             *
-             * @param points the points to add to this polyhedron
-             * @param callback the callback to inform of lifecycle events
+             * Convenience overload that does not require passing an edge.
              */
-            void addPoints(const std::vector<vm::vec<T,3>>& points, Callback& callback);
-        private:
-            /**
-             * Adds the points in range [cur, end) to this polyhedron. The effect of adding the given points to a
-             * polyhedron is that the resulting polyhedron is the convex hull of the union of the polyhedron's vertices
-             * and the given points.
-             *
-             * @tparam I the type of the given iterators
-             * @param cur start of the range of points to add
-             * @param end end of the range of points to add
-             */
-            template <typename I> void addPoints(I cur, I end);
+            bool mergeNeighbours(HalfEdge* borderFirst);
 
             /**
-             * Adds the points in range [cur, end) to this polyhedron. The effect of adding the given points to a
-             * polyhedron is that the resulting polyhedron is the convex hull of the union of the polyhedron's vertices
-             * and the given points.
+             * Merges the two incident edges of the given vertex. If either of the two incident faces is a
+             * triangle, the faces will be merged.
              *
-             * @tparam I the type of the given iterators
-             * @param cur start of the range of points to add
-             * @param end end of the range of points to add
-             * @param callback the callback to inform of lifecycle events
+             * Preconditions:
+             * - The given vertex has exactly two incident edges.
+             * - The given vertex has exactly two incident faces.
+             *
+             * If neither of the given faces is a triangle, then the given vertex, its leaving half edge and its twin
+             * and the corresponding edge will be removed. Otherwise, the faces will be merged.
+             *
+             * @param vertex the vertex to remove
              */
-            template <typename I> void addPoints(I cur, I end, Callback& callback);
+            void mergeIncidentEdges(Vertex* vertex);
         public:
             /**
-             * Adds the given point to this polyhedron. The effect of adding the given point to a polyhedron is that the
-             * resulting polyhedron is the convex hull of the union of the polyhedron's vertices and the given point.
-             *
-             * If the given point is within this polyhedron, the it will not be added.
-             *
-             * @param position the point to add
-             * @return the newly created vertex, or null if the given point was not added to this polyhedron
+             * Exports to .obj format for debugging.
              */
-            Vertex* addPoint(const vm::vec<T,3>& position);
+            std::string exportObj() const;
+            /**
+             * Export only the specified faces to .obj format.
+             */
+            std::string exportObjSelectedFaces(const std::vector<const Face*>& faces) const;
 
+            /* ====================== Implementation in Polyhedron_ConvexHull.h ====================== */
+        private: // Convex hull; adding and removing points
+            /**
+             * Adds the given points to this polyhedron. The effect of adding the given points to a polyhedron is that
+             * the resulting polyhedron is the convex hull of the union of the polyhedron's vertices and the given points.
+             *
+             * Duplicates in the given vector are discarded. Furthermore, the remaining points are sorted in descending
+             * order of their distance from the center of their bounding box. Therefore, the result of calling this
+             * method is different from the result of repeatedly calling addPoint() for every point in the given vector.
+             *
+             * @param points the points to add to this polyhedron
+             */
+            void addPoints(std::vector<vm::vec<T,3>> points);
             /**
              * Adds the given point to this polyhedron. The effect of adding the given point to a polyhedron is that the
              * resulting polyhedron is the convex hull of the union of the polyhedron's vertices and the given point.
              *
              * If the given point is within this polyhedron, the it will not be added.
              *
+             * To add multiple points at once, prefer to call addPoints.
+             *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex, or null if the given point was not added to this polyhedron
              */
-            Vertex* addPoint(const vm::vec<T,3>& position, Callback& callback);
-
-            /**
-             * Merges this polyhedron with the given polyhedron. The effect of merging two polyhedra is that the resulting
-             * polyhedron is the convex hull of the union of the vertices of both polyhedra.
-             *
-             * @param other the polyhedron to merge this polyhedron with
-             */
-            void merge(const Polyhedron& other);
-
-            /**
-             * Merges this polyhedron with the given polyhedron. The effect of merging two polyhedra is that the resulting
-             * polyhedron is the convex hull of the union of the vertices of both polyhedra.
-             *
-             * @param other the polyhedron to merge this polyhedron with
-             * @param callback the callback to inform of lifecycle events
-             */
-            void merge(const Polyhedron& other, Callback& callback);
+            Vertex* addPoint(const vm::vec<T,3>& position, T planeEpsilon);
         private:
             /**
              * Helper function that adds the given point to an empty polyhedron. Afterwards, this polyhedron will be a
              * point.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
              * @return the newly created vertex
              */
-            Vertex* addFirstPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addFirstPoint(const vm::vec<T,3>& position);
 
             /**
              * Helper function that adds the given point to a point polyhedron. Afterwards, this polyhedron will be a
@@ -1617,10 +1563,9 @@ namespace TrenchBroom {
              * Assumes that this is a point polyhedron.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addSecondPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addSecondPoint(const vm::vec<T,3>& position);
 
             /**
              * Helper function that adds the given point to an edge polyhedron. Afterwards, this polyhedron will be an
@@ -1633,10 +1578,9 @@ namespace TrenchBroom {
              * Assumes that this is an edge polyhedron.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addThirdPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addThirdPoint(const vm::vec<T,3>& position);
 
             /**
              * Helper function that adds the given point to an edge polyhedron. Afterwards, this polyhedron is an edge.
@@ -1645,22 +1589,20 @@ namespace TrenchBroom {
              * linearly dependent.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addColinearThirdPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addColinearThirdPoint(const vm::vec<T,3>& position);
 
             /**
              * Helper function that adds the given point to an edge polyhedron. Afterwards, this polyhedron is a triangle.
              *
              * Assumes that this is an edge polyhedron and that the given point and this polyhedron's vertices are
-             * linearly independent.
+             * linearly independent. If an error occurs while adding the point, the polyhedron remains unchanged.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
-             * @return the newly created vertex
+             * @return the newly created vertex or null if the point cannot be added
              */
-            Vertex* addNonColinearThirdPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addNonColinearThirdPoint(const vm::vec<T,3>& position);
 
             /**
              * Helper function that adds the given point to a polyhedron that is either a polygon or a convex volume.
@@ -1677,10 +1619,10 @@ namespace TrenchBroom {
              * Assumes that this is either a polygon or a convex volume.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addFurtherPoint(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addFurtherPoint(const vm::vec<T,3>& position, T planeEpsilon);
 
             /**
              * Helper function that adds the given point to a polygon.
@@ -1691,10 +1633,10 @@ namespace TrenchBroom {
              * Assumes that this polyhedron is a polygon.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addFurtherPointToPolygon(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addFurtherPointToPolygon(const vm::vec<T,3>& position, T planeEpsilon);
 
             /**
              * Helper function that adds a coplanar point to a polygon.
@@ -1703,21 +1645,10 @@ namespace TrenchBroom {
              * polygon.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addPointToPolygon(const vm::vec<T,3>& position, Callback& callback);
-
-            /**
-             * Helper function that creates a new polygon from the given vector of coplanar points.
-             *
-             * Assumes that this polyhedron is empty and that the given vector contains at least three linearly
-             * independent points.
-             *
-             * @param positions the points to create a polygon from
-             * @param callback the callback to inform of lifecycle events
-             */
-            void makePolygon(const std::vector<vm::vec<T,3>>& positions, Callback& callback);
+            Vertex* addPointToPolygon(const vm::vec<T,3>& position, T planeEpsilon);
 
             /**
              * Helper function that adds the given non coplanar point to a polygon, turning it into a convex volume.
@@ -1726,10 +1657,10 @@ namespace TrenchBroom {
              * polygon.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* makePolyhedron(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* makePolyhedron(const vm::vec<T,3>& position, T planeEpsilon);
 
             /**
              * Helper function that adds the given point to a convex volume.
@@ -1737,10 +1668,10 @@ namespace TrenchBroom {
              * Assumes that this polyhedron is a convex volume.
              *
              * @param position the point to add
-             * @param callback the callback to inform of lifecycle events
+             * @param planeEpsilon the plane epsilon to use for point status checks
              * @return the newly created vertex or null if no vertex was created
              */
-            Vertex* addFurtherPointToPolyhedron(const vm::vec<T,3>& position, Callback& callback);
+            Vertex* addFurtherPointToPolyhedron(const vm::vec<T,3>& position, T planeEpsilon);
 
             /**
              * A seam is a circular sequence of consecutive edges. For each edge of a seam, it must hold that its first
@@ -1748,12 +1679,11 @@ namespace TrenchBroom {
              */
             class Seam;
 
-            class SplittingCriterion;
-            class SplitByVisibilityCriterion;
-            class SplitByConnectivityCriterion;
-
             /**
-             * Creates a seam using the given splitting criterion.
+             * Creates a seam along the horizon of the given position.
+             *
+             * The horizon of a position is a closed loop of edges of this polyhedron such that it separates those faces
+             * which are visible from the given position from those faces which are not visible from the given position.
              *
              * Suppose that the faces of a polyhedron are the vertices of a graph G, and two graph vertices are connected
              * in if and only if the corresponding faces are adjacent.
@@ -1768,10 +1698,14 @@ namespace TrenchBroom {
              * the edges of the seam are oriented such that the first faces matches the splitting criterion and the other
              * faces does not.
              *
-             * @param criterion the splitting criterion
-             * @return a seam that separates the faces that match the given criterion from those that do not
+             * @param position the vertex position
+             * @param planeEpsilon the plane epsilon to use for point status checks
+             * @return a seam that separates the faces that are visible from the given position from those that do not,
+             * or an empty optional if no seam could be created
              */
-            Seam createSeam(const SplittingCriterion& criterion);
+            std::optional<Seam> createSeamForHorizon(const vm::vec<T,3>& position, T planeEpsilon);
+
+            void visitFace(const vm::vec<T,3>& position, HalfEdge* initialBoundaryEdge, std::unordered_set<Face*>& visitedFaces, Seam& seam, T planeEpsilon);
 
             /**
              * Splits this polyhedron along the given seam. The edges of the seam must be oriented in such a way that
@@ -1784,9 +1718,8 @@ namespace TrenchBroom {
              * Therefore, this polyhedron will be open after this function finishes.
              *
              * @param seam the seam to split this polyhedron along
-             * @param callback the callback to inform of lifecycle events
              */
-            void split(const Seam& seam, Callback& callback);
+            void split(const Seam& seam);
 
             /**
              * Helper that recursively deletes faces and edges, and adds vertices to be deleted to the given list.
@@ -1806,10 +1739,9 @@ namespace TrenchBroom {
              * @param first the half edge at which to start deleting faces
              * @param visitedFaces the faces that have already been visited by this function in previous calls
              * @param verticesToDelete the vertices that should be deleted later
-             * @param callback the callback to inform of lifecycle events
              */
             template <typename FaceSet>
-            void deleteFaces(HalfEdge* first, FaceSet& visitedFaces, VertexList& verticesToDelete, Callback& callback);
+            void deleteFaces(HalfEdge* first, FaceSet& visitedFaces, VertexList& verticesToDelete);
 
             /**
              * Waves a new cap onto this polyhedron. The new cap will be a single polygon, so this function assumes that
@@ -1821,62 +1753,103 @@ namespace TrenchBroom {
              * Assumes that this polyhedron is neither empty, nor a point, nor an edge, nor a polygon.
              *
              * @param seam the seam to weave a polygon onto
-             * @param callback the callback to inform of lifecycle events
+             * @param plane the plane that contains the newly created face
+             * @return the newly created face
              */
-            void sealWithSinglePolygon(const Seam& seam, Callback& callback);
-
-            class ShiftSeamForWeaving;
+            Face* sealWithSinglePolygon(const Seam& seam, const vm::plane<T,3>& plane);
 
             /**
-             * Weaves a new cap onto this polyhedron. The new cap will be a cone, the tip of which will be a newly created
-             * vertex at the given position. If two adjacent faces of the cone are coplanar, these will be merged.
-             *
-             * The edges of the given seam are expected to be oriented such that their second edges are unset. Each edge
-             * will then have a newly created polygon as its first face.
-             *
-             * Assumes that this polyhedron is neither empty, nor a point, nor an edge. Note that this polyhedron can be
-             * a polygon, however.
+             * Checks that all faces that would be created during weaving have noncolinear vertices.
              *
              * @param seam the seam to weave a cone onto
              * @param position the position of the cone's tip
-             * @param callback the callback to inform of lifecycle events
-             * @return the newly created vertex at the tip of the newly created cone
+             * @return true if the cone can be weaved and false otherwise
              */
-            Vertex* weave(Seam seam, const vm::vec<T,3>& position, Callback& callback);
+            bool checkSeamForWeaving(const Seam& seam, const vm::vec<T,3>& position) const;
+            
+            /**
+             * Represents an open cone intended to seal a polyhedron that was split along a seam.
+             * 
+             * The cone contains only the top vertex, the shared edges of the newly created faces,
+             * and the newly created faces, all of which are incident to the top vertex.
+             */
+            struct WeaveConeResult {
+                VertexList vertices;
+                EdgeList edges;
+                FaceList faces;
+                HalfEdge* firstSeamEdge;
+            };
 
-            /* ====================== Implementation in Polyhedron_Clip.h ====================== */
+            /**
+             * Weaves a cone, the tip of which will be a newly created vertex at the given position.
+             * 
+             * The returned cone may have coplanar adjacent faces. The caller is responsible for merging those.
+             * 
+             * @param seam the seam to weave a cone onto
+             * @param position the position of the cone's tip
+             * @return the components of the newly created cone or an empty optional if the operation fails
+             */
+            static std::optional<WeaveConeResult> weaveCone(const Seam& seam, const vm::vec<T,3>& position);
+
+            /**
+             * Seal this polyhedron with the given cone along the given seam.
+             * 
+             * This polyhedron is expected to be open such that the second edges of the given seam are unset. The given cone
+             * must fit onto the given seam, i.e., the cone is expected to be open also and its "open" edges have the vertices
+             * of the seam edges as their origins.
+             * 
+             * @param cone the cone to seal this polyhedron with
+             * @param seam the seam onto which the cone should fit
+             */
+            void sealWithCone(WeaveConeResult cone, const Seam& seam);
+
+            /**
+             * Inspects all incident faces of the given vertex and merges those which are coplanar. If all the faces
+             * are coplanar, then the given vertex is deleted and a single face remains that includes all other vertices
+             * of the incident faces.
+             *
+             * Furthermore, the faces are merged with their coplanar neighbours which are not incident to the
+             * given vertex, which might remove even more vertices and edges. In this case, the neighbouring faces are
+             * retained and the faces incident to the given vertex are removed.
+             *
+             * @param vertex the vertex whose incident faces should be merged
+             * @param planeEpsilon the plane epsilon to use for point status checks
+             * @return true if the given vertex remains or false if all incident faces were merged and the vertex was
+             * deleted
+             */
+            bool mergeCoplanarIncidentFaces(Vertex* vertex, T planeEpsilon);
         public: // Clipping
             /**
              * The result of clipping this polyhedron with a plane.
              */
-            struct ClipResult {
-                typedef enum {
+            class ClipResult {
+            public:
+                enum class FailureReason {
                     /**
                      * Clipping did not change this polyhedron.
                      */
-                        Type_ClipUnchanged,
+                    Unchanged,
 
                     /**
                      * Clipping resulted in an empty polyhedron.
                      */
-                        Type_ClipEmpty,
-
-                    /**
-                     * Clipping was successful and effective.
-                     */
-                        Type_ClipSuccess
-                } Type;
+                    Empty
+                };
+            private:
+                /**
+                 * The value of the result, either the newly created face or a failure reason.
+                 */
+                const std::variant<Face*, FailureReason> m_value;
+            public:
+                /**
+                 * Creates a successful clip result with the given newly created face.
+                 */
+                ClipResult(Face* face);
 
                 /**
-                 * The type of result.
+                 * Creates a failed clip result with the given reason.
                  */
-                const Type type;
-
-                /**
-                 * Creates a new clip result of the given type.
-                 * @param i_type the type of the clip result
-                 */
-                ClipResult(const Type i_type);
+                ClipResult(FailureReason reason);
 
                 /**
                  * Indicates whether clipping this polyhedron had any effect.
@@ -1892,6 +1865,11 @@ namespace TrenchBroom {
                  * Indicates whether clipping this polyhedron was successful and effective.
                  */
                 bool success() const;
+                
+                /**
+                 * Returns the newly created face or nullptr if clipping has failed.
+                 */
+                Face* face() const;
             };
 
             /**
@@ -1899,35 +1877,17 @@ namespace TrenchBroom {
              *
              * @param plane the plane to clip with
              * @return the result of the clipping operation
-             * @throw GeometryException if the polyhedron cannot be intersected with the given plane
              */
             ClipResult clip(const vm::plane<T,3>& plane);
-
-            /**
-             * Removes the part of this polyhedron that is in front of the given plane.
-             *
-             * @param plane the plane to clip with
-             * @param callback the callback to inform of lifecycle events
-             * @return the result of the clipping operation
-             * @throw GeometryException if the polyhedron cannot be intersected with the given plane
-             */
-            ClipResult clip(const vm::plane<T,3>& plane, Callback& callback);
-
         private:
             /**
-             * Checks whether this polyhedron is intersected by the given plane. Returns either of the following results.
-             *
-             * - a clip result of type Type_ClipUnchanged if intersecting this polyhedron with the given plane would leave
-             *   it unchanged
-             * - a clip result of Type_ClipEmpty if intersecting this polyhedron with the given plane would leave it
-             *   empty
-             * - a clip result of Type_ClipSuccess if intersecting this polyhedron with the given plane would be successful
-             *    and effective.
+             * Checks whether this polyhedron is intersected by the given plane.
              *
              * @param plane the plane to check
-             * @return a clip result
+             * @return a failure reason if clipping with the given plane would likely fail, or an empty optional
+             * otherwise
              */
-            ClipResult checkIntersects(const vm::plane<T,3>& plane) const;
+            std::optional<typename ClipResult::FailureReason> checkIntersects(const vm::plane<T,3>& plane) const;
 
             class NoSeamException;
 
@@ -1956,11 +1916,10 @@ namespace TrenchBroom {
              * function detects such a case, it throws a NoSeamException.
              *
              * @param plane the plane to intersect this polyhedron with
-             * @param callback the callback to inform of lifecycle events
              * @return the constructed seam, which will not be empty and valid
              * @throw NoSeamException if no seam could be constructed
              */
-            Seam intersectWithPlane(const vm::plane<T,3>& plane, Callback& callback);
+            Seam intersectWithPlane(const vm::plane<T,3>& plane);
 
             /**
              * This function finds the starting edge for intersecting a polyhedron with a plane. It returns a half edge
@@ -2002,10 +1961,10 @@ namespace TrenchBroom {
              *
              * @param firstBoundaryEdge a half edge that belongs to the face being split
              * @param plane the intersecting plane
-             * @param callback the callback to inform of lifecycle events
-             * @return a half edge as specified in the description above
+             * @return a half edge as specified in the description above and a bool indicating if a face was split, i.e.
+             * whether case 3. occurred
              */
-            HalfEdge* intersectWithPlane(HalfEdge* firstBoundaryEdge, const vm::plane<T,3>& plane, Callback& callback);
+            std::tuple<HalfEdge*, bool> intersectWithPlane(HalfEdge* firstBoundaryEdge, const vm::plane<T,3>& plane);
 
             /**
              * Splits a face in two, creating a new face and a new edge. Expects that both given half edges
@@ -2037,9 +1996,8 @@ namespace TrenchBroom {
              *
              * @param oldBoundaryFirst the first half edge of the boundary of the remaining portion of the face
              * @param newBoundaryFirst the first half edge of the boundary of the newly created face
-             * @param callback the callback to inform of lifecycle events
              */
-            void intersectWithPlane(HalfEdge* oldBoundaryFirst, HalfEdge* newBoundaryFirst, Callback& callback);
+            void intersectWithPlane(HalfEdge* oldBoundaryFirst, HalfEdge* newBoundaryFirst);
 
             /**
              * Searches all half edges leaving the destination of half edge searchFrom for a half edge that is intersected
@@ -2069,11 +2027,9 @@ namespace TrenchBroom {
              * the given polyhedron. This polyhedron remains unchanged.
              *
              * @param other the polyhedron to clip with
-             * @param callback the callback to use when determining the normals of the given subtrahend's faces
              * @return the result of the clipping operation
-             * @throw GeometryException if the polyhedron cannot be intersected with any face of the given polyhedron
              */
-            Polyhedron intersect(Polyhedron other, const Callback& callback = Callback()) const;
+            Polyhedron intersect(Polyhedron other) const;
 
         public: // Subtraction
             /**
@@ -2088,10 +2044,9 @@ namespace TrenchBroom {
              * this polyhedron.
              *
              * @param subtrahend the polyhedron to subtract from this polyhedron
-             * @param callback the callback to use when determining the normals of the given subtrahend's faces
              * @return the resulting fragments
              */
-            std::vector<Polyhedron> subtract(const Polyhedron& subtrahend, const Callback& callback = Callback()) const;
+            std::vector<Polyhedron> subtract(const Polyhedron& subtrahend) const;
         private:
             class Subtract;
 
@@ -2102,10 +2057,10 @@ namespace TrenchBroom {
              * polyhedron if it isn't above any of its faces' planes.
              *
              * @param point the point to check
-             * @param callback the callback to use when determining plane normals
+             * @param epsilon custom epsilon
              * @return true if the given point is contained in this polyhedron and false otherwise
              */
-            bool contains(const vm::vec<T,3>& point, const Callback& callback = Callback()) const;
+            bool contains(const vm::vec<T,3>& point, T epsilon) const;
 
             /**
              * Checks whether this polyhedron contains the given polyhedron. A polyhedron is considered to be contained
@@ -2121,15 +2076,14 @@ namespace TrenchBroom {
              * is an empty polyhedron.
              *
              * @param other the polyhedron to check
-             * @param callback the callback to use when determining the normals of the given subtrahend's faces
              * @return true if this polyhedron intersects the other polyhedron
              */
-            bool intersects(const Polyhedron& other, const Callback& callback = Callback()) const;
+            bool intersects(const Polyhedron& other) const;
         private: // helper functions for all cases of polygon / polygon intersection
             static bool pointIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool pointIntersectsEdge(const Polyhedron& lhs, const Polyhedron& rhs);
-            static bool pointIntersectsPolygon(const Polyhedron& lhs, const Polyhedron& rhs, const Callback& callback = Callback());
-            static bool pointIntersectsPolyhedron(const Polyhedron& lhs, const Polyhedron& rhs, const Callback& callback = Callback());
+            static bool pointIntersectsPolygon(const Polyhedron& lhs, const Polyhedron& rhs);
+            static bool pointIntersectsPolyhedron(const Polyhedron& lhs, const Polyhedron& rhs);
 
             static bool edgeIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool edgeIntersectsEdge(const Polyhedron& lhs, const Polyhedron& rhs);
@@ -2138,17 +2092,17 @@ namespace TrenchBroom {
 
             static bool edgeIntersectsFace(const Edge* lhsEdge, const Face* rhsFace);
 
-            static bool polygonIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs, const Callback& callback = Callback());
+            static bool polygonIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool polygonIntersectsEdge(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool polygonIntersectsPolygon(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool polygonIntersectsPolyhedron(const Polyhedron& lhs, const Polyhedron& rhs);
 
             static bool faceIntersectsFace(const Face* lhsFace, const Face* rhsFace);
 
-            static bool polyhedronIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs, const Callback& callback = Callback());
+            static bool polyhedronIntersectsPoint(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool polyhedronIntersectsEdge(const Polyhedron& lhs, const Polyhedron& rhs);
             static bool polyhedronIntersectsPolygon(const Polyhedron& lhs, const Polyhedron& rhs);
-            static bool polyhedronIntersectsPolyhedron(const Polyhedron& lhs, const Polyhedron& rhs, const Callback& callback = Callback());
+            static bool polyhedronIntersectsPolyhedron(const Polyhedron& lhs, const Polyhedron& rhs);
 
             /**
              * Checks whether there is a face among the given faces such that all of the given vertices are above that
@@ -2156,11 +2110,10 @@ namespace TrenchBroom {
              *
              * @param faces the faces to check
              * @param vertices the vertices to check against each face plane
-             * @param callback the callback to use when determining the normals of the given subtrahend's faces
              * @return true if a face was found such that all of the given vertices have their position above the face
              * plane and false otherwise
              */
-            static bool separate(const FaceList& faces, const VertexList& vertices, const Callback& callback);
+            static bool separate(const FaceList& faces, const VertexList& vertices);
 
             /**
              * Checks the relative positions of the given points to the given plane. Returns
@@ -2178,7 +2131,9 @@ namespace TrenchBroom {
             /* ====================== Implementation in Polyhedron_Checks.h ====================== */
         private: // invariants and checks
             bool checkInvariant() const;
+            bool checkComponentCounts() const;
             bool checkEulerCharacteristic() const;
+            bool checkVertices() const;
             bool checkOverlappingFaces() const;
             bool checkFaceBoundaries() const;
             bool checkFaceNeighbours() const;
@@ -2193,5 +2148,3 @@ namespace TrenchBroom {
         };
     }
 }
-
-#endif

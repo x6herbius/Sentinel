@@ -22,6 +22,7 @@
 #include "PreferenceManager.h"
 #include "Assets/TextureManager.h"
 #include "IO/PathQt.h"
+#include "Model/Game.h"
 #include "View/BorderLine.h"
 #include "View/MapDocument.h"
 #include "View/ViewConstants.h"
@@ -38,6 +39,7 @@
 #include <QListWidget>
 #include <QMimeData>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QVBoxLayout>
 
 namespace TrenchBroom {
@@ -136,8 +138,18 @@ namespace TrenchBroom {
             return m_collections->count() != 0;
         }
 
+        static QString buildFilter(const std::vector<std::string>& extensions) {
+            QStringList strings;
+            for (const auto& extension : extensions) {
+                strings << QString::fromLatin1("*.%1").arg(QString::fromStdString(extension));
+            }
+            return QObject::tr("Texture collections (%1);;All files (*.*)").arg(strings.join(" "));
+        }
+
         void FileTextureCollectionEditor::addTextureCollections() {
-            const QString pathQStr = QFileDialog::getOpenFileName(nullptr, tr("Load Texture Collection"), fileDialogDefaultDirectory(FileDialogDir::TextureCollection), "");
+            auto document = kdl::mem_lock(m_document);
+            const QString filter = buildFilter(document->game()->fileTextureCollectionExtensions());
+            const QString pathQStr = QFileDialog::getOpenFileName(nullptr, tr("Load Texture Collection"), fileDialogDefaultDirectory(FileDialogDir::TextureCollection), filter);
             if (pathQStr.isEmpty()) {
                 return;
             }
@@ -162,7 +174,7 @@ namespace TrenchBroom {
                 toRemove.push_back(collections[index]);
             }
 
-            kdl::vec_erase_all(collections, toRemove);
+            collections = kdl::vec_erase_all(std::move(collections), toRemove);
             document->setEnabledTextureCollections(collections);
         }
 
@@ -215,11 +227,11 @@ namespace TrenchBroom {
             m_collections = new QListWidget();
             m_collections->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
-            m_addTextureCollectionsButton = createBitmapButton("Add.png", "Add texture collections from the file system");
-            m_removeTextureCollectionsButton = createBitmapButton("Remove.png", "Remove the selected texture collections");
-            m_moveTextureCollectionUpButton = createBitmapButton("Up.png", "Move the selected texture collection up");
-            m_moveTextureCollectionDownButton = createBitmapButton("Down.png", "Move the selected texture collection down");
-            m_reloadTextureCollectionsButton = createBitmapButton("Refresh.png", "Reload all texture collections");
+            m_addTextureCollectionsButton = createBitmapButton("Add.svg", "Add texture collections from the file system");
+            m_removeTextureCollectionsButton = createBitmapButton("Remove.svg", "Remove the selected texture collections");
+            m_moveTextureCollectionUpButton = createBitmapButton("Up.svg", "Move the selected texture collection up");
+            m_moveTextureCollectionDownButton = createBitmapButton("Down.svg", "Move the selected texture collection down");
+            m_reloadTextureCollectionsButton = createBitmapButton("Refresh.svg", "Reload all texture collections");
 
             auto* toolBar = createMiniToolBarLayout(
                 m_addTextureCollectionsButton,

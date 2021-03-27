@@ -19,23 +19,23 @@
 
 #include "LayerEditor.h"
 
-#include "Model/Brush.h"
-#include "Model/CollectSelectableNodesVisitor.h"
-#include "Model/Entity.h"
-#include "Model/FindGroupVisitor.h"
-#include "Model/FindLayerVisitor.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/ModelUtils.h"
+#include "Model/WorldNode.h"
 #include "View/BorderLine.h"
 #include "View/LayerListBox.h"
 #include "View/MapDocument.h"
 #include "View/QtUtils.h"
 
+#include <kdl/vector_utils.h>
 #include <kdl/memory_utils.h>
 #include <kdl/string_compare.h>
 #include <kdl/string_format.h>
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <vector>
@@ -46,252 +46,182 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 
+#include "ViewUtils.h"
+
 namespace TrenchBroom {
     namespace View {
         LayerEditor::LayerEditor(std::weak_ptr<MapDocument> document, QWidget *parent) :
         QWidget(parent),
         m_document(document),
-        m_layerList(nullptr) {
+        m_layerList(nullptr),
+        m_addLayerButton(nullptr),
+        m_removeLayerButton(nullptr),
+        m_moveLayerUpButton(nullptr),
+        m_moveLayerDownButton(nullptr) {
             createGui();
 
             updateButtons();
         }
 
-        void LayerEditor::onSetCurrentLayer(Model::Layer* layer) {
+        void LayerEditor::onSetCurrentLayer(Model::LayerNode* layer) {
             auto document = kdl::mem_lock(m_document);
-            if (layer->locked()) {
-                document->resetLock(std::vector<Model::Node*>(1, layer));
-            }
-            if (layer->hidden()) {
-                document->resetVisibility(std::vector<Model::Node*>(1, layer));
-            }
             document->setCurrentLayer(layer);
 
             updateButtons();
         }
 
-        void LayerEditor::onLayerRightClick(Model::Layer* layer) {
-            QMenu popupMenu;
-            QAction* moveSelectionToLayerAction = popupMenu.addAction(tr("Move selection to layer"), this, &LayerEditor::onMoveSelectionToLayer);
-            popupMenu.addAction(tr("Select all in layer"), this, &LayerEditor::onSelectAllInLayer);
-            popupMenu.addSeparator();
-            QAction* toggleLayerVisibleAction = popupMenu.addAction(layer->hidden() ? tr("Show layer") : tr("Hide layer"), this, &LayerEditor::onToggleLayerVisibleFromMenu);
-            QAction* toggleLayerLockedAction = popupMenu.addAction(layer->locked() ? tr("Unlock layer") : tr("Lock layer"), this, &LayerEditor::onToggleLayerLockedFromMenu);
-            popupMenu.addSeparator();
-            QAction* removeLayerAction = popupMenu.addAction(tr("Remove layer"), this, &LayerEditor::onRemoveLayer);
+        bool LayerEditor::canSetCurrentLayer(Model::LayerNode* layer) const {
+            auto document = kdl::mem_lock(m_document);
+            return document->currentLayer() != layer;
+        }
 
+        void LayerEditor::onLayerRightClick(Model::LayerNode* layerNode) {
+            auto document = kdl::mem_lock(m_document);
+
+            QMenu popupMenu;
+            QAction* makeActiveAction = popupMenu.addAction(tr("Make active layer"), this, [this, layerNode](){
+                onSetCurrentLayer(layerNode);
+            });
+            QAction* moveSelectionToLayerAction = popupMenu.addAction(tr("Move selection to layer"), this, &LayerEditor::onMoveSelectionToLayer);
+            QAction* selectAllInLayerAction = popupMenu.addAction(tr("Select all in layer"), this, &LayerEditor::onSelectAllInLayer);
+            popupMenu.addSeparator();
+            QAction* toggleLayerVisibleAction = popupMenu.addAction(layerNode->hidden() ? tr("Show layer") : tr("Hide layer"), this, [this, layerNode](){
+                toggleLayerVisible(layerNode);
+            });
+            QAction* isolateLayerAction       = popupMenu.addAction(tr("Isolate layer"), this, [this, layerNode](){
+                isolateLayer(layerNode);
+            });
+            QAction* toggleLayerLockedAction = popupMenu.addAction(layerNode->locked() ? tr("Unlock layer") : tr("Lock layer"), this, [this, layerNode](){
+                toggleLayerLocked(layerNode);
+            });
+            QAction* toggleLayerOmitFromExportAction = popupMenu.addAction(tr("Omit From Export"), this, [this, layerNode](){
+                toggleOmitLayerFromExport(layerNode);
+            });
+            popupMenu.addSeparator();
+            QAction* showAllLayersAction = popupMenu.addAction(tr("Show All Layers"), this, &LayerEditor::onShowAllLayers);
+            QAction* hideAllLayersAction = popupMenu.addAction(tr("Hide All Layers"), this, &LayerEditor::onHideAllLayers);
+            popupMenu.addSeparator();
+            QAction* unlockAllLayersAction = popupMenu.addAction(tr("Unlock All Layers"), this, &LayerEditor::onUnlockAllLayers);
+            QAction* lockAllLayersAction = popupMenu.addAction(tr("Lock All Layers"), this, &LayerEditor::onLockAllLayers);
+            popupMenu.addSeparator();
+            QAction* renameLayerAction = popupMenu.addAction(tr("Rename Layer"), this, &LayerEditor::onRenameLayer);
+            QAction* removeLayerAction = popupMenu.addAction(tr("Remove Layer"), this, &LayerEditor::onRemoveLayer);
+
+            makeActiveAction->setEnabled(canSetCurrentLayer(layerNode));
             moveSelectionToLayerAction->setEnabled(canMoveSelectionToLayer());
+            selectAllInLayerAction->setEnabled(canSelectAllInLayer());
             toggleLayerVisibleAction->setEnabled(canToggleLayerVisible());
+            isolateLayerAction->setEnabled(document->canIsolateLayers({layerNode}));
+            toggleLayerOmitFromExportAction->setCheckable(true);
+            toggleLayerOmitFromExportAction->setChecked(layerNode->layer().omitFromExport());
+
             toggleLayerLockedAction->setEnabled(canToggleLayerLocked());
+            showAllLayersAction->setEnabled(canShowAllLayers());
+            hideAllLayersAction->setEnabled(canHideAllLayers());
+            unlockAllLayersAction->setEnabled(canUnlockAllLayers());
+            lockAllLayersAction->setEnabled(canLockAllLayers());
+            renameLayerAction->setEnabled(canRenameLayer());
             removeLayerAction->setEnabled(canRemoveLayer());
 
             popupMenu.exec(QCursor::pos());
         }
 
-        void LayerEditor::onToggleLayerVisibleFromMenu() {
-            toggleLayerVisible(m_layerList->selectedLayer());
-        }
-
-        void LayerEditor::onToggleLayerVisibleFromList(Model::Layer* layer) {
-            toggleLayerVisible(layer);
-        }
-
         bool LayerEditor::canToggleLayerVisible() const {
             auto* layer = m_layerList->selectedLayer();
-            if (layer == nullptr) {
-                return false;
-            }
-
-            auto document = kdl::mem_lock(m_document);
-            if (!layer->hidden() && layer == document->currentLayer()) {
-                return false;
-            }
-
-            return true;
+            return layer != nullptr;
         }
 
-        void LayerEditor::toggleLayerVisible(Model::Layer* layer) {
+        void LayerEditor::toggleLayerVisible(Model::LayerNode* layer) {
             ensure(layer != nullptr, "layer is null");
             auto document = kdl::mem_lock(m_document);
             if (!layer->hidden()) {
-                document->hide(std::vector<Model::Node*>(1, layer));
+                document->hide(std::vector<Model::Node*>{layer});
             } else {
-                document->resetVisibility(std::vector<Model::Node*>(1, layer));
+                document->resetVisibility(std::vector<Model::Node*>{layer});
             }
-        }
-
-        void LayerEditor::onToggleLayerLockedFromMenu() {
-            toggleLayerLocked(m_layerList->selectedLayer());
-        }
-
-        void LayerEditor::onToggleLayerLockedFromList(Model::Layer* layer) {
-            toggleLayerLocked(layer);
         }
 
         bool LayerEditor::canToggleLayerLocked() const {
             auto* layer = m_layerList->selectedLayer();
-            if (layer == nullptr) {
-                return false;
-            }
-
-            auto document = kdl::mem_lock(m_document);
-            if (!layer->locked() && layer == document->currentLayer()) {
-                return false;
-            }
-
-            return true;
+            return layer != nullptr;
         }
 
-        void LayerEditor::toggleLayerLocked(Model::Layer* layer) {
+        void LayerEditor::toggleLayerLocked(Model::LayerNode* layer) {
             ensure(layer != nullptr, "layer is null");
             auto document = kdl::mem_lock(m_document);
             if (!layer->locked()) {
-                document->lock(std::vector<Model::Node*>(1, layer));
+                document->lock(std::vector<Model::Node*>{layer});
             } else {
-                document->resetLock(std::vector<Model::Node*>(1, layer));
+                document->resetLock(std::vector<Model::Node*>{layer});
             }
         }
 
-        class LayerEditor::CollectMoveableNodes : public Model::NodeVisitor {
-        private:
-            Model::World* m_world;
-            std::set<Model::Node*> m_selectNodes;
-            std::set<Model::Node*> m_moveNodes;
-        public:
-            explicit CollectMoveableNodes(Model::World* world) : m_world(world) {}
+        void LayerEditor::toggleOmitLayerFromExport(Model::LayerNode* layerNode) {
+            ensure(layerNode != nullptr, "layer is null");
+            kdl::mem_lock(m_document)->setOmitLayerFromExport(layerNode, !layerNode->layer().omitFromExport());
+        }
 
-            const std::vector<Model::Node*> selectNodes() const {
-                return std::vector<Model::Node*>(std::begin(m_selectNodes), std::end(m_selectNodes));
-            }
-
-            const std::vector<Model::Node*> moveNodes() const {
-                return std::vector<Model::Node*>(std::begin(m_moveNodes), std::end(m_moveNodes));
-            }
-        private:
-            void doVisit(Model::World*) override   {}
-            void doVisit(Model::Layer*) override   {}
-
-            void doVisit(Model::Group* group) override   {
-                assert(group->selected());
-
-                if (!group->grouped()) {
-                    m_moveNodes.insert(group);
-                    m_selectNodes.insert(group);
-                }
-            }
-
-            void doVisit(Model::Entity* entity) override {
-                assert(entity->selected());
-
-                if (!entity->grouped()) {
-                    m_moveNodes.insert(entity);
-                    m_selectNodes.insert(entity);
-                }
-            }
-
-            void doVisit(Model::Brush* brush) override   {
-                assert(brush->selected());
-                if (!brush->grouped()) {
-                    auto* entity = brush->entity();
-                    if (entity == m_world) {
-                        m_moveNodes.insert(brush);
-                        m_selectNodes.insert(brush);
-                    } else {
-                        if (m_moveNodes.insert(entity).second) {
-                            const std::vector<Model::Node*>& siblings = entity->children();
-                            m_selectNodes.insert(std::begin(siblings), std::end(siblings));
-                        }
-                    }
-                }
-            }
-        };
+        void LayerEditor::isolateLayer(Model::LayerNode* layer) {
+            auto document = kdl::mem_lock(m_document);
+            document->isolateLayers(std::vector<Model::LayerNode*>{layer});
+        }
 
         void LayerEditor::onMoveSelectionToLayer() {
             auto* layer = m_layerList->selectedLayer();
             ensure(layer != nullptr, "layer is null");
 
             auto document = kdl::mem_lock(m_document);
-            Transaction transaction(document, "Move Nodes to " + layer->name());
-            moveSelectedNodesToLayer(document, layer);
+            document->moveSelectionToLayer(layer);
         }
 
         bool LayerEditor::canMoveSelectionToLayer() const {
-            const auto* layer = m_layerList->selectedLayer();
+            auto* layer = m_layerList->selectedLayer();
             if (layer == nullptr) {
                 return false;
             }
 
             auto document = kdl::mem_lock(m_document);
-            const auto& nodes = document->selectedNodes().nodes();
-            if (nodes.empty()) {
-                return false;
-            }
-
-            for (auto* node : nodes) {
-                auto* nodeGroup = Model::findGroup(node);
-                if (nodeGroup != nullptr) {
-                    return false;
-                }
-            }
-
-            for (auto* node : nodes) {
-                auto* nodeLayer = Model::findLayer(node);
-                if (nodeLayer != layer) {
-                    return true;
-                }
-            }
-
-            return true;
+            return document->canMoveSelectionToLayer(layer);
         }
 
         void LayerEditor::onSelectAllInLayer() {
             auto* layer = m_layerList->selectedLayer();
             ensure(layer != nullptr, "layer is null");
 
-            auto document = kdl::mem_lock(m_document);
+            kdl::mem_lock(m_document)->selectAllInLayers({layer});
+        }
 
-            Model::CollectSelectableNodesVisitor visitor(document->editorContext());
-            layer->recurse(visitor);
+        bool LayerEditor::canSelectAllInLayer() const {
+            auto* layer = m_layerList->selectedLayer();
+            if (layer == nullptr) {
+                return false;
+            }
 
-            const auto& nodes = visitor.nodes();
-            document->deselectAll();
-            document->select(nodes);
+            return kdl::mem_lock(m_document)->canSelectAllInLayers({layer});
         }
 
         void LayerEditor::onAddLayer() {
-            const std::string name = queryLayerName();
+            const std::string name = queryLayerName(this, "Unnamed");
             if (!name.empty()) {
                 auto document = kdl::mem_lock(m_document);
                 auto* world = document->world();
-                auto* layer = world->createLayer(name);
 
-                Transaction transaction(document, "Create Layer " + layer->name());
-                document->addNode(layer, world);
-                document->setCurrentLayer(layer);
-                m_layerList->setSelectedLayer(layer);
-            }
-        }
+                auto layer = Model::Layer(name);
 
-        std::string LayerEditor::queryLayerName() {
-            while (true) {
-                bool ok = false;
-                const std::string name = QInputDialog::getText(this, "Enter a name", "Layer Name", QLineEdit::Normal, "Unnamed", &ok).toStdString();
-
-                if (!ok) {
-                    return "";
-                }
-
-                if (kdl::str_is_blank(name)) {
-                    if (QMessageBox::warning(this, "Error", "Layer names cannot be blank.", QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok) != QMessageBox::Ok) {
-                        return "";
-                    }
-                } else if (kdl::ci::str_contains(name, "\"")) {
-                    if (QMessageBox::warning(this, "Error", "Layer names cannot contain double quotes.", QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok) != QMessageBox::Ok) {
-                        return "";
-                    }
+                // Sort it at the bottom of the list
+                const std::vector<Model::LayerNode*> customLayers = world->customLayersUserSorted();
+                if (customLayers.empty()) {
+                    layer.setSortIndex(0);
                 } else {
-                    return name;
+                    layer.setSortIndex(customLayers.back()->layer().sortIndex() + 1);
                 }
+
+                auto* layerNode = new Model::LayerNode(std::move(layer));
+
+                Transaction transaction(document, "Create Layer " + layerNode->name());
+                document->addNodes({{world, {layerNode}}});
+                document->setCurrentLayer(layerNode);
+                m_layerList->setSelectedLayer(layerNode);
             }
         }
 
@@ -305,12 +235,12 @@ namespace TrenchBroom {
             Transaction transaction(document, "Remove Layer " + layer->name());
             document->deselectAll();
             if (layer->hasChildren()) {
-                document->reparentNodes(defaultLayer, layer->children());
+                document->reparentNodes({{defaultLayer, layer->children()}});
             }
             if (document->currentLayer() == layer) {
                 document->setCurrentLayer(defaultLayer);
             }
-            document->removeNode(layer);
+            document->removeNodes({layer});
         }
 
         bool LayerEditor::canRemoveLayer() const {
@@ -327,13 +257,97 @@ namespace TrenchBroom {
             return (layer != document->world()->defaultLayer());
         }
 
+        void LayerEditor::onRenameLayer() {
+            if (canRenameLayer()) {
+                auto document = kdl::mem_lock(m_document);
+                Model::LayerNode* layer = m_layerList->selectedLayer();
+
+                const std::string name = queryLayerName(this, layer->name());
+                if (!name.empty()) {                    
+                    document->renameLayer(layer, name);
+                }
+            }
+        }
+
+        bool LayerEditor::canRenameLayer() const {
+            const auto* layer = m_layerList->selectedLayer();
+            if (layer == nullptr) {
+                return false;
+            }
+
+            auto document = kdl::mem_lock(m_document);
+            return (layer != document->world()->defaultLayer());
+        }
+
+        bool LayerEditor::canMoveLayer(int direction) const {
+            if (direction == 0) {
+                return false;
+            }
+
+            auto* layer = m_layerList->selectedLayer();
+            if (layer == nullptr) {
+                return false;
+            }
+
+            auto document = kdl::mem_lock(m_document);
+            return document->canMoveLayer(layer, direction);
+        }
+
+        void LayerEditor::moveLayer(Model::LayerNode* layer, int direction) {
+            if (direction == 0) {
+                return;
+            }
+
+            ensure(layer != nullptr, "layer is null");
+            auto document = kdl::mem_lock(m_document);
+            document->moveLayer(layer, direction);
+        }
+
         void LayerEditor::onShowAllLayers() {
             auto document = kdl::mem_lock(m_document);
             const auto layers = document->world()->allLayers();
             document->resetVisibility(std::vector<Model::Node*>(std::begin(layers), std::end(layers)));
         }
 
-        Model::Layer* LayerEditor::findVisibleAndUnlockedLayer(const Model::Layer* except) const {
+        bool LayerEditor::canShowAllLayers() const {
+            const auto layers = kdl::mem_lock(m_document)->world()->allLayers();
+            return std::any_of(std::begin(layers), std::end(layers), [](const auto* layer){ return !layer->visible(); });
+        }
+
+        void LayerEditor::onHideAllLayers() {
+            auto document = kdl::mem_lock(m_document);
+            const auto layers = document->world()->allLayers();
+            document->hide(std::vector<Model::Node*>(std::begin(layers), std::end(layers)));
+        }
+
+        bool LayerEditor::canHideAllLayers() const {
+            const auto layers = kdl::mem_lock(m_document)->world()->allLayers();
+            return std::any_of(std::begin(layers), std::end(layers), [](const auto* layer){ return layer->visible(); });
+        }
+
+        void LayerEditor::onLockAllLayers() {
+            auto document = kdl::mem_lock(m_document);
+            const auto nodes = kdl::vec_element_cast<Model::Node*>(document->world()->allLayers());
+            document->lock(nodes);
+        }
+
+        bool LayerEditor::canLockAllLayers() const {
+            const auto layers = kdl::mem_lock(m_document)->world()->allLayers();
+            return std::any_of(std::begin(layers), std::end(layers), [](const auto* layer){ return !layer->locked(); });
+        }
+
+        void LayerEditor::onUnlockAllLayers() {
+            auto document = kdl::mem_lock(m_document);
+            const auto nodes = kdl::vec_element_cast<Model::Node*>(document->world()->allLayers());
+            document->resetLock(nodes);
+        }
+
+        bool LayerEditor::canUnlockAllLayers() const {
+            const auto layers = kdl::mem_lock(m_document)->world()->allLayers();
+            return std::any_of(std::begin(layers), std::end(layers), [](const auto* layer){ return layer->locked(); });
+        }
+
+        Model::LayerNode* LayerEditor::findVisibleAndUnlockedLayer(const Model::LayerNode* except) const {
             auto document = kdl::mem_lock(m_document);
             if (!document->world()->defaultLayer()->locked() && !document->world()->defaultLayer()->hidden()) {
                 return document->world()->defaultLayer();
@@ -349,42 +363,40 @@ namespace TrenchBroom {
             return nullptr;
         }
 
-        void LayerEditor::moveSelectedNodesToLayer(std::shared_ptr<MapDocument> document, Model::Layer* layer) {
-            const auto& selectedNodes = document->selectedNodes().nodes();
-
-            CollectMoveableNodes visitor(document->world());
-            Model::Node::accept(std::begin(selectedNodes), std::end(selectedNodes), visitor);
-
-            const auto moveNodes = visitor.moveNodes();
-            if (!moveNodes.empty()) {
-                document->deselectAll();
-                document->reparentNodes(layer, visitor.moveNodes());
-                if (!layer->hidden() && !layer->locked()) {
-                    document->select(visitor.selectNodes());
-                }
-            }
-        }
-
         void LayerEditor::createGui() {
             m_layerList = new LayerListBox(m_document, this);
             connect(m_layerList, &LayerListBox::layerSetCurrent, this, &LayerEditor::onSetCurrentLayer);
             connect(m_layerList, &LayerListBox::layerRightClicked, this, &LayerEditor::onLayerRightClick);
-            connect(m_layerList, &LayerListBox::layerVisibilityToggled, this, &LayerEditor::onToggleLayerVisibleFromList);
-            connect(m_layerList, &LayerListBox::layerLockToggled, this, &LayerEditor::onToggleLayerLockedFromList);
+            connect(m_layerList, &LayerListBox::layerOmitFromExportToggled, this, &LayerEditor::toggleOmitLayerFromExport);
+            connect(m_layerList, &LayerListBox::layerVisibilityToggled, this, [this](Model::LayerNode* layer){
+                toggleLayerVisible(layer);
+            });
+            connect(m_layerList, &LayerListBox::layerLockToggled, this, [this](Model::LayerNode* layer){
+                toggleLayerLocked(layer);
+            });
             connect(m_layerList, &LayerListBox::itemSelectionChanged, this, &LayerEditor::updateButtons);
 
-            m_addLayerButton = createBitmapButton("Add.png", tr("Add a new layer from the current selection"));
-            m_removeLayerButton = createBitmapButton("Remove.png", tr("Remove the selected layer and move its objects to the default layer"));
-            m_showAllLayersButton = createBitmapButton("Hidden_off.png", tr("Show all layers"));
+            m_addLayerButton = createBitmapButton("Add.svg", tr("Add a new layer from the current selection"));
+            m_removeLayerButton = createBitmapButton("Remove.svg", tr("Remove the selected layer and move its objects to the default layer"));
+            m_moveLayerUpButton = createBitmapButton("Up.svg", "Move the selected layer up");
+            m_moveLayerDownButton = createBitmapButton("Down.svg", "Move the selected layer down");
 
             connect(m_addLayerButton, &QAbstractButton::pressed, this, &LayerEditor::onAddLayer);
             connect(m_removeLayerButton, &QAbstractButton::pressed, this, &LayerEditor::onRemoveLayer);
-            connect(m_showAllLayersButton, &QAbstractButton::pressed, this, &LayerEditor::onShowAllLayers);
+            connect(m_moveLayerUpButton, &QAbstractButton::pressed, this, [=](){
+                Model::LayerNode* layer = m_layerList->selectedLayer();
+                moveLayer(layer, -1);
+            });
+            connect(m_moveLayerDownButton, &QAbstractButton::pressed, this, [=](){
+                Model::LayerNode* layer = m_layerList->selectedLayer();
+                moveLayer(layer, 1);
+            });
 
             auto* buttonSizer = new QHBoxLayout();
             buttonSizer->addWidget(m_addLayerButton);
             buttonSizer->addWidget(m_removeLayerButton);
-            buttonSizer->addWidget(m_showAllLayersButton);
+            buttonSizer->addWidget(m_moveLayerUpButton);
+            buttonSizer->addWidget(m_moveLayerDownButton);
             buttonSizer->addStretch(1);
 
             auto* sizer = new QVBoxLayout();
@@ -398,6 +410,8 @@ namespace TrenchBroom {
 
         void LayerEditor::updateButtons() {
             m_removeLayerButton->setEnabled(canRemoveLayer());
+            m_moveLayerUpButton->setEnabled(canMoveLayer(-1));
+            m_moveLayerDownButton->setEnabled(canMoveLayer(1));
         }
     }
 }

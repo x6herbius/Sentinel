@@ -89,6 +89,7 @@ namespace TrenchBroom {
         }
 
         EntityBrowserView::~EntityBrowserView() {
+            m_entityDefinitionManager.usageCountDidChangeNotifier.removeObserver(this, &EntityBrowserView::usageCountDidChange);
             clear();
         }
 
@@ -241,6 +242,10 @@ namespace TrenchBroom {
             return false;
         }
 
+        const Color& EntityBrowserView::getBackgroundColor() {
+            return pref(Preferences::BrowserBackgroundColor);
+        }
+
         template <typename Vertex>
         struct CollectBoundsVertices {
             const vm::mat4x4f& transformation;
@@ -363,9 +368,7 @@ namespace TrenchBroom {
 
             { // create and upload all vertex arrays
                 const auto stringVertices = collectStringVertices(layout, y, height);
-                for (const auto& entry : stringVertices) {
-                    const auto& fontDescriptor = entry.first;
-                    const auto& vertices = entry.second;
+                for (const auto& [fontDescriptor, vertices] : stringVertices) {
                     stringRenderers[fontDescriptor] = Renderer::VertexArray::ref(vertices);
                     stringRenderers[fontDescriptor].prepare(vboManager());
                 }
@@ -407,7 +410,8 @@ namespace TrenchBroom {
                             kdl::skip_iterator(std::begin(quads), std::end(quads), 0, 2),
                             kdl::skip_iterator(std::begin(quads), std::end(quads), 1, 2),
                             kdl::skip_iterator(std::begin(textColor), std::end(textColor), 0, 0));
-                        kdl::vec_append(stringVertices[defaultDescriptor], titleVertices);
+                        auto& allTitleVertices = stringVertices[defaultDescriptor];
+                        allTitleVertices = kdl::vec_concat(std::move(allTitleVertices), titleVertices);
                     }
 
                     for (size_t j = 0; j < group.size(); ++j) {
@@ -425,7 +429,8 @@ namespace TrenchBroom {
                                     kdl::skip_iterator(std::begin(quads), std::end(quads), 0, 2),
                                     kdl::skip_iterator(std::begin(quads), std::end(quads), 1, 2),
                                     kdl::skip_iterator(std::begin(textColor), std::end(textColor), 0, 0));
-                                kdl::vec_append(stringVertices[cellData(cell).fontDescriptor], titleVertices);
+                                auto& allTitleVertices = stringVertices[cellData(cell).fontDescriptor];
+                                allTitleVertices = kdl::vec_concat(std::move(allTitleVertices), titleVertices);
                             }
                         }
                     }

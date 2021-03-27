@@ -18,27 +18,19 @@
  */
 
 #define CATCH_CONFIG_RUNNER
-#include <catch2/catch.hpp>
 
-#include "GTestCompat.h"
-
-#include "TrenchBroomApp.h"
 #include "Ensure.h"
+#include "TestPreferenceManager.h"
+#include "TrenchBroomApp.h"
 
 #include <clocale>
 
+#include "Catch2.h"
+
 int main(int argc, char **argv) {
+    TrenchBroom::PreferenceManager::createInstance<TrenchBroom::TestPreferenceManager>();
     TrenchBroom::View::TrenchBroomApp app(argc, argv);
 
-/*
-    // use an empty file config so that we always use the default preferences
-    // this must happen exactly between creating the app instance and initializing it
-    // so that the app itself will not try to access the config file before we reset it here
-    const auto configFileName = "TrenchBroom-Test.ini";
-    const auto configFilePath = wxFileConfig::GetLocalFile(configFileName);
-    wxRemove(configFilePath.GetPath());
-    wxConfig::Set(new wxFileConfig(wxEmptyString, wxEmptyString, configFileName));
-*/
     TrenchBroom::View::setCrashReportGUIEnbled(false);
 
     ensure(qApp == &app, "invalid app instance");

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ModelDefinition
-#define TrenchBroom_ModelDefinition
+#pragma once
 
 #include "EL/Expression.h"
 #include "IO/Path.h"
@@ -26,10 +25,6 @@
 #include <iosfwd>
 
 namespace TrenchBroom {
-    namespace Model {
-        class EntityAttributes;
-    }
-
     namespace Assets {
         struct ModelSpecification {
             IO::Path path;
@@ -58,17 +53,21 @@ namespace TrenchBroom {
             ModelDefinition(size_t line, size_t column);
             explicit ModelDefinition(const EL::Expression& expression);
 
+            friend bool operator==(const ModelDefinition& lhs, const ModelDefinition& rhs);
+            friend bool operator!=(const ModelDefinition& lhs, const ModelDefinition& rhs);
+            friend std::ostream& operator<<(std::ostream& str, const ModelDefinition& def);
+
             void append(const ModelDefinition& other);
 
             /**
-             * Evaluates the model expresion, using the given entity attributes to interpolate variables.
+             * Evaluates the model expresion, using the given variable store to interpolate variables.
              *
-             * @param attributes the entity attributes to use when interpolating variables
+             * @param variableStore the variable store to use when interpolating variables
              * @return the model specification
              *
              * @throws EL::Exception if the expression could not be evaluated
              */
-            ModelSpecification modelSpecification(const Model::EntityAttributes& attributes) const;
+            ModelSpecification modelSpecification(const EL::VariableStore& variableStore) const;
 
             /**
              * Evaluates the model expresion.
@@ -86,4 +85,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ModelDefinition) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_GameFactory
-#define TrenchBroom_GameFactory
+#pragma once
 
 #include "Model/MapFormat.h"
 
@@ -38,8 +37,10 @@ namespace TrenchBroom {
     }
 
     namespace Model {
+        class CompilationConfig;
         class Game;
         class GameConfig;
+        class GameEngineConfig;
 
         class GameFactory {
         private:
@@ -70,15 +71,25 @@ namespace TrenchBroom {
              * @throw std::vector<std::string> if loading game configurations fails
              */
             void initialize();
-            void saveAllConfigs();
             /**
-             * Saves the compilation and game engine configurations for the game with the given name.
+             * Saves the game engine configurations for the game with the given name.
              *
              * @param gameName the game for which the configurations should be saved
+             * @param gameEngineConfig new config to save
+             *
+             * @throw GameException if no game with the given name exists
+             */
+            void saveGameEngineConfig(const std::string& gameName, const GameEngineConfig& gameEngineConfig);
+            /**
+             * Saves the compilation configurations for the game with the given name.
+             *
+             * @param gameName the game for which the configurations should be saved
+             * @param compilationConfig new config to save
+             * @param logger the logger
              *
              * @throw GameException if no config with the given name exists
              */
-            void saveConfigs(const std::string& gameName);
+            void saveCompilationConfig(const std::string& gameName, const CompilationConfig& compilationConfig, Logger& logger);
 
             const std::vector<std::string>& gameList() const;
             size_t gameCount() const;
@@ -90,9 +101,20 @@ namespace TrenchBroom {
             bool setGamePath(const std::string& gameName, const IO::Path& gamePath);
             bool isGamePathPreference(const std::string& gameName, const IO::Path& prefPath) const;
 
+            IO::Path compilationToolPath(const std::string& gameName, const std::string& toolName) const;
+            bool setCompilationToolPath(const std::string& gameName, const std::string& toolName, const IO::Path& gamePath);
+
             GameConfig& gameConfig(const std::string& gameName);
             const GameConfig& gameConfig(const std::string& gameName) const;
 
+            /**
+             * Scans the map file at the given path to find game type and map format comments and returns the name of
+             * the game and the map format.
+             *
+             * If no game comment is found or the game is unknown, an empty string is returned as the game name.
+             * If no map format comment is found or the format is unknown, MapFormat::Unknown is returned as the map
+             * format.
+             */
             std::pair<std::string, MapFormat> detectGame(const IO::Path& path) const;
         private:
             GameFactory();
@@ -103,15 +125,9 @@ namespace TrenchBroom {
             void loadCompilationConfig(GameConfig& gameConfig);
             void loadGameEngineConfig(GameConfig& gameConfig);
 
-            void writeCompilationConfigs();
-            void writeCompilationConfig(const GameConfig& gameConfig);
-
-            void writeGameEngineConfigs();
-            void writeGameEngineConfig(const GameConfig& gameConfig);
-
-
+            void writeCompilationConfig(GameConfig& gameConfig, const CompilationConfig& compilationConfig, Logger& logger);
+            void writeGameEngineConfig(GameConfig& gameConfig, const GameEngineConfig& gameEngineConfig);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_GameFactory) */

@@ -61,12 +61,17 @@ namespace TrenchBroom {
             unbindObservers();
         }
 
-        Assets::Texture* TextureBrowser::selectedTexture() const {
+        const Assets::Texture* TextureBrowser::selectedTexture() const {
             return m_view->selectedTexture();
         }
 
-        void TextureBrowser::setSelectedTexture(Assets::Texture* selectedTexture) {
+        void TextureBrowser::setSelectedTexture(const Assets::Texture* selectedTexture) {
             m_view->setSelectedTexture(selectedTexture);
+        }
+
+        void TextureBrowser::revealTexture(const Assets::Texture* texture) {
+            setFilterText("");
+            m_view->revealTexture(texture);
         }
 
         void TextureBrowser::setSortOrder(const TextureSortOrder sortOrder) {
@@ -220,7 +225,7 @@ namespace TrenchBroom {
             reload();
         }
 
-        void TextureBrowser::brushFacesDidChange(const std::vector<Model::BrushFace*>&) {
+        void TextureBrowser::brushFacesDidChange(const std::vector<Model::BrushFaceHandle>&) {
             reload();
         }
 
@@ -253,7 +258,7 @@ namespace TrenchBroom {
         void TextureBrowser::updateSelectedTexture() {
             auto document = kdl::mem_lock(m_document);
             const std::string& textureName = document->currentTextureName();
-            Assets::Texture* texture = document->textureManager().texture(textureName);
+            const Assets::Texture* texture = document->textureManager().texture(textureName);
             m_view->setSelectedTexture(texture);
         }
     }

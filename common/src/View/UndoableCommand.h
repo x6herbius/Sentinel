@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_UndoableCommand
-#define TrenchBroom_UndoableCommand
+#pragma once
 
 #include "Macros.h"
 #include "View/Command.h"
@@ -31,32 +30,24 @@ namespace TrenchBroom {
         class MapDocumentCommandFacade;
 
         class UndoableCommand : public Command {
+        private:
+            size_t m_modificationCount;
         protected:
-            UndoableCommand(CommandType type, const std::string& name);
+            UndoableCommand(CommandType type, const std::string& name, bool updateModificationCount);
         public:
             virtual ~UndoableCommand();
 
+            std::unique_ptr<CommandResult> performDo(MapDocumentCommandFacade* document) override;
             virtual std::unique_ptr<CommandResult> performUndo(MapDocumentCommandFacade* document);
-
-            bool isRepeatDelimiter() const;
-            bool isRepeatable(MapDocumentCommandFacade* document) const;
-            std::unique_ptr<UndoableCommand> repeat(MapDocumentCommandFacade* document) const;
 
             virtual bool collateWith(UndoableCommand* command);
         private:
             virtual std::unique_ptr<CommandResult> doPerformUndo(MapDocumentCommandFacade* document) = 0;
 
-            virtual bool doIsRepeatDelimiter() const;
-            virtual bool doIsRepeatable(MapDocumentCommandFacade* document) const = 0;
-            virtual std::unique_ptr<UndoableCommand> doRepeat(MapDocumentCommandFacade* document) const;
-
             virtual bool doCollateWith(UndoableCommand* command) = 0;
-        public: // this method is just a service for DocumentCommand and should never be called from anywhere else
-            virtual size_t documentModificationCount() const;
 
             deleteCopyAndMove(UndoableCommand)
         };
     }
 }
 
-#endif /* defined(TrenchBroom_UndoableCommand) */

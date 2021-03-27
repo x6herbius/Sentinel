@@ -17,12 +17,12 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_SwitchableMapViewContainer
-#define TrenchBroom_SwitchableMapViewContainer
+#pragma once
 
 #include <QWidget>
 
 #include "FloatType.h"
+#include "Macros.h"
 #include "View/MapView.h"
 
 #include <memory>
@@ -135,8 +135,9 @@ namespace TrenchBroom {
             void doRefreshViews() override;
         private: // implement ViewEffectsService interface
             void doFlashSelection() override;
+
+            deleteCopyAndMove(SwitchableMapViewContainer)
         };
     }
 }
 
-#endif /* defined(TrenchBroom_SwitchableMapViewContainer) */

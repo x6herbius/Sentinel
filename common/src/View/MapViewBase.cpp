@@ -26,22 +26,21 @@
 #include "Assets/EntityDefinition.h"
 #include "Assets/EntityDefinitionGroup.h"
 #include "Assets/EntityDefinitionManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
-#include "Model/CollectMatchingNodesVisitor.h"
+#include "Model/ChangeBrushFaceAttributesRequest.h"
 #include "Model/EditorContext.h"
-#include "Model/Entity.h"
-#include "Model/EntityAttributes.h"
-#include "Model/FindGroupVisitor.h"
-#include "Model/FindLayerVisitor.h"
-#include "Model/Group.h"
+#include "Model/EntityNode.h"
+#include "Model/EntityProperties.h"
+#include "Model/GroupNode.h"
 #include "Model/Hit.h"
 #include "Model/HitAdapter.h"
 #include "Model/HitQuery.h"
-#include "Model/Layer.h"
+#include "Model/LayerNode.h"
+#include "Model/ModelUtils.h"
 #include "Model/PointFile.h"
 #include "Model/PortalFile.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 #include "Renderer/Camera.h"
 #include "Renderer/Compass.h"
 #include "Renderer/FontDescriptor.h"
@@ -60,10 +59,10 @@
 #include "View/MapDocument.h"
 #include "View/MapFrame.h"
 #include "View/MapViewActivationTracker.h"
-#include "View/MapViewConfig.h"
 #include "View/MapViewToolBox.h"
 #include "View/SelectionTool.h"
 #include "View/QtUtils.h"
+#include "kdl/vector_utils.h"
 
 #include <kdl/memory_utils.h>
 #include <kdl/string_compare.h>
@@ -136,7 +135,6 @@ namespace TrenchBroom {
             document->entityDefinitionsDidChangeNotifier.addObserver(this, &MapViewBase::entityDefinitionsDidChange);
             document->modsDidChangeNotifier.addObserver(this, &MapViewBase::modsDidChange);
             document->editorContextDidChangeNotifier.addObserver(this, &MapViewBase::editorContextDidChange);
-            document->mapViewConfigDidChangeNotifier.addObserver(this, &MapViewBase::mapViewConfigDidChange);
             document->documentWasNewedNotifier.addObserver(this, &MapViewBase::documentDidChange);
             document->documentWasClearedNotifier.addObserver(this, &MapViewBase::documentDidChange);
             document->documentWasLoadedNotifier.addObserver(this, &MapViewBase::documentDidChange);
@@ -170,7 +168,6 @@ namespace TrenchBroom {
                 document->entityDefinitionsDidChangeNotifier.removeObserver(this, &MapViewBase::entityDefinitionsDidChange);
                 document->modsDidChangeNotifier.removeObserver(this, &MapViewBase::modsDidChange);
                 document->editorContextDidChangeNotifier.removeObserver(this, &MapViewBase::editorContextDidChange);
-                document->mapViewConfigDidChangeNotifier.removeObserver(this, &MapViewBase::mapViewConfigDidChange);
                 document->documentWasNewedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
                 document->documentWasClearedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
                 document->documentWasLoadedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
@@ -241,10 +238,6 @@ namespace TrenchBroom {
         }
 
         void MapViewBase::editorContextDidChange() {
-            update();
-        }
-
-        void MapViewBase::mapViewConfigDidChange() {
             update();
         }
 
@@ -418,7 +411,7 @@ namespace TrenchBroom {
                 // If we snap the selection bounds' center to the grid size, then
                 // selections that are an odd number of grid units wide get translated.
                 // Instead, snap to 1/2 the grid size.
-                // (see: https://github.com/kduske/TrenchBroom/issues/1495 )
+                // (see: https://github.com/TrenchBroom/TrenchBroom/issues/1495 )
                 Grid halfGrid(document->grid().size());
                 halfGrid.decSize();
 
@@ -499,6 +492,29 @@ namespace TrenchBroom {
                     break;
             }
             return clockwise ? angle : -angle;
+        }
+
+        void MapViewBase::flipTextures(const vm::direction direction) {
+            auto document = kdl::mem_lock(m_document);
+            if (document->hasSelectedBrushFaces()) {
+                document->flipTextures(doGetCamera().up(), doGetCamera().right(), direction);
+            }
+        }
+
+        void MapViewBase::resetTextures() {
+            Model::ChangeBrushFaceAttributesRequest request;
+
+            auto document = kdl::mem_lock(m_document);
+            request.resetAll(document->game()->defaultFaceAttribs());
+            document->setFaceAttributes(request);
+        }
+
+        void MapViewBase::resetTexturesToWorld() {
+            Model::ChangeBrushFaceAttributesRequest request;
+
+            auto document = kdl::mem_lock(m_document);
+            request.resetAllToParaxial(document->game()->defaultFaceAttribs());
+            document->setFaceAttributes(request);
         }
 
         void MapViewBase::createComplexBrush() {
@@ -633,7 +649,7 @@ namespace TrenchBroom {
             }
 
             if (!toReparent.empty()) {
-                reparentNodes(toReparent, document->currentParent(), false);
+                reparentNodes(toReparent, document->parentForNodes(toReparent), false);
             }
 
             bool anyTagDisabled = false;
@@ -669,105 +685,71 @@ namespace TrenchBroom {
         }
 
         void MapViewBase::toggleShowEntityClassnames() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowEntityClassnames(!config.showEntityClassnames());
+            togglePref(Preferences::ShowEntityClassnames);
         }
 
         void MapViewBase::toggleShowGroupBounds() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowGroupBounds(!config.showGroupBounds());
+            togglePref(Preferences::ShowGroupBounds);
         }
 
         void MapViewBase::toggleShowBrushEntityBounds() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowBrushEntityBounds(!config.showBrushEntityBounds());
+            togglePref(Preferences::ShowBrushEntityBounds);
         }
 
         void MapViewBase::toggleShowPointEntityBounds() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowPointEntityBounds(!config.showPointEntityBounds());
+            togglePref(Preferences::ShowPointEntityBounds);
         }
 
         void MapViewBase::toggleShowPointEntities() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setShowPointEntities(!editorContext.showPointEntities());
+            togglePref(Preferences::ShowPointEntities);
         }
 
         void MapViewBase::toggleShowPointEntityModels() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowPointEntityModels(!config.showPointEntityModels());
+            togglePref(Preferences::ShowPointEntityModels);
         }
 
         void MapViewBase::toggleShowBrushes() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setShowBrushes(!editorContext.showBrushes());
+            togglePref(Preferences::ShowBrushes);
         }
 
         void MapViewBase::showTextures() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setFaceRenderMode(MapViewConfig::FaceRenderMode_Textured);
+            setPref(Preferences::FaceRenderMode, Preferences::faceRenderModeTextured());
         }
 
         void MapViewBase::hideTextures() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setFaceRenderMode(MapViewConfig::FaceRenderMode_Flat);
+            setPref(Preferences::FaceRenderMode, Preferences::faceRenderModeFlat());
         }
 
         void MapViewBase::hideFaces() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setFaceRenderMode(MapViewConfig::FaceRenderMode_Skip);
+            setPref(Preferences::FaceRenderMode, Preferences::faceRenderModeSkip());
         }
 
         void MapViewBase::toggleShadeFaces() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShadeFaces(!config.shadeFaces());
+            togglePref(Preferences::ShadeFaces);
         }
 
         void MapViewBase::toggleShowFog() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowFog(!config.showFog());
+            togglePref(Preferences::ShowFog);
         }
 
         void MapViewBase::toggleShowEdges() {
-            auto document = kdl::mem_lock(m_document);
-            MapViewConfig& config = document->mapViewConfig();
-            config.setShowEdges(!config.showEdges());
+            togglePref(Preferences::ShowEdges);
         }
 
         void MapViewBase::showAllEntityLinks() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setEntityLinkMode(Model::EditorContext::EntityLinkMode_All);
+            setPref(Preferences::FaceRenderMode, Preferences::entityLinkModeAll());
         }
 
         void MapViewBase::showTransitivelySelectedEntityLinks() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setEntityLinkMode(Model::EditorContext::EntityLinkMode_Transitive);
+            setPref(Preferences::FaceRenderMode, Preferences::entityLinkModeTransitive());
         }
 
         void MapViewBase::showDirectlySelectedEntityLinks() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setEntityLinkMode(Model::EditorContext::EntityLinkMode_Direct);
+            setPref(Preferences::FaceRenderMode, Preferences::entityLinkModeDirect());
         }
 
         void MapViewBase::hideAllEntityLinks() {
-            auto document = kdl::mem_lock(m_document);
-            Model::EditorContext& editorContext = document->editorContext();
-            editorContext.setEntityLinkMode(Model::EditorContext::EntityLinkMode_None);
+            setPref(Preferences::FaceRenderMode, Preferences::entityLinkModeNone());
         }
 
         void MapViewBase::focusInEvent(QFocusEvent* event) {
@@ -854,23 +836,25 @@ namespace TrenchBroom {
             const Renderer::FontDescriptor fontDescriptor(fontPath, fontSize);
 
             auto document = kdl::mem_lock(m_document);
-            const MapViewConfig& mapViewConfig = document->mapViewConfig();
             const Grid& grid = document->grid();
 
             Renderer::RenderContext renderContext(doGetRenderMode(), doGetCamera(), fontManager(), shaderManager());
-            renderContext.setShowTextures(mapViewConfig.showTextures());
-            renderContext.setShowFaces(mapViewConfig.showFaces());
-            renderContext.setShowEdges(mapViewConfig.showEdges());
-            renderContext.setShadeFaces(mapViewConfig.shadeFaces());
-            renderContext.setShowPointEntities(mapViewConfig.showPointEntities());
-            renderContext.setShowPointEntityModels(mapViewConfig.showPointEntityModels());
-            renderContext.setShowEntityClassnames(mapViewConfig.showEntityClassnames());
-            renderContext.setShowGroupBounds(mapViewConfig.showGroupBounds());
-            renderContext.setShowBrushEntityBounds(mapViewConfig.showBrushEntityBounds());
-            renderContext.setShowPointEntityBounds(mapViewConfig.showPointEntityBounds());
-            renderContext.setShowFog(mapViewConfig.showFog());
+            renderContext.setShowTextures(pref(Preferences::FaceRenderMode) == Preferences::faceRenderModeTextured());
+            renderContext.setShowFaces(pref(Preferences::FaceRenderMode) != Preferences::faceRenderModeSkip());
+            renderContext.setShowEdges(pref(Preferences::ShowEdges));
+            renderContext.setShadeFaces(pref(Preferences::ShadeFaces));
+            renderContext.setShowPointEntities(pref(Preferences::ShowPointEntities));
+            renderContext.setShowPointEntityModels(pref(Preferences::ShowPointEntityModels));
+            renderContext.setShowEntityClassnames(pref(Preferences::ShowEntityClassnames));
+            renderContext.setShowGroupBounds(pref(Preferences::ShowGroupBounds));
+            renderContext.setShowBrushEntityBounds(pref(Preferences::ShowBrushEntityBounds));
+            renderContext.setShowPointEntityBounds(pref(Preferences::ShowPointEntityBounds));
+            renderContext.setShowFog(pref(Preferences::ShowFog));
             renderContext.setShowGrid(grid.visible());
             renderContext.setGridSize(grid.actualSize());
+            renderContext.setSoftMapBounds(pref(Preferences::ShowSoftMapBounds)
+                ? vm::bbox3f(document->softMapBounds().bounds.value_or(vm::bbox3()))
+                : vm::bbox3f());
 
             setupGL(renderContext);
             setRenderOptions(renderContext);
@@ -883,6 +867,7 @@ namespace TrenchBroom {
             doRenderExtras(renderContext, renderBatch);
 
             renderCoordinateSystem(renderContext, renderBatch);
+            renderSoftMapBounds(renderContext, renderBatch);
             renderPointFile(renderContext, renderBatch);
             renderPortalFile(renderContext, renderBatch);
             renderCompass(renderBatch);
@@ -900,7 +885,11 @@ namespace TrenchBroom {
             const int height = static_cast<int>(viewport.height * r);
             glAssert(glViewport(x, y, width, height))
 
-            glAssert(glEnable(GL_MULTISAMPLE))
+            if (pref(Preferences::EnableMSAA)) {
+                glAssert(glEnable(GL_MULTISAMPLE))
+            } else {
+                glAssert(glDisable(GL_MULTISAMPLE))
+            }
             glAssert(glEnable(GL_BLEND))
             glAssert(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA))
             glAssert(glShadeModel(GL_SMOOTH))
@@ -914,6 +903,10 @@ namespace TrenchBroom {
                 Renderer::RenderService renderService(renderContext, renderBatch);
                 renderService.renderCoordinateSystem(vm::bbox3f(worldBounds));
             }
+        }
+
+        void MapViewBase::renderSoftMapBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
+            doRenderSoftWorldBounds(renderContext, renderBatch);
         }
 
         void MapViewBase::renderPointFile(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
@@ -986,21 +979,6 @@ namespace TrenchBroom {
             ToolBoxConnector::processEvent(event);
         }
 
-        static bool isEntity(const Model::Node* node) {
-            class IsEntity : public Model::ConstNodeVisitor, public Model::NodeQuery<bool> {
-            private:
-                void doVisit(const Model::World*) override  { setResult(false); }
-                void doVisit(const Model::Layer*) override  { setResult(false); }
-                void doVisit(const Model::Group*) override  { setResult(false); }
-                void doVisit(const Model::Entity*) override { setResult(true); }
-                void doVisit(const Model::Brush*) override  { setResult(false); }
-            };
-
-            IsEntity visitor;
-            node->accept(visitor);
-            return visitor.result();
-        }
-
         void MapViewBase::doShowPopupMenu() {
             // We process input events during paint event processing, but we cannot show a popup menu
             // during paint processing, so we enqueue an event for later.
@@ -1022,11 +1000,15 @@ namespace TrenchBroom {
             auto* mapFrame = findMapFrame(this);
 
             QMenu menu;
-            QAction* groupAction = menu.addAction(tr("Group"), mapFrame, &MapFrame::groupSelectedObjects);
-            groupAction->setEnabled(mapFrame->canGroupSelectedObjects());
+            const auto addMainMenuAction = [&](const auto& path) -> QAction* {
+                auto* groupAction = mapFrame->findAction(path);
+                assert(groupAction != nullptr);
+                menu.addAction(groupAction);
+                return groupAction;
+            };
 
-            QAction* ungroupAction = menu.addAction(tr("Ungroup"), mapFrame, &MapFrame::ungroupSelectedObjects);
-            ungroupAction->setEnabled(mapFrame->canUngroupSelectedObjects());
+            addMainMenuAction(IO::Path("Menu/Edit/Group"));
+            addMainMenuAction(IO::Path("Menu/Edit/Ungroup"));
 
             QAction* mergeGroupAction = nullptr;
             if (mergeGroup != nullptr) {
@@ -1037,7 +1019,7 @@ namespace TrenchBroom {
             }
             mergeGroupAction->setEnabled(canMergeGroups());
 
-            QAction* renameAction = menu.addAction(tr("Rename"), mapFrame, &MapFrame::renameSelectedGroups);
+            QAction* renameAction = menu.addAction(tr("Rename Groups"), mapFrame, &MapFrame::renameSelectedGroups);
             renameAction->setEnabled(mapFrame->canRenameSelectedGroups());
 
             if (newGroup != nullptr && newGroup != currentGroup) {
@@ -1050,17 +1032,92 @@ namespace TrenchBroom {
             }
             menu.addSeparator();
 
+            // Linked group operations
+
+            addMainMenuAction(IO::Path("Menu/Edit/Create Linked Duplicate"));
+            addMainMenuAction(IO::Path("Menu/Edit/Select Linked Groups"));
+            addMainMenuAction(IO::Path("Menu/Edit/Separate Linked Groups"));
+            menu.addSeparator();
+
+            // Layer operations
+
+            const std::vector<Model::LayerNode*> selectedObjectLayers = Model::findContainingLayersUserSorted(nodes);
+
+            QMenu* moveSelectionTo = menu.addMenu(tr("Move to Layer"));
+            for (Model::LayerNode* layer : document->world()->allLayersUserSorted()) {
+                QAction* action = moveSelectionTo->addAction(QString::fromStdString(layer->name()), this, [=](){
+                    document->moveSelectionToLayer(layer);
+                });
+                action->setEnabled(document->canMoveSelectionToLayer(layer));
+            }
+
+            const auto moveSelectionToItems = moveSelectionTo->actions();
+            moveSelectionTo->setEnabled(std::any_of(std::begin(moveSelectionToItems), std::end(moveSelectionToItems), [](QAction *action) { return action->isEnabled(); }));
+
+            if (selectedObjectLayers.size() == 1u) {
+                Model::LayerNode* layer = selectedObjectLayers[0];
+                QAction* action = menu.addAction(tr("Make Layer %1 Active").arg(QString::fromStdString(layer->name())), this, [=](){
+                    document->setCurrentLayer(layer);
+                });
+                action->setEnabled(document->canSetCurrentLayer(layer));
+            } else {
+                QMenu* makeLayerActive = menu.addMenu(tr("Make Layer Active"));
+                for (Model::LayerNode* layer : selectedObjectLayers) {
+                    QAction* action = makeLayerActive->addAction(QString::fromStdString(layer->name()), this, [=](){
+                        document->setCurrentLayer(layer);
+                    });
+                    action->setEnabled(document->canSetCurrentLayer(layer));
+                }
+                if (makeLayerActive->isEmpty()) {
+                    makeLayerActive->setDisabled(true);
+                }
+            }
+
+            QAction* hideLayersAction = menu.addAction(tr("Hide Layers"), this, [=](){
+                document->hideLayers(selectedObjectLayers);
+            });
+            hideLayersAction->setEnabled(document->canHideLayers(selectedObjectLayers));
+            QAction* isolateLayersAction = menu.addAction(tr("Isolate Layers"), this, [=](){
+                document->isolateLayers(selectedObjectLayers);
+            });
+            isolateLayersAction->setEnabled(document->canIsolateLayers(selectedObjectLayers));
+            QAction* selectAllInLayersAction = menu.addAction(tr("Select All in Layers"), this, [=](){
+                document->selectAllInLayers(selectedObjectLayers);
+            });
+            selectAllInLayersAction->setEnabled(document->canSelectAllInLayers(selectedObjectLayers));
+
+            menu.addSeparator();
+
             if (document->selectedNodes().hasOnlyBrushes()) {
                 QAction* moveToWorldAction = menu.addAction(tr("Make Structural"), this, &MapViewBase::makeStructural);
                 moveToWorldAction->setEnabled(canMakeStructural());
 
-                if (isEntity(newBrushParent)) {
+                const auto isEntity = newBrushParent->accept(kdl::overload(
+                    [](const Model::WorldNode*)  { return false; },
+                    [](const Model::LayerNode*)  { return false; },
+                    [](const Model::GroupNode*)  { return false; },
+                    [](const Model::EntityNode*) { return true; },
+                    [](const Model::BrushNode*)  { return false; }
+                ));
+
+                if (isEntity) {
                     menu.addAction(tr("Move Brushes to Entity %1").arg(QString::fromStdString(newBrushParent->name())), this,
                         &MapViewBase::moveSelectedBrushesToEntity);
                 }
             }
 
             menu.addSeparator();
+
+            const Model::Hit& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            const auto faceHandle = Model::hitToFaceHandle(hit);
+            if (faceHandle) {
+                const Assets::Texture* texture = faceHandle->face().texture();
+                menu.addAction(tr("Reveal %1 in Texture Browser").arg(QString::fromStdString(faceHandle->face().attributes().textureName())), mapFrame, [=](){
+                    mapFrame->revealTexture(texture);
+                });
+
+                menu.addSeparator();
+            }
 
             menu.addMenu(makeEntityGroupsMenu(Assets::EntityDefinitionType::PointEntity));
             menu.addMenu(makeEntityGroupsMenu(Assets::EntityDefinitionType::BrushEntity));
@@ -1081,7 +1138,7 @@ namespace TrenchBroom {
          * Forward drag and drop events from QWidget to ToolBoxConnector
          */
         void MapViewBase::dragEnterEvent(QDragEnterEvent* dragEnterEvent) {
-            dragEnter(dragEnterEvent->pos().x(), dragEnterEvent->pos().y(), dragEnterEvent->mimeData()->text().toStdString());
+            dragEnter(static_cast<float>(dragEnterEvent->posF().x()), static_cast<float>(dragEnterEvent->posF().y()), dragEnterEvent->mimeData()->text().toStdString());
             dragEnterEvent->acceptProposedAction();
         }
 
@@ -1090,12 +1147,12 @@ namespace TrenchBroom {
         }
 
         void MapViewBase::dragMoveEvent(QDragMoveEvent* dragMoveEvent) {
-            dragMove(dragMoveEvent->pos().x(), dragMoveEvent->pos().y(), dragMoveEvent->mimeData()->text().toStdString());
+            dragMove(static_cast<float>(dragMoveEvent->posF().x()), static_cast<float>(dragMoveEvent->posF().y()), dragMoveEvent->mimeData()->text().toStdString());
             dragMoveEvent->acceptProposedAction();
         }
 
         void MapViewBase::dropEvent(QDropEvent* dropEvent) {
-            dragDrop(dropEvent->pos().x(), dropEvent->pos().y(), dropEvent->mimeData()->text().toStdString());
+            dragDrop(static_cast<float>(dropEvent->posF().x()), static_cast<float>(dropEvent->posF().y()), dropEvent->mimeData()->text().toStdString());
             dropEvent->acceptProposedAction();
         }
 
@@ -1120,7 +1177,7 @@ namespace TrenchBroom {
 
                 std::vector<Assets::EntityDefinition*> filteredDefinitions;
                 for (auto* definition : definitions) {
-                    if (!kdl::cs::str_is_equal(definition->name(), Model::AttributeValues::WorldspawnClassname)) {
+                    if (!kdl::cs::str_is_equal(definition->name(), Model::PropertyValues::WorldspawnClassname)) {
                         filteredDefinitions.push_back(definition);
                     }
                 }
@@ -1189,7 +1246,7 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             const Model::Hit& hit = pickResult().query().pickable().first();
             if (hit.isMatch())
-                newGroup = findOutermostClosedGroup(Model::hitToNode(hit));
+                newGroup = Model::findOutermostClosedGroup(Model::hitToNode(hit));
 
             if (newGroup != nullptr && canReparentNodes(nodes, newGroup))
                 return newGroup;
@@ -1205,12 +1262,12 @@ namespace TrenchBroom {
             document->mergeSelectedGroupsWithGroup(newGroup);
         }
 
-        Model::Group* MapViewBase::findGroupToMergeGroupsInto(const Model::NodeCollection& selectedNodes) const {
+        Model::GroupNode* MapViewBase::findGroupToMergeGroupsInto(const Model::NodeCollection& selectedNodes) const {
             if (!(selectedNodes.hasOnlyGroups() && selectedNodes.groupCount() >= 2)) {
                 return nullptr;
             }
 
-            Model::Group* mergeTarget = nullptr;
+            Model::GroupNode* mergeTarget = nullptr;
 
             auto document = kdl::mem_lock(m_document);
             const Model::Hit& hit = pickResult().query().pickable().first();
@@ -1257,9 +1314,9 @@ namespace TrenchBroom {
             Model::Node* newParent = nullptr;
 
             auto document = kdl::mem_lock(m_document);
-            const Model::Hit& hit = pickResult().query().pickable().type(Model::Brush::BrushHit).occluded().first();
-            if (hit.isMatch()) {
-                const Model::Brush* brush = Model::hitToBrush(hit);
+            const Model::Hit& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                Model::BrushNode* brush = faceHandle->node();
                 newParent = brush->entity();
             }
 
@@ -1270,12 +1327,12 @@ namespace TrenchBroom {
             if (!nodes.empty()) {
                 Model::Node* lastNode = nodes.back();
 
-                Model::Group* group = Model::findGroup(lastNode);
+                Model::GroupNode* group = Model::findContainingGroup(lastNode);
                 if (group != nullptr) {
                     return group;
                 }
 
-                Model::Layer* layer = Model::findLayer(lastNode);
+                Model::LayerNode* layer = Model::findContainingLayer(lastNode);
                 if (layer != nullptr) {
                     return layer;
             }
@@ -1293,25 +1350,25 @@ namespace TrenchBroom {
             return false;
         }
 
-        class BrushesToEntities {
-        private:
-            const Model::World* m_world;
-        public:
-            explicit BrushesToEntities(const Model::World* world) : m_world(world) {}
-        public:
-            bool operator()(const Model::World*) const       { return false; }
-            bool operator()(const Model::Layer*) const       { return false; }
-            bool operator()(const Model::Group*) const       { return true;  }
-            bool operator()(const Model::Entity*) const      { return true; }
-            bool operator()(const Model::Brush* brush) const { return brush->entity() == m_world; }
-        };
-
-        static std::vector<Model::Node*> collectEntitiesForBrushes(const std::vector<Model::Node*>& selectedNodes, const Model::World* world) {
-            using BrushesToEntitiesVisitor = Model::CollectMatchingNodesVisitor<BrushesToEntities, Model::UniqueNodeCollectionStrategy, Model::StopRecursionIfMatched>;
-
-            BrushesToEntitiesVisitor collect((BrushesToEntities(world)));
-            Model::Node::acceptAndEscalate(std::begin(selectedNodes), std::end(selectedNodes), collect);
-            return collect.nodes();
+        /**
+         * Return the given nodes, but replace all entity brushes with the parent entity (with duplicates removed).
+         */
+        static std::vector<Model::Node*> collectEntitiesForBrushes(const std::vector<Model::Node*>& selectedNodes, const Model::WorldNode* world) {
+            std::vector<Model::Node*> result;
+            Model::Node::visitAll(selectedNodes, kdl::overload(
+                [] (Model::WorldNode*)         {},
+                [] (Model::LayerNode*)         {},
+                [&](Model::GroupNode* group)   { result.push_back(group); },
+                [&](Model::EntityNode* entity) { result.push_back(entity); },
+                [&](auto&& thisLambda, Model::BrushNode* brush) {
+                    if (brush->entity() == world) {
+                        result.push_back(brush);
+                    } else {
+                        brush->visitParent(thisLambda);
+                    }
+                }
+            ));
+            return kdl::vec_sort_and_remove_duplicates(std::move(result));
         }
 
         void MapViewBase::reparentNodes(const std::vector<Model::Node*>& nodes, Model::Node* newParent, const bool preserveEntities) {
@@ -1333,7 +1390,7 @@ namespace TrenchBroom {
 
             const Transaction transaction(document, name.str());
             document->deselectAll();
-            document->reparentNodes(newParent, reparentableNodes);
+            document->reparentNodes({{newParent, reparentableNodes}});
             document->select(reparentableNodes);
         }
 
@@ -1356,7 +1413,7 @@ namespace TrenchBroom {
         bool MapViewBase::canMakeStructural() const {
             auto document = kdl::mem_lock(m_document);
             if (document->selectedNodes().hasOnlyBrushes()) {
-                const std::vector<Model::Brush*>& brushes = document->selectedNodes().brushes();
+                const std::vector<Model::BrushNode*>& brushes = document->selectedNodes().brushes();
                 for (const auto* brush : brushes) {
                     if (brush->hasAnyTag() || brush->entity() != document->world() || brush->anyFaceHasAnyTag()) {
                         return true;

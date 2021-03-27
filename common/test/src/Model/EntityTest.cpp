@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010-2017 Kristian Duske
+ Copyright (C) 2020 Kristian Duske
 
  This file is part of TrenchBroom.
 
@@ -17,176 +17,329 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include <memory>
-
+#include "FloatType.h"
+#include "Assets/EntityDefinition.h"
 #include "Model/Entity.h"
-#include "Model/EntityRotationPolicy.h"
-#include "Model/EntityAttributes.h"
-#include "Model/MapFormat.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/EntityProperties.h"
 
-#include <vecmath/vec.h>
+#include <vecmath/approx.h>
+#include <vecmath/bbox.h>
+#include <vecmath/bbox_io.h>
+#include <vecmath/mat.h>
 #include <vecmath/mat_ext.h>
+#include <vecmath/mat_io.h>
+#include <vecmath/vec.h>
+#include <vecmath/vec_io.h>
 
-#include <string>
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Model {
-        static const std::string TestClassname = "something";
+        TEST_CASE("EntityTest.defaults") {
+            Entity entity;
 
-        class EntityTest {
-        protected:
-            vm::bbox3d m_worldBounds;
-            Entity* m_entity;
-            World* m_world;
+            CHECK(entity.classname() == PropertyValues::NoClassname);
+            CHECK(entity.pointEntity());
+            CHECK(entity.origin() == vm::vec3::zero());
+            CHECK(entity.rotation() == vm::mat4x4::identity());
+        }
 
-            EntityTest() {
-                m_worldBounds = vm::bbox3d(8192.0);
-                m_entity = new Entity();
-                m_entity->addOrUpdateAttribute(AttributeNames::Classname, TestClassname);
-                m_world = new World(MapFormat::Standard);
+        TEST_CASE("EntityTest.definitionBounds") {
+            auto pointEntityDefinition = Assets::PointEntityDefinition("some_name", Color(), vm::bbox3(32.0), "", {}, {});
+            Entity entity;
+
+            SECTION("Returns default bounds if no definition is set") {
+                CHECK(entity.definitionBounds() == vm::bbox3(8.0));
+            }
+            
+            SECTION("Returns definition bounds if definition is set") {
+                entity.setDefinition(&pointEntityDefinition);
+                CHECK(entity.definitionBounds() == vm::bbox3(32.0));
+            }
+        }
+
+        TEST_CASE("EntityTest.addOrUpdateProperty") {
+            Entity entity;
+            REQUIRE(entity.property("test") == nullptr);
+
+            entity.addOrUpdateProperty("test", "value");
+            CHECK(*entity.property("test") == "value");
+
+            entity.addOrUpdateProperty("test", "newValue");
+            CHECK(*entity.property("test") == "newValue");
+
+            SECTION("Setting a new property to protected by default") {
+                entity.addOrUpdateProperty("newKey", "newValue", true);
+                CHECK_THAT(entity.protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"newKey"}));
+
+                entity.addOrUpdateProperty("test", "anotherValue", true);
+                CHECK_THAT(entity.protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"newKey"}));
+            }
+        }
+
+        TEST_CASE("EntityTest.renameProperty") {
+            Entity entity;
+
+            SECTION("Rename non existing property") {
+                REQUIRE(!entity.hasProperty("originalKey"));
+                entity.renameProperty("originalKey", "newKey");
+                CHECK(!entity.hasProperty("originalKey"));
+                CHECK(!entity.hasProperty("newKey"));
             }
 
-            virtual ~EntityTest() {
-                // Only some of the tests add the entity to the world
-                if (m_entity->parent() == nullptr) {
-                    delete m_entity;
-                }
-                delete m_world;
+            entity.addOrUpdateProperty("originalKey", "originalValue");
+            REQUIRE(*entity.property("originalKey") == "originalValue");
+
+            SECTION("Rename existing property") {
+                entity.renameProperty("originalKey", "newKey");
+                CHECK(!entity.hasProperty("originalKey"));
+                CHECK(*entity.property("newKey") == "originalValue");
             }
-        };
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.defaults") {
-            EXPECT_EQ(vm::vec3::zero(), m_entity->origin());
-            EXPECT_EQ(vm::mat4x4::identity(), m_entity->rotation());
-            EXPECT_TRUE(m_entity->pointEntity());
-            EXPECT_EQ(Entity::DefaultBounds, m_entity->logicalBounds());
+            SECTION("Rename existing property - name conflict") {
+                entity.addOrUpdateProperty("newKey", "newValue");
+
+                entity.renameProperty("originalKey", "newKey");
+                CHECK(!entity.hasProperty("originalKey"));
+                CHECK(*entity.property("newKey") == "originalValue");
+            }
+
+            SECTION("Rename existing protected property") {
+                entity.setProtectedProperties({"originalKey"});
+                entity.renameProperty("originalKey", "newKey");
+                CHECK_THAT(entity.protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"newKey"}));
+            }
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.originUpdateWithSetAttributes") {
-            const vm::vec3 newOrigin(10, 20, 30);
-            const vm::bbox3 newBounds(newOrigin - (Entity::DefaultBounds.size() / 2.0),
-                                      newOrigin + (Entity::DefaultBounds.size() / 2.0));
+        TEST_CASE("EntityTest.removeProperty") {
+            Entity entity;
 
-            m_entity->setAttributes({EntityAttribute("origin", "10 20 30")});
-            EXPECT_EQ(newOrigin, m_entity->origin());
-            EXPECT_EQ(newBounds, m_entity->logicalBounds());
+            SECTION("Remove non existing property") {
+                REQUIRE(!entity.hasProperty("key"));
+                entity.removeProperty("key");
+                CHECK(!entity.hasProperty("key"));
+            }
+
+            SECTION("Remove existing property") {
+                entity.addOrUpdateProperty("key", "value");
+                entity.removeProperty("key");
+                CHECK(!entity.hasProperty("key"));
+            }
+
+            SECTION("Remove protected property") {
+                entity.addOrUpdateProperty("newKey", "value", true);
+                REQUIRE_THAT(entity.protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"newKey"}));
+                
+                entity.removeProperty("newKey");
+                REQUIRE(!entity.hasProperty("newKey"));
+                CHECK_THAT(entity.protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"newKey"}));
+            }
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.originUpdateWithAddOrUpdateAttributes") {
-            const vm::vec3 newOrigin(10, 20, 30);
-            const vm::bbox3 newBounds(newOrigin - (Entity::DefaultBounds.size() / 2.0),
-                                      newOrigin + (Entity::DefaultBounds.size() / 2.0));
+        TEST_CASE("EntityTest.hasProperty") {
+            Entity entity;
+            CHECK(!entity.hasProperty("value"));
 
-            m_entity->addOrUpdateAttribute("origin", "10 20 30");
-            EXPECT_EQ(newOrigin, m_entity->origin());
-            EXPECT_EQ(newBounds, m_entity->logicalBounds());
+            entity.setProperties({ EntityProperty("key", "value") });
+            CHECK(entity.hasProperty("key"));
         }
 
-        // Same as above, but add the entity to a world
-        TEST_CASE_METHOD(EntityTest, "EntityTest.originUpdateInWorld") {
-            m_world->defaultLayer()->addChild(m_entity);
+        TEST_CASE("EntityTest.originUpdateWithSetProperties") {
+            Entity entity;
+            entity.setProperties({ EntityProperty("origin", "10 20 30") });
 
-            const vm::vec3 newOrigin(10, 20, 30);
-            const vm::bbox3 newBounds(newOrigin - (Entity::DefaultBounds.size() / 2.0),
-                                      newOrigin + (Entity::DefaultBounds.size() / 2.0));
-
-            m_entity->addOrUpdateAttribute("origin", "10 20 30");
-            EXPECT_EQ(newOrigin, m_entity->origin());
-            EXPECT_EQ(newBounds, m_entity->logicalBounds());
+            CHECK(entity.origin() == vm::vec3(10, 20, 30));
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.requiresClassnameForRotation") {
-            m_world->defaultLayer()->addChild(m_entity);
-            m_entity->removeAttribute(AttributeNames::Classname);
+        TEST_CASE("EntityTest.hasPropertyWithPrefix") {
+            Entity entity;
+            entity.setProperties({
+                EntityProperty("somename", "somevalue"),
+                EntityProperty("someothername", "someothervalue"),
+            });
 
-            EXPECT_EQ(vm::mat4x4::identity(), m_entity->rotation());
+            CHECK(entity.hasPropertyWithPrefix("somename", "somevalue"));
+            CHECK(entity.hasPropertyWithPrefix("some", "somevalue"));
+            CHECK(entity.hasPropertyWithPrefix("some", "someothervalue"));
+            CHECK(entity.hasPropertyWithPrefix("someother", "someothervalue"));
+            CHECK(!entity.hasPropertyWithPrefix("someother", "somevalue"));
+            CHECK(!entity.hasPropertyWithPrefix("sime", ""));
+        }
 
-            const auto rotMat = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
-            m_entity->transform(rotMat, true, m_worldBounds);
+        TEST_CASE("EntityTest.hasNumberedProperty") {
+            Entity entity;
+            entity.setProperties({
+                EntityProperty("target", "value"),
+                EntityProperty("target1", "value1"),
+                EntityProperty("target2", "value2"),
+            });
+
+            CHECK(entity.hasNumberedProperty("target", "value"));
+            CHECK(entity.hasNumberedProperty("target", "value1"));
+            CHECK(entity.hasNumberedProperty("target", "value2"));
+            CHECK(!entity.hasNumberedProperty("targe", "value"));
+            CHECK(!entity.hasNumberedProperty("somename", ""));
+        }
+
+        TEST_CASE("EntityTest.property") {
+            Entity entity;
+
+            CHECK(entity.property("key") == nullptr);
+
+            entity.addOrUpdateProperty("key", "value");
+            CHECK(entity.property("key") != nullptr);
+            CHECK(*entity.property("key") == "value");
+        }
+
+        TEST_CASE("EntityTest.classname") {
+            Entity entity;
+            REQUIRE(!entity.hasProperty(PropertyKeys::Classname));
+
+            SECTION("Entities without a classname property return a default name") {
+                CHECK(entity.classname() == PropertyValues::NoClassname);
+            }
+
+            entity.addOrUpdateProperty(PropertyKeys::Classname, "testclass");
+            SECTION("Entities with a classname property return the value") {
+                CHECK(*entity.property(PropertyKeys::Classname) == "testclass");
+                CHECK(entity.classname() == "testclass");
+            }
+
+            SECTION("addOrUpdateProperty updates cached classname property") {
+                entity.addOrUpdateProperty(PropertyKeys::Classname, "newclass");
+                CHECK(*entity.property(PropertyKeys::Classname) == "newclass");
+                CHECK(entity.classname() == "newclass");
+            }
+
+            SECTION("setProperties updates cached classname property") {
+                entity.setProperties({
+                    EntityProperty(PropertyKeys::Classname, "newclass")
+                });
+                CHECK(*entity.property(PropertyKeys::Classname) == "newclass");
+                CHECK(entity.classname() == "newclass");
+            }
+        }
+
+        TEST_CASE("EntityTest.setClassname") {
+            Entity entity;
+            REQUIRE(entity.classname() == PropertyValues::NoClassname);
+
+            entity.setClassname("testclass");
+            CHECK(*entity.property(PropertyKeys::Classname) == "testclass");
+            CHECK(entity.classname() == "testclass");
+
+            SECTION("Updates cached classname property") {
+                entity.setClassname("otherclass");
+                CHECK(*entity.property(PropertyKeys::Classname) == "otherclass");
+                CHECK(entity.classname() == "otherclass");
+            }
+        }
+
+        TEST_CASE("EntityTest.origin") {
+            Entity entity;
+            REQUIRE(!entity.hasProperty(PropertyKeys::Origin));
+
+            SECTION("Entities without an origin property return 0,0,0") {
+                CHECK(entity.origin() == vm::vec3::zero());
+            }
+
+            entity.addOrUpdateProperty(PropertyKeys::Origin, "1 2 3");
+            SECTION("Entities with an origin property return the value") {
+                CHECK(*entity.property(PropertyKeys::Origin) == "1 2 3");
+                CHECK(entity.origin() == vm::vec3(1, 2, 3));
+            }
+
+            SECTION("addOrUpdateProperty updates cached classname property") {
+                entity.addOrUpdateProperty(PropertyKeys::Origin, "1 2 3");
+                CHECK(*entity.property(PropertyKeys::Origin) == "1 2 3");
+                CHECK(entity.origin() == vm::vec3(1, 2, 3));
+            }
+
+            SECTION("setProperties updates cached classname property") {
+                entity.setProperties({
+                    EntityProperty(PropertyKeys::Origin, "3 4 5")
+                });
+                CHECK(*entity.property(PropertyKeys::Origin) == "3 4 5");
+                CHECK(entity.origin() == vm::vec3(3, 4, 5));
+            }
+        }
+
+        TEST_CASE("EntityTest.setOrigin") {
+            Entity entity;
+            REQUIRE(entity.origin() == vm::vec3::zero());
+
+            entity.setOrigin(vm::vec3(1, 2, 3));
+            CHECK(*entity.property(PropertyKeys::Origin) == "1 2 3");
+            CHECK(entity.origin() == vm::vec3(1, 2, 3));
+
+            SECTION("Updates cached origin property") {
+                entity.setOrigin(vm::vec3(3, 4, 5));
+                CHECK(*entity.property(PropertyKeys::Origin) == "3 4 5");
+                CHECK(entity.origin() == vm::vec3(3, 4, 5));
+            }
+        }
+
+        TEST_CASE("EntityTest.requiresClassnameForRotation") {
+            Entity entity;
+            REQUIRE(entity.rotation() == vm::mat4x4::identity());
+
+            const auto rotation = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            entity.transform(rotation);
 
             // rotation had no effect
-            EXPECT_EQ(vm::mat4x4::identity(), m_entity->rotation());
+            CHECK(entity.rotation() == vm::mat4x4::identity());
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.rotateAndTranslate") {
-            m_world->defaultLayer()->addChild(m_entity);
+        TEST_CASE("EntityTest.requiresPointEntityForRotation") {
+            Entity entity;
+            entity.setClassname("some_class");
+            entity.setPointEntity(false);
+            REQUIRE(entity.rotation() == vm::mat4x4::identity());
 
-            const auto rotMat = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            const auto rotation = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            entity.transform(rotation);
 
-            EXPECT_EQ(vm::mat4x4::identity(), m_entity->rotation());
-            m_entity->transform(rotMat, true, m_worldBounds);
-            EXPECT_EQ(rotMat, m_entity->rotation());
-
-            m_entity->transform(vm::translation_matrix(vm::vec3d(100.0, 0.0, 0.0)), true, m_worldBounds);
-            EXPECT_EQ(rotMat, m_entity->rotation());
+            // rotation had no effect
+            CHECK(entity.rotation() == vm::mat4x4::identity());
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.rotationMatrixToEulerAngles") {
-            const auto roll  = vm::to_radians(12.0);
-            const auto pitch = vm::to_radians(13.0);
-            const auto yaw   = vm::to_radians(14.0);
+        TEST_CASE("EntityTest.rotateWithoutOffset") {
+            Entity entity;
+            entity.setClassname("some_class");
+            entity.setOrigin(vm::vec3(10, 20, 30));
 
-            const auto rotMat = vm::rotation_matrix(roll, pitch, yaw);
+            const auto rotation = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            entity.transform(rotation);
 
-            const auto yawPitchRoll = EntityRotationPolicy::getYawPitchRoll(vm::mat4x4::identity(), rotMat);
-
-            EXPECT_DOUBLE_EQ(12.0, yawPitchRoll.z());
-            EXPECT_DOUBLE_EQ(13.0, yawPitchRoll.y());
-            EXPECT_DOUBLE_EQ(14.0, yawPitchRoll.x());
+            CHECK(entity.rotation() == rotation);
+            CHECK(entity.origin() == vm::vec3(-20, 10, 30));
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.rotationMatrixToEulerAngles_uniformScale") {
-            const auto roll = vm::to_radians(12.0);
-            const auto pitch = vm::to_radians(13.0);
-            const auto yaw = vm::to_radians(14.0);
+        TEST_CASE("EntityTest.rotateWithOffset") {
+            auto definition = Assets::PointEntityDefinition("some_name", Color(), vm::bbox3(16.0).translate(vm::vec3(16, 16, 0)), "", {}, {});
 
-            const auto scaleMat = vm::scaling_matrix(vm::vec3(2.0, 2.0, 2.0));
-            const auto rotMat = vm::rotation_matrix(roll, pitch, yaw);
+            Entity entity;
+            entity.setClassname("some_class");
+            entity.setOrigin(vm::vec3(32, 32, 0));
+            entity.setDefinition(&definition);
 
-            const auto yawPitchRoll = EntityRotationPolicy::getYawPitchRoll(scaleMat, rotMat);
+            const auto rotation = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            entity.transform(rotation);
 
-            // The uniform scale has no effect
-            EXPECT_DOUBLE_EQ(12.0, yawPitchRoll.z());
-            EXPECT_DOUBLE_EQ(13.0, yawPitchRoll.y());
-            EXPECT_DOUBLE_EQ(14.0, yawPitchRoll.x());
+            CHECK(entity.rotation() == vm::mat4x4::identity());
+            CHECK(entity.origin() == vm::vec3(-64, 32, 0));
         }
 
-        TEST_CASE_METHOD(EntityTest, "EntityTest.rotationMatrixToEulerAngles_nonUniformScale") {
-            const auto roll = vm::to_radians(0.0);
-            const auto pitch = vm::to_radians(45.0);
-            const auto yaw = vm::to_radians(0.0);
+        TEST_CASE("EntityTest.translateAfterRotation") {
+            Entity entity;
+            entity.setClassname("some_class");
 
-            const auto scaleMat = vm::scaling_matrix(vm::vec3(2.0, 1.0, 1.0));
-            const auto rotMat = vm::rotation_matrix(roll, pitch, yaw);
+            const auto rotation = vm::rotation_matrix(0.0, 0.0, vm::to_radians(90.0));
+            entity.transform(rotation);
+            REQUIRE(entity.rotation() == rotation);
 
-            const auto yawPitchRoll = EntityRotationPolicy::getYawPitchRoll(scaleMat, rotMat);
-
-            const auto expectedPitch = vm::to_degrees(std::atan(0.5)); // ~= 26.57 degrees
-
-            EXPECT_DOUBLE_EQ(0.0, yawPitchRoll.z());
-            EXPECT_DOUBLE_EQ(expectedPitch, yawPitchRoll.y());
-            EXPECT_DOUBLE_EQ(0.0, yawPitchRoll.x());
-        }
-
-        TEST_CASE_METHOD(EntityTest, "EntityTest.rotationMatrixToEulerAngles_flip") {
-            const auto roll = vm::to_radians(10.0);
-            const auto pitch = vm::to_radians(45.0);
-            const auto yaw = vm::to_radians(0.0);
-
-            const auto scaleMat = vm::scaling_matrix(vm::vec3(-1.0, 1.0, 1.0));
-            const auto rotMat = vm::rotation_matrix(roll, pitch, yaw);
-
-            const auto yawPitchRoll = EntityRotationPolicy::getYawPitchRoll(scaleMat, rotMat);
-
-            EXPECT_DOUBLE_EQ(-10.0, yawPitchRoll.z());
-            EXPECT_DOUBLE_EQ(45.0, yawPitchRoll.y());
-            EXPECT_DOUBLE_EQ(180.0, yawPitchRoll.x());
+            entity.transform(vm::translation_matrix(vm::vec3(100, 0, 0)));
+            CHECK(entity.rotation() == rotation);
         }
     }
 }

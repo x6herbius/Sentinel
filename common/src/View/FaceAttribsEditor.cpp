@@ -22,11 +22,12 @@
 #include "Color.h"
 #include "Assets/Texture.h"
 #include "Model/BrushFace.h"
+#include "Model/BrushFaceHandle.h"
 #include "Model/ChangeBrushFaceAttributesRequest.h"
 #include "Model/Game.h"
 #include "Model/GameConfig.h"
 #include "Model/MapFormat.h"
-#include "Model/World.h"
+#include "Model/WorldNode.h"
 #include "View/BorderLine.h"
 #include "View/FlagsPopupEditor.h"
 #include "View/Grid.h"
@@ -76,6 +77,7 @@ namespace TrenchBroom {
             createGui(contextManager);
             bindEvents();
             bindObservers();
+            updateIncrements();
         }
 
         FaceAttribsEditor::~FaceAttribsEditor() {
@@ -151,34 +153,34 @@ namespace TrenchBroom {
             }
         }
 
-        void FaceAttribsEditor::surfaceFlagChanged(const size_t index, const int setFlag, const int /* mixedFlag */) {
+        void FaceAttribsEditor::surfaceFlagChanged(const size_t /* index */, const int value, const int setFlag, const int /* mixedFlag */) {
             auto document = kdl::mem_lock(m_document);
             if (!document->hasAnySelectedBrushFaces()) {
                 return;
             }
 
             Model::ChangeBrushFaceAttributesRequest request;
-            if (setFlag & (1 << index)) {
-                request.setSurfaceFlag(index);
+            if (setFlag & value) {
+                request.setSurfaceFlags(value);
             } else {
-                request.unsetSurfaceFlag(index);
+                request.unsetSurfaceFlags(value);
             }
             if (!document->setFaceAttributes(request)) {
                 updateControls();
             }
         }
 
-        void FaceAttribsEditor::contentFlagChanged(const size_t index, const int setFlag, const int /* mixedFlag */) {
+        void FaceAttribsEditor::contentFlagChanged(const size_t /* index */, const int value, const int setFlag, const int /* mixedFlag */) {
             auto document = kdl::mem_lock(m_document);
             if (!document->hasAnySelectedBrushFaces()) {
                 return;
             }
 
             Model::ChangeBrushFaceAttributesRequest request;
-            if (setFlag & (1 << index)) {
-                request.setContentFlag(index);
+            if (setFlag & value) {
+                request.setContentFlags(value);
             } else {
-                request.unsetContentFlag(index);
+                request.unsetContentFlags(value);
             }
             if (!document->setFaceAttributes(request)) {
                 updateControls();
@@ -206,9 +208,9 @@ namespace TrenchBroom {
 
             const std::string str = m_colorEditor->text().toStdString();
             if (!kdl::str_is_blank(str)) {
-                if (Color::canParse(str)) {
+                if (const auto color = Color::parse(str)) {
                     Model::ChangeBrushFaceAttributesRequest request;
-                    request.setColor(Color::parse(str));
+                    request.setColor(*color);
                     if (!document->setFaceAttributes(request)) {
                         updateControls();
                     }
@@ -222,7 +224,7 @@ namespace TrenchBroom {
             }
         }
 
-        void FaceAttribsEditor::gridDidChange() {
+        void FaceAttribsEditor::updateIncrements() {
             auto document = kdl::mem_lock(m_document);
             Grid& grid = document->grid();
 
@@ -382,10 +384,11 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             document->documentWasNewedNotifier.addObserver(this, &FaceAttribsEditor::documentWasNewed);
             document->documentWasLoadedNotifier.addObserver(this, &FaceAttribsEditor::documentWasLoaded);
+            document->nodesDidChangeNotifier.addObserver(this, &FaceAttribsEditor::nodesDidChange);
             document->brushFacesDidChangeNotifier.addObserver(this, &FaceAttribsEditor::brushFacesDidChange);
             document->selectionDidChangeNotifier.addObserver(this, &FaceAttribsEditor::selectionDidChange);
             document->textureCollectionsDidChangeNotifier.addObserver(this, &FaceAttribsEditor::textureCollectionsDidChange);
-            document->grid().gridDidChangeNotifier.addObserver(this, &FaceAttribsEditor::gridDidChange);
+            document->grid().gridDidChangeNotifier.addObserver(this, &FaceAttribsEditor::updateIncrements);
         }
 
         void FaceAttribsEditor::unbindObservers() {
@@ -393,32 +396,31 @@ namespace TrenchBroom {
                 auto document = kdl::mem_lock(m_document);
                 document->documentWasNewedNotifier.removeObserver(this, &FaceAttribsEditor::documentWasNewed);
                 document->documentWasLoadedNotifier.removeObserver(this, &FaceAttribsEditor::documentWasLoaded);
+                document->nodesDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::nodesDidChange);
                 document->brushFacesDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::brushFacesDidChange);
                 document->selectionDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::selectionDidChange);
                 document->textureCollectionsDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::textureCollectionsDidChange);
-                document->grid().gridDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::gridDidChange);
+                document->grid().gridDidChangeNotifier.removeObserver(this, &FaceAttribsEditor::updateIncrements);
             }
         }
 
-        void FaceAttribsEditor::documentWasNewed(MapDocument* document) {
-            m_faces = document->allSelectedBrushFaces();
+        void FaceAttribsEditor::documentWasNewed(MapDocument*) {
             updateControls();
         }
 
-        void FaceAttribsEditor::documentWasLoaded(MapDocument* document) {
-            m_faces = document->allSelectedBrushFaces();
+        void FaceAttribsEditor::documentWasLoaded(MapDocument*) {
             updateControls();
         }
 
-        void FaceAttribsEditor::brushFacesDidChange(const std::vector<Model::BrushFace*>&) {
-            auto document = kdl::mem_lock(m_document);
-            m_faces = document->allSelectedBrushFaces();
+        void FaceAttribsEditor::nodesDidChange(const std::vector<Model::Node*>&) {
+            updateControls();
+        }
+
+        void FaceAttribsEditor::brushFacesDidChange(const std::vector<Model::BrushFaceHandle>&) {
             updateControls();
         }
 
         void FaceAttribsEditor::selectionDidChange(const Selection&) {
-            auto document = kdl::mem_lock(m_document);
-            m_faces = document->allSelectedBrushFaces();
             updateControls();
         }
 
@@ -454,15 +456,24 @@ namespace TrenchBroom {
             const QSignalBlocker blockContentFlagsEditor(m_contentFlagsEditor);
             const QSignalBlocker blockColorEditor(m_colorEditor);
 
-            if (hasSurfaceAttribs()) {
-                showSurfaceAttribEditors();
-                QStringList surfaceFlagLabels, surfaceFlagTooltips, contentFlagLabels, contentFlagTooltips;
-                getSurfaceFlags(surfaceFlagLabels, surfaceFlagTooltips);
-                getContentFlags(contentFlagLabels, contentFlagTooltips);
-                m_surfaceFlagsEditor->setFlags(surfaceFlagLabels, surfaceFlagTooltips);
-                m_contentFlagsEditor->setFlags(contentFlagLabels, contentFlagTooltips);
+            if (hasSurfaceFlags()) {
+                showSurfaceFlagsEditor();
+                QList<int> values;
+                QStringList surfaceFlagLabels, surfaceFlagTooltips;
+                getSurfaceFlags(values, surfaceFlagLabels, surfaceFlagTooltips);
+                m_surfaceFlagsEditor->setFlags(values, surfaceFlagLabels, surfaceFlagTooltips);
             } else {
-                hideSurfaceAttribEditors();
+                hideSurfaceFlagsEditor();
+            }
+
+            if (hasContentFlags()) {
+                showContentFlagsEditor();
+                QList<int> values;
+                QStringList contentFlagLabels, contentFlagTooltips;
+                getContentFlags(values, contentFlagLabels, contentFlagTooltips);
+                m_contentFlagsEditor->setFlags(values, contentFlagLabels, contentFlagTooltips);
+            } else {
+                hideContentFlagsEditor();
             }
 
             if (hasColorAttribs()) {
@@ -471,7 +482,8 @@ namespace TrenchBroom {
                 hideColorAttribEditor();
             }
 
-            if (!m_faces.empty()) {
+            const auto faceHandles = kdl::mem_lock(m_document)->allSelectedBrushFaces();
+            if (!faceHandles.empty()) {
                 bool textureMulti = false;
                 bool xOffsetMulti = false;
                 bool yOffsetMulti = false;
@@ -481,35 +493,36 @@ namespace TrenchBroom {
                 bool surfaceValueMulti = false;
                 bool colorValueMulti = false;
 
-                const std::string& textureName = m_faces[0]->textureName();
-                const float xOffset = m_faces[0]->xOffset();
-                const float yOffset = m_faces[0]->yOffset();
-                const float rotation = m_faces[0]->rotation();
-                const float xScale = m_faces[0]->xScale();
-                const float yScale = m_faces[0]->yScale();
-                int setSurfaceFlags = m_faces[0]->surfaceFlags();
-                int setSurfaceContents = m_faces[0]->surfaceContents();
+                const Model::BrushFace& firstFace = faceHandles[0].face();
+                const std::string& textureName = firstFace.attributes().textureName();
+                const float xOffset = firstFace.attributes().xOffset();
+                const float yOffset = firstFace.attributes().yOffset();
+                const float rotation = firstFace.attributes().rotation();
+                const float xScale = firstFace.attributes().xScale();
+                const float yScale = firstFace.attributes().yScale();
+                int setSurfaceFlags = firstFace.attributes().surfaceFlags();
+                int setSurfaceContents = firstFace.attributes().surfaceContents();
                 int mixedSurfaceFlags = 0;
                 int mixedSurfaceContents = 0;
-                const float surfaceValue = m_faces[0]->surfaceValue();
-                bool hasColorValue = m_faces[0]->hasColor();
-                const Color colorValue = m_faces[0]->color();
+                const float surfaceValue = firstFace.attributes().surfaceValue();
+                bool hasColorValue = firstFace.attributes().hasColor();
+                const Color colorValue = firstFace.attributes().color();
 
 
-                for (size_t i = 1; i < m_faces.size(); i++) {
-                    Model::BrushFace* face = m_faces[i];
-                    textureMulti            |= (textureName     != face->textureName());
-                    xOffsetMulti            |= (xOffset         != face->xOffset());
-                    yOffsetMulti            |= (yOffset         != face->yOffset());
-                    rotationMulti           |= (rotation        != face->rotation());
-                    xScaleMulti             |= (xScale          != face->xScale());
-                    yScaleMulti             |= (yScale          != face->yScale());
-                    surfaceValueMulti       |= (surfaceValue    != face->surfaceValue());
-                    colorValueMulti         |= (colorValue      != face->color());
-                    hasColorValue           |= face->hasColor();
+                for (size_t i = 1; i < faceHandles.size(); i++) {
+                    const Model::BrushFace& face = faceHandles[i].face();
+                    textureMulti            |= (textureName     != face.attributes().textureName());
+                    xOffsetMulti            |= (xOffset         != face.attributes().xOffset());
+                    yOffsetMulti            |= (yOffset         != face.attributes().yOffset());
+                    rotationMulti           |= (rotation        != face.attributes().rotation());
+                    xScaleMulti             |= (xScale          != face.attributes().xScale());
+                    yScaleMulti             |= (yScale          != face.attributes().yScale());
+                    surfaceValueMulti       |= (surfaceValue    != face.attributes().surfaceValue());
+                    colorValueMulti         |= (colorValue      != face.attributes().color());
+                    hasColorValue           |= face.attributes().hasColor();
 
-                    combineFlags(sizeof(int)*8, face->surfaceFlags(), setSurfaceFlags, mixedSurfaceFlags);
-                    combineFlags(sizeof(int)*8, face->surfaceContents(), setSurfaceContents, mixedSurfaceContents);
+                    combineFlags(sizeof(int)*8, face.attributes().surfaceFlags(), setSurfaceFlags, mixedSurfaceFlags);
+                    combineFlags(sizeof(int)*8, face.attributes().surfaceContents(), setSurfaceContents, mixedSurfaceContents);
                 }
 
                 m_xOffsetEditor->setEnabled(true);
@@ -534,7 +547,7 @@ namespace TrenchBroom {
                         m_textureSize->setText("");
                         m_textureSize->setEnabled(false);
                     } else {
-                        const Assets::Texture* texture = m_faces[0]->texture();
+                        const Assets::Texture* texture = firstFace.texture();
                         if (texture != nullptr) {
                             m_textureName->setText(QString::fromStdString(textureName));
                             m_textureSize->setText(QStringLiteral("%1 * %2").arg(texture->width()).arg(texture->height()));
@@ -584,37 +597,45 @@ namespace TrenchBroom {
             }
         }
 
-
-        bool FaceAttribsEditor::hasSurfaceAttribs() const {
+        bool FaceAttribsEditor::hasSurfaceFlags() const {
             auto document = kdl::mem_lock(m_document);
             const auto game = document->game();
-            const Model::FlagsConfig& surfaceFlags = game->surfaceFlags();
-            const Model::FlagsConfig& contentFlags = game->contentFlags();
-
-            return !surfaceFlags.flags.empty() && !contentFlags.flags.empty();
+            return !game->surfaceFlags().flags.empty();
         }
 
-        void FaceAttribsEditor::showSurfaceAttribEditors() {
+        bool FaceAttribsEditor::hasContentFlags() const {
+            auto document = kdl::mem_lock(m_document);
+            const auto game = document->game();
+            return !game->contentFlags().flags.empty();
+        }
+
+        void FaceAttribsEditor::showSurfaceFlagsEditor() {
             m_surfaceValueLabel->show();
             m_surfaceValueEditor->show();
             m_surfaceFlagsLabel->show();
             m_surfaceFlagsEditor->show();
+        }
+
+        void FaceAttribsEditor::showContentFlagsEditor() {
             m_contentFlagsLabel->show();
             m_contentFlagsEditor->show();
         }
 
-        void FaceAttribsEditor::hideSurfaceAttribEditors() {
+        void FaceAttribsEditor::hideSurfaceFlagsEditor() {
             m_surfaceValueLabel->hide();
             m_surfaceValueEditor->hide();
             m_surfaceFlagsLabel->hide();
             m_surfaceFlagsEditor->hide();
+        }
+
+        void FaceAttribsEditor::hideContentFlagsEditor() {
             m_contentFlagsLabel->hide();
             m_contentFlagsEditor->hide();
         }
 
         bool FaceAttribsEditor::hasColorAttribs() const {
             auto document = kdl::mem_lock(m_document);
-            return document->world()->format() == Model::MapFormat::Daikatana;
+            return document->world()->mapFormat() == Model::MapFormat::Daikatana;
         }
 
         void FaceAttribsEditor::showColorAttribEditor() {
@@ -627,26 +648,27 @@ namespace TrenchBroom {
             m_colorEditor->hide();
         }
 
-        void getFlags(const std::vector<Model::FlagConfig>& flags, QStringList& names, QStringList& descriptions);
-        void getFlags(const std::vector<Model::FlagConfig>& flags, QStringList& names, QStringList& descriptions) {
+        void getFlags(const std::vector<Model::FlagConfig>& flags, QList<int>& values, QStringList& names, QStringList& descriptions);
+        void getFlags(const std::vector<Model::FlagConfig>& flags, QList<int>& values, QStringList& names, QStringList& descriptions) {
             for (const auto& flag : flags) {
+                values.push_back(flag.value);
                 names.push_back(QString::fromStdString(flag.name));
                 descriptions.push_back(QString::fromStdString(flag.description));
             }
         }
 
-        void FaceAttribsEditor::getSurfaceFlags(QStringList& names, QStringList& descriptions) const {
+        void FaceAttribsEditor::getSurfaceFlags(QList<int>& values, QStringList& names, QStringList& descriptions) const {
             auto document = kdl::mem_lock(m_document);
             const auto game = document->game();
             const Model::FlagsConfig& surfaceFlags = game->surfaceFlags();
-            getFlags(surfaceFlags.flags, names, descriptions);
+            getFlags(surfaceFlags.flags, values, names, descriptions);
         }
 
-        void FaceAttribsEditor::getContentFlags(QStringList& names, QStringList& descriptions) const {
+        void FaceAttribsEditor::getContentFlags(QList<int>& values, QStringList& names, QStringList& descriptions) const {
             auto document = kdl::mem_lock(m_document);
             const auto game = document->game();
             const Model::FlagsConfig& contentFlags = game->contentFlags();
-            getFlags(contentFlags.flags, names, descriptions);
+            getFlags(contentFlags.flags, values, names, descriptions);
         }
     }
 }

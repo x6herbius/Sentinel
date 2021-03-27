@@ -22,6 +22,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 
 namespace TrenchBroom {
     // BrushIndexArray
@@ -72,7 +73,7 @@ namespace TrenchBroom {
         IndexHolder::IndexHolder() : VboHolder<Index>(VboType::ElementArrayBuffer) {}
 
         IndexHolder::IndexHolder(std::vector<Index> &elements)
-                : VboHolder<Index>(elements) {}
+                : VboHolder<Index>(VboType::ElementArrayBuffer, elements) {}
 
         void IndexHolder::zeroRange(const size_t offsetWithinBlock, const size_t count) {
             Index* dest = getPointerToWriteElementsTo(offsetWithinBlock, count);

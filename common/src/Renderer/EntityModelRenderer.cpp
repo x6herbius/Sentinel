@@ -29,6 +29,7 @@
 #include "EL/ELExceptions.h"
 #include "Model/EditorContext.h"
 #include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Renderer/ActiveShader.h"
 #include "Renderer/RenderBatch.h"
 #include "Renderer/RenderContext.h"
@@ -52,31 +53,31 @@ namespace TrenchBroom {
             clear();
         }
 
-        void EntityModelRenderer::addEntity(Model::Entity* entity) {
-            const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entity->classname(), [&]() {
-                return entity->modelSpecification();
+        void EntityModelRenderer::addEntity(Model::EntityNode* entityNode) {
+            const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entityNode->entity().classname(), [&]() {
+                return entityNode->entity().modelSpecification();
             });
 
             auto* renderer = m_entityModelManager.renderer(modelSpec);
             if (renderer != nullptr) {
-                m_entities.insert(std::make_pair(entity, renderer));
+                m_entities.insert(std::make_pair(entityNode, renderer));
             }
         }
 
-        void EntityModelRenderer::updateEntity(Model::Entity* entity) {
-            const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entity->classname(), [&]() {
-                return entity->modelSpecification();
+        void EntityModelRenderer::updateEntity(Model::EntityNode* entityNode) {
+            const auto modelSpec = Assets::safeGetModelSpecification(m_logger, entityNode->entity().classname(), [&]() {
+                return entityNode->entity().modelSpecification();
             });
 
             auto* renderer = m_entityModelManager.renderer(modelSpec);
-            EntityMap::iterator it = m_entities.find(entity);
+            EntityMap::iterator it = m_entities.find(entityNode);
 
             if (renderer == nullptr && it == std::end(m_entities)) {
                 return;
             }
 
             if (it == std::end(m_entities)) {
-                m_entities.insert(std::make_pair(entity, renderer));
+                m_entities.insert(std::make_pair(entityNode, renderer));
             } else {
                 if (renderer == nullptr) {
                     m_entities.erase(it);
@@ -131,20 +132,26 @@ namespace TrenchBroom {
             shader.set("TintColor", m_tintColor);
             shader.set("GrayScale", false);
             shader.set("Texture", 0);
+            shader.set("ShowSoftMapBounds", !renderContext.softMapBounds().is_empty());
+            shader.set("SoftMapBoundsMin", renderContext.softMapBounds().min);
+            shader.set("SoftMapBoundsMax", renderContext.softMapBounds().max);
+            shader.set("SoftMapBoundsColor", vm::vec4f(prefs.get(Preferences::SoftMapBoundsColor).r(),
+                                                       prefs.get(Preferences::SoftMapBoundsColor).g(),
+                                                       prefs.get(Preferences::SoftMapBoundsColor).b(),
+                                                       0.1f));
 
             glAssert(glEnable(GL_TEXTURE_2D));
             glAssert(glActiveTexture(GL_TEXTURE0));
 
-            for (const auto& entry : m_entities) {
-                auto* entity = entry.first;
-                if (!m_showHiddenEntities && !m_editorContext.visible(entity)) {
+            for (const auto& [entityNode, renderer] : m_entities) {
+                if (!m_showHiddenEntities && !m_editorContext.visible(entityNode)) {
                     continue;
                 }
 
-                auto* renderer = entry.second;
-
-                const auto transformation = entity->modelTransformation();
+                const auto transformation = entityNode->entity().modelTransformation();
                 MultiplyModelMatrix multMatrix(renderContext.transformation(), vm::mat4x4f(transformation));
+
+                shader.set("ModelMatrix", vm::mat4x4f(transformation));
 
                 renderer->render();
             }

@@ -38,11 +38,8 @@
 
 namespace TrenchBroom {
     namespace IO {
-        AseTokenizer::AseTokenizer(const char* begin, const char* end) :
-        Tokenizer(begin, end, "", 0){ }
-
-        AseTokenizer::AseTokenizer(const std::string& str) :
-        Tokenizer(str, "", 0) {}
+        AseTokenizer::AseTokenizer(std::string_view str) :
+        Tokenizer(std::move(str), "", 0) {}
 
         const std::string AseTokenizer::WordDelims = " \t\n\r:";
 
@@ -110,9 +107,9 @@ namespace TrenchBroom {
             return Token(AseToken::Eof, nullptr, nullptr, length(), line(), column());
         }
 
-        AseParser::AseParser(const std::string& name, const char* begin, const char* end, const FileSystem& fs) :
+        AseParser::AseParser(const std::string& name, std::string_view str, const FileSystem& fs) :
         m_name(name),
-        m_tokenizer(begin, end),
+        m_tokenizer(std::move(str)),
         m_fs(fs) {}
 
         std::unique_ptr<Assets::EntityModel> AseParser::doInitializeModel(Logger& logger) {
@@ -471,16 +468,15 @@ namespace TrenchBroom {
             model->addFrames(1);
             auto& surface = model->addSurface(m_name);
 
-            std::vector<Assets::Texture*> textures;
-            textures.resize(scene.materialPaths.size());
-
             // Load the textures
-            for (size_t i = 0; i < scene.materialPaths.size(); ++i) {
-                auto path = scene.materialPaths[i];
-                auto texture = loadTexture(logger, path);
-                textures[i] = texture.get();
-                surface.addSkin(texture.release());
+            std::vector<Assets::Texture> textures;
+            textures.reserve(scene.materialPaths.size());
+            for (const auto& path : scene.materialPaths) {
+                textures.push_back(loadTexture(logger, path));
             }
+            
+            textures.push_back(loadDefaultTexture(m_fs, logger, ""));
+            surface.setSkins(std::move(textures));
 
             // Count vertices and build bounds
             auto bounds = vm::bbox3f::builder();
@@ -490,12 +486,13 @@ namespace TrenchBroom {
                 const auto& mesh = geomObject.mesh;
                 bounds.add(std::begin(mesh.vertices), std::end(mesh.vertices));
 
-                const auto textureIndex = geomObject.materialIndex;
-                auto* texture = textureIndex < textures.size() ? textures[textureIndex] : nullptr;
-                if (texture == nullptr) {
+                auto textureIndex = geomObject.materialIndex;
+                if (textureIndex >= surface.skinCount() - 1u) {
                     logger.warn() << "Invalid material index " << textureIndex;
-                    texture = loadDefaultTexture(m_fs, logger, "").release();
+                    textureIndex = surface.skinCount() - 1u; // default texture
                 }
+                
+                const auto* texture = surface.skin(textureIndex);
 
                 const auto vertexCount = mesh.faces.size() * 3;
                 size.inc(texture, Renderer::PrimType::Triangles, vertexCount);
@@ -510,7 +507,7 @@ namespace TrenchBroom {
                 const auto& mesh = geomObject.mesh;
 
                 const auto textureIndex = geomObject.materialIndex;
-                auto* texture = textureIndex < textures.size() ? textures[textureIndex] : nullptr;
+                const auto* texture = textureIndex < surface.skinCount() ? surface.skin(textureIndex) : nullptr;
 
                 for (const auto& face : mesh.faces) {
                     if (!checkIndices(logger, face, mesh)) {
@@ -556,7 +553,7 @@ namespace TrenchBroom {
             return true;
         }
 
-        std::unique_ptr<Assets::Texture> AseParser::loadTexture(Logger& logger, const Path& path) const {
+        Assets::Texture AseParser::loadTexture(Logger& logger, const Path& path) const {
             const auto actualPath = fixTexturePath(logger, path);
             return loadShader(actualPath, m_fs, logger);
         }

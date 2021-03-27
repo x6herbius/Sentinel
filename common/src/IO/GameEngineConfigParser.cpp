@@ -34,11 +34,8 @@
 
 namespace TrenchBroom {
     namespace IO {
-        GameEngineConfigParser::GameEngineConfigParser(const char* begin, const char* end, const Path& path) :
-        ConfigParserBase(begin, end, path) {}
-
-        GameEngineConfigParser::GameEngineConfigParser(const std::string& str, const Path& path) :
-        ConfigParserBase(str, path) {}
+        GameEngineConfigParser::GameEngineConfigParser(std::string_view str, const Path& path) :
+        ConfigParserBase(std::move(str), path) {}
 
         Model::GameEngineConfig GameEngineConfigParser::parse() {
             const EL::Value root = parseConfigFile().evaluate(EL::EvaluationContext());
@@ -67,9 +64,9 @@ namespace TrenchBroom {
         std::unique_ptr<Model::GameEngineProfile> GameEngineConfigParser::parseProfile(const EL::Value& value) const {
             expectStructure(value, "[ {'name': 'String', 'path': 'String'}, { 'parameters': 'String' } ]");
 
-            const std::string& name = value["name"].stringValue();
+            const std::string name = value["name"].stringValue();
             const Path path = Path(value["path"].stringValue());
-            const std::string& parameterSpec = value["parameters"].stringValue();
+            const std::string parameterSpec = value["parameters"].stringValue();
 
             return std::make_unique<Model::GameEngineProfile>(name, path, parameterSpec);
         }

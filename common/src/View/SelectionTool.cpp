@@ -23,13 +23,14 @@
 #include "PreferenceManager.h"
 #include "Model/Brush.h"
 #include "Model/BrushFace.h"
-#include "Model/CollectSelectableNodesVisitor.h"
+#include "Model/BrushFaceHandle.h"
+#include "Model/BrushNode.h"
 #include "Model/EditorContext.h"
-#include "Model/Entity.h"
-#include "Model/FindGroupVisitor.h"
-#include "Model/Group.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
 #include "Model/HitAdapter.h"
 #include "Model/HitQuery.h"
+#include "Model/ModelUtils.h"
 #include "Model/Node.h"
 #include "Renderer/RenderContext.h"
 #include "View/InputState.h"
@@ -57,7 +58,7 @@ namespace TrenchBroom {
         }
 
         Model::Node* findOutermostClosedGroupOrNode(Model::Node* node) {
-            Model::Group* group = findOutermostClosedGroup(node);
+            Model::GroupNode* group = findOutermostClosedGroup(node);
             if (group != nullptr) {
                 return group;
             }
@@ -73,39 +74,39 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             const auto& editorContext = document->editorContext();
             if (isFaceClick(inputState)) {
-                const auto& hit = firstHit(inputState, Model::Brush::BrushHit);
-                if (hit.isMatch()) {
-                    auto* face = Model::hitToFace(hit);
-                    if (editorContext.selectable(face)) {
+                const auto& hit = firstHit(inputState, Model::BrushNode::BrushHitType);
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    const auto* brush = faceHandle->node();
+                    const auto& face = faceHandle->face();;
+                    if (editorContext.selectable(brush, face)) {
                         if (isMultiClick(inputState)) {
                             const auto objects = document->hasSelectedNodes();
                             if (objects) {
-                                const auto* brush = face->brush();
                                 if (brush->selected()) {
-                                    document->deselect(face);
+                                    document->deselect(*faceHandle);
                                 } else {
                                     Transaction transaction(document, "Select Brush Face");
                                     document->convertToFaceSelection();
-                                    document->select(face);
+                                    document->select(*faceHandle);
                                 }
                             } else {
-                                if (face->selected()) {
-                                    document->deselect(face);
+                                if (face.selected()) {
+                                    document->deselect(*faceHandle);
                                 } else {
-                                    document->select(face);
+                                    document->select(*faceHandle);
                                 }
                             }
                         } else {
                             Transaction transaction(document, "Select Brush Face");
                             document->deselectAll();
-                            document->select(face);
+                            document->select(*faceHandle);
                         }
                     }
                 } else {
                     document->deselectAll();
                 }
             } else {
-                const auto& hit = firstHit(inputState, Model::Entity::EntityHit | Model::Brush::BrushHit);
+                const auto& hit = firstHit(inputState, Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType);
                 if (hit.isMatch()) {
                     auto* node = findOutermostClosedGroupOrNode(Model::hitToNode(hit));
                     if (editorContext.selectable(node)) {
@@ -141,26 +142,26 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             const auto& editorContext = document->editorContext();
             if (isFaceClick(inputState)) {
-                const auto& hit = firstHit(inputState, Model::Brush::BrushHit);
-                if (hit.isMatch()) {
-                    auto* face = Model::hitToFace(hit);
-                    if (editorContext.selectable(face)) {
-                        const auto* brush = face->brush();
+                const auto& hit = firstHit(inputState, Model::BrushNode::BrushHitType);
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    auto* brush = faceHandle->node();
+                    const auto& face = faceHandle->face();
+                    if (editorContext.selectable(brush, face)) {
                         if (isMultiClick(inputState)) {
                             if (document->hasSelectedNodes()) {
                                 document->convertToFaceSelection();
                             }
-                            document->select(brush->faces());
+                            document->select(Model::toHandles(brush));
                         } else {
                             Transaction transaction(document, "Select Brush Faces");
                             document->deselectAll();
-                            document->select(brush->faces());
+                            document->select(Model::toHandles(brush));
                         }
                     }
                 }
             } else {
                 const auto inGroup = document->currentGroup() != nullptr;
-                const auto& hit = firstHit(inputState, Model::Brush::BrushHit | Model::Entity::EntityHit);
+                const auto& hit = firstHit(inputState, Model::BrushNode::BrushHitType | Model::EntityNode::EntityHitType);
                 if (hit.isMatch()) {
                     const auto hitInGroup = inGroup && hit.isMatch() && Model::hitToNode(hit)->isDescendantOf(document->currentGroup());
                     if (!inGroup || hitInGroup) {
@@ -202,6 +203,9 @@ namespace TrenchBroom {
             if (!inputState.mouseButtonsPressed(MouseButtons::MBLeft)) {
                 return false;
             }
+            if (!inputState.checkModifierKeys(MK_DontCare, MK_No, MK_DontCare)) {
+                return false;
+            }
 
             auto document = kdl::mem_lock(m_document);
             return document->editorContext().canChangeSelection();
@@ -220,9 +224,7 @@ namespace TrenchBroom {
         }
 
         std::vector<Model::Node*> SelectionTool::collectSelectableChildren(const Model::EditorContext& editorContext, const Model::Node* node) const {
-            Model::CollectSelectableNodesVisitor collect(editorContext);
-            Model::Node::accept(std::begin(node->children()), std::end(node->children()), collect);
-            return collect.nodes();
+            return Model::collectSelectableNodes(node->children(), editorContext);
         }
 
         void SelectionTool::doMouseScroll(const InputState& inputState) {
@@ -304,7 +306,7 @@ namespace TrenchBroom {
         }
 
         void SelectionTool::drillSelection(const InputState& inputState) {
-            const auto hits = inputState.pickResult().query().pickable().type(Model::Entity::EntityHit | Model::Brush::BrushHit).occluded().all();
+            const auto hits = inputState.pickResult().query().pickable().type(Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType).occluded().all();
 
             // Hits may contain multiple brush/entity hits that are inside closed groups. These need to be converted
             // to group hits using findOutermostClosedGroupOrNode() and multiple hits on the same Group need to be collapsed.
@@ -335,25 +337,24 @@ namespace TrenchBroom {
             const auto& editorContext = document->editorContext();
 
             if (isFaceClick(inputState)) {
-                const auto& hit = firstHit(inputState, Model::Brush::BrushHit);
-                if (!hit.isMatch()) {
-                    return false;
-                }
+                const auto& hit = firstHit(inputState, Model::BrushNode::BrushHitType);
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    const auto* brush = faceHandle->node();
+                    const auto& face = faceHandle->face();
+                    if (editorContext.selectable(brush, face)) {
+                        document->startTransaction("Drag Select Brush Faces");
+                        if (document->hasSelection() && !document->hasSelectedBrushFaces()) {
+                            document->deselectAll();
+                        }
+                        if (!face.selected()) {
+                            document->select(*faceHandle);
+                        }
 
-                auto* face = Model::hitToFace(hit);
-                if (editorContext.selectable(face)) {
-                    document->startTransaction("Drag Select Brush Faces");
-                    if (document->hasSelection() && !document->hasSelectedBrushFaces()) {
-                        document->deselectAll();
+                        return true;
                     }
-                    if (!face->selected()) {
-                        document->select(face);
-                    }
-
-                    return true;
                 }
             } else {
-                const auto& hit = firstHit(inputState, Model::Entity::EntityHit | Model::Brush::BrushHit);
+                const auto& hit = firstHit(inputState, Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType);
                 if (!hit.isMatch()) {
                     return false;
                 }
@@ -378,16 +379,17 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             const auto& editorContext = document->editorContext();
             if (document->hasSelectedBrushFaces()) {
-                const auto& hit = firstHit(inputState, Model::Brush::BrushHit);
-                if (hit.isMatch()) {
-                    auto* face = Model::hitToFace(hit);
-                    if (!face->selected() && editorContext.selectable(face)) {
-                        document->select(face);
+                const auto& hit = firstHit(inputState, Model::BrushNode::BrushHitType);
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    const auto* brush = faceHandle->node();
+                    const auto& face = faceHandle->face();
+                    if (!face.selected() && editorContext.selectable(brush, face)) {
+                        document->select(*faceHandle);
                     }
                 }
             } else {
                 assert(document->hasSelectedNodes());
-                const auto& hit = firstHit(inputState, Model::Entity::EntityHit | Model::Brush::BrushHit);
+                const auto& hit = firstHit(inputState, Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType);
                 if (hit.isMatch()) {
                     auto* node = findOutermostClosedGroupOrNode(Model::hitToNode(hit));
                     if (!node->selected() && editorContext.selectable(node)) {
@@ -410,7 +412,7 @@ namespace TrenchBroom {
 
         void SelectionTool::doSetRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const {
             auto document = kdl::mem_lock(m_document);
-            const auto& hit = firstHit(inputState, Model::Entity::EntityHit | Model::Brush::BrushHit);
+            const auto& hit = firstHit(inputState, Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType);
             if (hit.isMatch()) {
                 Model::Node* node = findOutermostClosedGroupOrNode(Model::hitToNode(hit));
 

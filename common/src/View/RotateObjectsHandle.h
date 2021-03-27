@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_RotateObjectsHandle
-#define TrenchBroom_RotateObjectsHandle
+#pragma once
 
 #include "FloatType.h"
 #include "Macros.h"
@@ -40,7 +39,7 @@ namespace TrenchBroom {
     namespace View {
         class RotateObjectsHandle {
         public:
-            static const Model::HitType::Type HandleHit;
+            static const Model::HitType::Type HandleHitType;
 
             enum class HitArea {
                 None = 0,
@@ -78,6 +77,8 @@ namespace TrenchBroom {
                 Model::Hit pick(const vm::ray3& pickRay, const Renderer::Camera& camera) const override;
                 void renderHandle(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) const override;
                 void renderHighlight(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch, HitArea area) const override;
+            protected:
+                Model::Hit pickRotateHandle(const vm::ray3& pickRay, const Renderer::Camera& camera, HitArea area) const override;
 
                 deleteCopyAndMove(Handle2D)
             };
@@ -120,4 +121,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_RotateObjectsHandle) */

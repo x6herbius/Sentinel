@@ -21,8 +21,8 @@
 
 #include "Preferences.h"
 #include "PreferenceManager.h"
-#include "Model/Brush.h"
-#include "Model/Entity.h"
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
 #include "Model/Hit.h"
 #include "Model/HitQuery.h"
 #include "Model/PickResult.h"
@@ -88,6 +88,15 @@ namespace TrenchBroom {
                 const auto maxDistance = std::max(vm::intersect_ray_plane(m_camera.viewRay(), orbitPlane) - 32.0f, 0.0f);
                 const auto distance = std::min(factor * scrollDist * moveSpeed(false), maxDistance);
                 m_camera.moveBy(distance * m_camera.direction());
+            } else if (adjustFlySpeed(inputState)) {
+                const auto speed = pref(Preferences::CameraFlyMoveSpeed);
+                // adjust speed by 5% of the current speed per scroll line
+                const auto deltaSpeed = factor * speed * 0.05f * scrollDist;
+                const auto newSpeed = vm::clamp(speed + deltaSpeed, Preferences::MinCameraFlyMoveSpeed, Preferences::MaxCameraFlyMoveSpeed);
+
+                // prefs are only changed when releasing RMB
+                PreferenceManager& prefs = PreferenceManager::instance();
+                prefs.set(Preferences::CameraFlyMoveSpeed, newSpeed);
             } else if (move(inputState)) {
                 if (zoom) {
                     const auto zoomFactor = 1.0f + scrollDist / 50.0f * factor;
@@ -100,9 +109,18 @@ namespace TrenchBroom {
             }
         }
 
+        void CameraTool3D::doMouseUp(const InputState& inputState) {
+            if (inputState.mouseButtonsPressed(MouseButtons::MBRight)) {
+                PreferenceManager& prefs = PreferenceManager::instance();
+                if (!prefs.saveInstantly()) {
+                    prefs.saveChanges();
+                }
+            }
+        }
+
         bool CameraTool3D::doStartMouseDrag(const InputState& inputState) {
             if (orbit(inputState)) {
-                const auto& hit = inputState.pickResult().query().pickable().type(Model::Brush::BrushHit | Model::Entity::EntityHit).occluded().minDistance(3.0).first();
+                const auto& hit = inputState.pickResult().query().pickable().type(Model::BrushNode::BrushHitType | Model::EntityNode::EntityHitType).occluded().minDistance(3.0).first();
                 if (hit.isMatch()) {
                     m_orbitCenter = vm::vec3f(hit.hitPoint());
                 } else {
@@ -154,8 +172,7 @@ namespace TrenchBroom {
         }
 
         bool CameraTool3D::move(const InputState& inputState) const {
-            return ((inputState.mouseButtonsPressed(MouseButtons::MBNone) ||
-                     inputState.mouseButtonsPressed(MouseButtons::MBRight)) &&
+            return (inputState.mouseButtonsPressed(MouseButtons::MBNone) &&
                     inputState.checkModifierKeys(MK_No, MK_No, MK_DontCare));
         }
 
@@ -173,6 +190,11 @@ namespace TrenchBroom {
         bool CameraTool3D::orbit(const InputState& inputState) const {
             return (inputState.mouseButtonsPressed(MouseButtons::MBRight) &&
                     inputState.modifierKeysPressed(ModifierKeys::MKAlt));
+        }
+
+        bool CameraTool3D::adjustFlySpeed(const InputState& inputState) const {
+            return (inputState.mouseButtonsPressed(MouseButtons::MBRight) &&
+                    inputState.checkModifierKeys(MK_No, MK_No, MK_No));
         }
 
         float CameraTool3D::lookSpeedH() const {

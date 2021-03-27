@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MdlParser
-#define TrenchBroom_MdlParser
+#pragma once
 
 #include "Assets/EntityModel_Forward.h"
 #include "IO/EntityModelParser.h"
@@ -35,6 +34,7 @@ namespace TrenchBroom {
     }
 
     namespace IO {
+        class BufferedReader;
         class Reader;
 
         class MdlParser : public EntityModelParser {
@@ -67,7 +67,7 @@ namespace TrenchBroom {
             std::unique_ptr<Assets::EntityModel> doInitializeModel(Logger& logger) override;
             void doLoadFrame(size_t frameIndex, Assets::EntityModel& model, Logger& logger) override;
 
-            void parseSkins(Reader& reader, Assets::EntityModelSurface& surface, size_t count, size_t width, size_t height, int flags);
+            void parseSkins(BufferedReader& reader, Assets::EntityModelSurface& surface, size_t count, size_t width, size_t height, int flags);
             void skipSkins(Reader& reader, size_t count, size_t width, size_t height, int flags);
 
             MdlSkinVertexList parseVertices(Reader& reader, size_t count);
@@ -81,4 +81,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_MdlParser) */

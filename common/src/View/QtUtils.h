@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_QtUtils
-#define TrenchBroom_QtUtils
+#pragma once
 
 #undef CursorShape
 
@@ -29,7 +28,9 @@
 
 #include <QBoxLayout>
 #include <QObject>
+#include <QPointer>
 #include <QSettings>
+#include <QString>
 #include <QStringList>
 #include <QWidget>
 
@@ -39,6 +40,7 @@ class QColor;
 class QCompleter;
 class QDialog;
 class QDialogButtonBox;
+class QEvent;
 class QFont;
 class QLayout;
 class QLineEdit;
@@ -48,11 +50,15 @@ class QSlider;
 class QSplitter;
 class QString;
 class QTableView;
+class QVBoxLayout;
+class QWidget;
 
 namespace TrenchBroom {
     class Color;
 
     namespace View {
+        enum class MapTextEncoding;
+
         class DisableWindowUpdates {
         private:
             QWidget* m_widget;
@@ -61,6 +67,17 @@ namespace TrenchBroom {
             ~DisableWindowUpdates();
         };
 
+        class SyncHeightEventFilter : public QObject {
+        private:
+            QPointer<QWidget> m_primary;
+            QPointer<QWidget> m_secondary;
+        public:
+            SyncHeightEventFilter(QWidget* primary, QWidget* secondary, QObject* parent = nullptr);
+            ~SyncHeightEventFilter();
+            
+            bool eventFilter(QObject* target, QEvent* event) override;
+        };
+        
         enum class FileDialogDir {
             Map,
             TextureCollection,
@@ -101,6 +118,11 @@ namespace TrenchBroom {
             window->restoreState(settings.value(path).toByteArray());
         }
 
+        /**
+         * Return true if the given widget or any of its children currently has focus.
+         */
+        bool widgetOrChildHasFocus(const QWidget* widget);
+        
         class MapFrame;
         MapFrame* findMapFrame(QWidget* widget);
 
@@ -165,10 +187,18 @@ namespace TrenchBroom {
 
         void setDefaultWindowColor(QWidget* widget);
         void setBaseWindowColor(QWidget* widget);
+        void setHighlightWindowColor(QWidget* widget);
 
         QLineEdit* createSearchBox();
 
         void checkButtonInGroup(QButtonGroup* group, int id, bool checked);
+        void checkButtonInGroup(QButtonGroup* group, const QString& objectName, bool checked);
+
+        /**
+         * Insert a separating line as the first item in the given layout on platforms where
+         * this is necessary.
+         */
+        void insertTitleBarSeparator(QVBoxLayout* layout);
 
         template <typename I>
         QStringList toQStringList(I cur, I end) {
@@ -194,7 +224,19 @@ namespace TrenchBroom {
         void deleteChildWidgetsLaterAndDeleteLayout(QWidget* widget);
 
         void showModelessDialog(QDialog* dialog);
+
+        QString mapStringToUnicode(MapTextEncoding encoding, const std::string& string);
+        std::string mapStringFromUnicode(MapTextEncoding encoding, const QString& string);
+
+        /**
+         * Maps one of Qt::META, Qt::SHIFT, Qt::CTRL, Qt::ALT to the
+         * label for it on the current OS.
+         *
+         * @param modifier one of Qt::META, Qt::SHIFT, Qt::CTRL, Qt::ALT
+         * @return the native label for this modifier on the current OS
+         *         (e.g. "Ctrl" on Windows or the Command symbol on macOS)
+         */
+        QString nativeModifierLabel(int modifier);
     }
 }
 
-#endif /* defined(TrenchBroom_QtUtils) */

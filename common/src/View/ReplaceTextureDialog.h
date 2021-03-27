@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ReplaceTextureDialog
-#define TrenchBroom_ReplaceTextureDialog
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -33,7 +32,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class BrushFace;
+        class BrushFaceHandle;
     }
 
     namespace View {
@@ -53,14 +52,13 @@ namespace TrenchBroom {
             ReplaceTextureDialog(std::weak_ptr<MapDocument> document, GLContextManager& contextManager, QWidget* parent = nullptr);
         private:
             virtual void accept() override;
-            std::vector<Model::BrushFace*> getApplicableFaces() const;
+            std::vector<Model::BrushFaceHandle> getApplicableFaces() const;
             void createGui(GLContextManager& contextManager);
         private slots:
-            void subjectSelected(Assets::Texture* subject);
-            void replacementSelected(Assets::Texture* replacement);
+            void subjectSelected(const Assets::Texture* subject);
+            void replacementSelected(const Assets::Texture* replacement);
             void updateReplaceButton();
         };
     }
 }
 
-#endif /* defined(TrenchBroom_ReplaceTextureDialog) */

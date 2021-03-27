@@ -20,7 +20,7 @@
 #include "MoveObjectsTool.h"
 
 #include "FloatType.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "View/Grid.h"
 #include "View/InputState.h"
 #include "View/MapDocument.h"
@@ -65,9 +65,7 @@ namespace TrenchBroom {
 
             if (m_duplicateObjects) {
                 m_duplicateObjects = false;
-                if (!document->duplicateObjects()) {
-                    return MR_Cancel;
-                }
+                document->duplicateObjects();
             }
 
             if (!document->translateObjects(delta)) {

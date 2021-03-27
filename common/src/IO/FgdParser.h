@@ -17,12 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_FgdParser
-#define TrenchBroom_FgdParser
+#pragma once
 
 #include "FloatType.h"
 #include "Color.h"
-#include "IO/EntityDefinitionClassInfo.h"
 #include "IO/EntityDefinitionParser.h"
 #include "IO/Parser.h"
 #include "IO/Tokenizer.h"
@@ -38,6 +36,8 @@ namespace TrenchBroom {
     }
 
     namespace IO {
+        struct EntityDefinitionClassInfo;
+        enum class EntityDefinitionClassType;
         class FileSystem;
         class ParserStatus;
         class Path;
@@ -61,8 +61,7 @@ namespace TrenchBroom {
 
         class FgdTokenizer : public Tokenizer<FgdToken::Type> {
         public:
-            FgdTokenizer(const char* begin, const char* end);
-            explicit FgdTokenizer(const std::string& str);
+            explicit FgdTokenizer(std::string_view str);
         private:
             static const std::string WordDelims;
             Token emitToken() override;
@@ -72,53 +71,51 @@ namespace TrenchBroom {
         private:
             using Token = FgdTokenizer::Token;
 
-            Color m_defaultEntityColor;
-
             std::vector<Path> m_paths;
             std::shared_ptr<FileSystem> m_fs;
 
             FgdTokenizer m_tokenizer;
-            std::map<std::string, EntityDefinitionClassInfo> m_baseClasses;
         public:
-            FgdParser(const char* begin, const char* end, const Color& defaultEntityColor, const Path& path);
-            FgdParser(const std::string& str, const Color& defaultEntityColor, const Path& path);
-            FgdParser(const std::string& str, const Color& defaultEntityColor);
+            FgdParser(std::string_view str, const Color& defaultEntityColor, const Path& path);
+            FgdParser(std::string_view str, const Color& defaultEntityColor);
         private:
             class PushIncludePath;
             void pushIncludePath(const Path& path);
             void popIncludePath();
 
+            Path currentRoot() const;
             bool isRecursiveInclude(const Path& path) const;
         private:
             TokenNameMap tokenNames() const override;
-            EntityDefinitionList doParseDefinitions(ParserStatus& status) override;
 
-            void parseDefinitionOrInclude(ParserStatus& status, EntityDefinitionList& definitions);
+            std::vector<EntityDefinitionClassInfo> parseClassInfos(ParserStatus& status) override;
 
-            Assets::EntityDefinition* parseDefinition(ParserStatus& status);
-            Assets::EntityDefinition* parseSolidClass(ParserStatus& status);
-            Assets::EntityDefinition* parsePointClass(ParserStatus& status);
-            EntityDefinitionClassInfo parseBaseClass(ParserStatus& status);
-            EntityDefinitionClassInfo parseClass(ParserStatus& status);
+            void parseClassInfoOrInclude(ParserStatus& status, std::vector<EntityDefinitionClassInfo>& classInfos);
+
+            std::optional<EntityDefinitionClassInfo> parseClassInfo(ParserStatus& status);
+            EntityDefinitionClassInfo parseSolidClassInfo(ParserStatus& status);
+            EntityDefinitionClassInfo parsePointClassInfo(ParserStatus& status);
+            EntityDefinitionClassInfo parseBaseClassInfo(ParserStatus& status);
+            EntityDefinitionClassInfo parseClassInfo(ParserStatus& status, EntityDefinitionClassType classType);
             void skipMainClass(ParserStatus& status);
 
             std::vector<std::string> parseSuperClasses(ParserStatus& status);
             Assets::ModelDefinition parseModel(ParserStatus& status);
             std::string parseNamedValue(ParserStatus& status, const std::string& name);
-            void skipClassAttribute(ParserStatus& status);
+            void skipClassProperty(ParserStatus& status);
 
-            AttributeDefinitionMap parseProperties(ParserStatus& status);
-            AttributeDefinitionPtr parseTargetSourceAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseTargetDestinationAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseStringAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseIntegerAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseFloatAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseChoicesAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseFlagsAttribute(ParserStatus& status, const std::string& name);
-            AttributeDefinitionPtr parseUnknownAttribute(ParserStatus& status, const std::string& name);
+            PropertyDefinitionList parsePropertyDefinitions(ParserStatus& status);
+            PropertyDefinitionPtr parseTargetSourcePropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseTargetDestinationPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseStringPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseIntegerPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseFloatPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseChoicesPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseFlagsPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
+            PropertyDefinitionPtr parseUnknownPropertyDefinition(ParserStatus& status, const std::string& propertyKey);
 
             bool parseReadOnlyFlag(ParserStatus& status);
-            std::string parseAttributeDescription(ParserStatus& status);
+            std::string parsePropertyDescription(ParserStatus& status);
             std::optional<std::string> parseDefaultStringValue(ParserStatus& status);
             std::optional<int> parseDefaultIntegerValue(ParserStatus& status);
             std::optional<float> parseDefaultFloatValue(ParserStatus& status);
@@ -129,10 +126,9 @@ namespace TrenchBroom {
             Color parseColor(ParserStatus& status);
             std::string parseString(ParserStatus& status);
 
-            EntityDefinitionList parseInclude(ParserStatus& status);
-            EntityDefinitionList handleInclude(ParserStatus& status, const Path& path);
+            std::vector<EntityDefinitionClassInfo> parseInclude(ParserStatus& status);
+            std::vector<EntityDefinitionClassInfo> handleInclude(ParserStatus& status, const Path& path);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_FgdParser) */

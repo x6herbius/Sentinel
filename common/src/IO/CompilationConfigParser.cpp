@@ -32,11 +32,8 @@
 
 namespace TrenchBroom {
     namespace IO {
-        CompilationConfigParser::CompilationConfigParser(const char* begin, const char* end, const Path& path) :
-        ConfigParserBase(begin, end, path) {}
-
-        CompilationConfigParser::CompilationConfigParser(const std::string& str, const Path& path) :
-        ConfigParserBase(str, path) {}
+        CompilationConfigParser::CompilationConfigParser(std::string_view str, const Path& path) :
+        ConfigParserBase(std::move(str), path) {}
 
         Model::CompilationConfig CompilationConfigParser::parse() {
             const EL::Value root = parseConfigFile().evaluate(EL::EvaluationContext());
@@ -65,8 +62,8 @@ namespace TrenchBroom {
         std::unique_ptr<Model::CompilationProfile> CompilationConfigParser::parseProfile(const EL::Value& value) const {
             expectStructure(value, "[ {'name': 'String', 'workdir': 'String', 'tasks': 'Array'}, {} ]");
 
-            const std::string& name = value["name"].stringValue();
-            const std::string& workdir = value["workdir"].stringValue();
+            const std::string name = value["name"].stringValue();
+            const std::string workdir = value["workdir"].stringValue();
             auto tasks = parseTasks(value["tasks"]);
 
             return std::make_unique<Model::CompilationProfile>(name, workdir, std::move(tasks));
@@ -84,7 +81,7 @@ namespace TrenchBroom {
 
         std::unique_ptr<Model::CompilationTask> CompilationConfigParser::parseTask(const EL::Value& value) const {
             expectMapEntry(value, "type", EL::ValueType::String);
-            const std::string& type = value["type"].stringValue();
+            const std::string type = value["type"].stringValue();
 
             if (type == "export") {
                 return parseExportTask(value);
@@ -98,27 +95,30 @@ namespace TrenchBroom {
         }
 
         std::unique_ptr<Model::CompilationTask> CompilationConfigParser::parseExportTask(const EL::Value& value) const {
-            expectStructure(value, "[ {'type': 'String', 'target': 'String'}, {} ]");
-            const std::string& target = value["target"].stringValue();
-            return std::make_unique<Model::CompilationExportMap>(target);
+            expectStructure(value, "[ {'type': 'String', 'target': 'String'}, { 'enabled': 'Boolean' } ]");
+            const bool enabled = value.contains("enabled") ? value["enabled"].booleanValue() : true;
+            const std::string target = value["target"].stringValue();
+            return std::make_unique<Model::CompilationExportMap>(enabled, target);
         }
 
         std::unique_ptr<Model::CompilationTask> CompilationConfigParser::parseCopyTask(const EL::Value& value) const {
-            expectStructure(value, "[ {'type': 'String', 'source': 'String', 'target': 'String'}, {} ]");
+            expectStructure(value, "[ {'type': 'String', 'source': 'String', 'target': 'String'}, { 'enabled': 'Boolean' } ]");
 
-            const std::string& source = value["source"].stringValue();
-            const std::string& target = value["target"].stringValue();
+            const bool enabled = value.contains("enabled") ? value["enabled"].booleanValue() : true;
+            const std::string source = value["source"].stringValue();
+            const std::string target = value["target"].stringValue();
 
-            return std::make_unique<Model::CompilationCopyFiles>(source, target);
+            return std::make_unique<Model::CompilationCopyFiles>(enabled, source, target);
         }
 
         std::unique_ptr<Model::CompilationTask> CompilationConfigParser::parseToolTask(const EL::Value& value) const {
-            expectStructure(value, "[ {'type': 'String', 'tool': 'String', 'parameters': 'String'}, {} ]");
+            expectStructure(value, "[ {'type': 'String', 'tool': 'String', 'parameters': 'String'}, { 'enabled': 'Boolean' } ]");
 
-            const std::string& tool = value["tool"].stringValue();
-            const std::string& parameters = value["parameters"].stringValue();
+            const bool enabled = value.contains("enabled") ? value["enabled"].booleanValue() : true;
+            const std::string tool = value["tool"].stringValue();
+            const std::string parameters = value["parameters"].stringValue();
 
-            return std::make_unique<Model::CompilationRunTool>(tool, parameters);
+            return std::make_unique<Model::CompilationRunTool>(enabled, tool, parameters);
         }
     }
 }

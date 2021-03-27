@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_EditorContext
-#define TrenchBroom_EditorContext
+#pragma once
 
 #include "Notifier.h"
 #include "Model/TagType.h"
@@ -31,34 +30,24 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class AttributableNode;
-        class Brush;
+        class EntityNodeBase;
+        class BrushNode;
         class BrushFace;
-        class Entity;
-        class Group;
-        class Layer;
+        class EntityNode;
+        class GroupNode;
+        class LayerNode;
         class Node;
         class Object;
-        class World;
+        class WorldNode;
 
         class EditorContext {
-        public:
-            typedef enum {
-                EntityLinkMode_All,
-                EntityLinkMode_Transitive,
-                EntityLinkMode_Direct,
-                EntityLinkMode_None
-            } EntityLinkMode;
         private:
-            bool m_showPointEntities;
-            bool m_showBrushes;
             TagType::Type m_hiddenTags;
             kdl::bitset m_hiddenEntityDefinitions;
-            EntityLinkMode m_entityLinkMode;
 
             bool m_blockSelection;
 
-            Model::Group* m_currentGroup;
+            Model::GroupNode* m_currentGroup;
         public:
             Notifier<> editorContextDidChangeNotifier;
         public:
@@ -66,61 +55,52 @@ namespace TrenchBroom {
 
             void reset();
 
-            bool showPointEntities() const;
-            void setShowPointEntities(bool showPointEntities);
-
-            bool showBrushes() const;
-            void setShowBrushes(bool showBrushes);
-
             TagType::Type hiddenTags() const;
             void setHiddenTags(TagType::Type hiddenTags);
 
-            bool entityDefinitionHidden(const Model::AttributableNode* entity) const;
+            bool entityDefinitionHidden(const Model::EntityNodeBase* entityNode) const;
             bool entityDefinitionHidden(const Assets::EntityDefinition* definition) const;
             void setEntityDefinitionHidden(const Assets::EntityDefinition* definition, bool hidden);
-
-            EntityLinkMode entityLinkMode() const;
-            void setEntityLinkMode(EntityLinkMode entityLinkMode);
 
             bool blockSelection() const;
             void setBlockSelection(bool blockSelection);
         public:
-            Model::Group* currentGroup() const;
-            void pushGroup(Model::Group* group);
+            Model::GroupNode* currentGroup() const;
+            void pushGroup(Model::GroupNode* groupNode);
             void popGroup();
         public:
             bool visible(const Model::Node* node) const;
-            bool visible(const Model::World* world) const;
-            bool visible(const Model::Layer* layer) const;
-            bool visible(const Model::Group* group) const;
-            bool visible(const Model::Entity* entity) const;
-            bool visible(const Model::Brush* brush) const;
-            bool visible(const Model::BrushFace* face) const;
+            bool visible(const Model::WorldNode* worldNode) const;
+            bool visible(const Model::LayerNode* layerNode) const;
+            bool visible(const Model::GroupNode* groupNode) const;
+            bool visible(const Model::EntityNode* entityNode) const;
+            bool visible(const Model::BrushNode* brushNode) const;
+            bool visible(const Model::BrushNode* brushNode, const Model::BrushFace& face) const;
         private:
             bool anyChildVisible(const Model::Node* node) const;
 
         public:
             bool editable(const Model::Node* node) const;
-            bool editable(const Model::BrushFace* face) const;
+            bool editable(const Model::BrushNode* brushNode, const Model::BrushFace& face) const;
 
         private:
             class NodePickable;
         public:
             bool pickable(const Model::Node* node) const;
-            bool pickable(const Model::World* world) const;
-            bool pickable(const Model::Layer* layer) const;
-            bool pickable(const Model::Group* group) const;
-            bool pickable(const Model::Entity* entity) const;
-            bool pickable(const Model::Brush* brush) const;
-            bool pickable(const Model::BrushFace* face) const;
+            bool pickable(const Model::WorldNode* worldNode) const;
+            bool pickable(const Model::LayerNode* layerNode) const;
+            bool pickable(const Model::GroupNode* groupNode) const;
+            bool pickable(const Model::EntityNode* entityNode) const;
+            bool pickable(const Model::BrushNode* brushNode) const;
+            bool pickable(const Model::BrushNode* brushNode, const Model::BrushFace& face) const;
 
             bool selectable(const Model::Node* node) const;
-            bool selectable(const Model::World* world) const;
-            bool selectable(const Model::Layer* layer) const;
-            bool selectable(const Model::Group* group) const;
-            bool selectable(const Model::Entity* entity) const;
-            bool selectable(const Model::Brush* brush) const;
-            bool selectable(const Model::BrushFace* face) const;
+            bool selectable(const Model::WorldNode* worldNode) const;
+            bool selectable(const Model::LayerNode* layerNode) const;
+            bool selectable(const Model::GroupNode* groupNode) const;
+            bool selectable(const Model::EntityNode* entityNode) const;
+            bool selectable(const Model::BrushNode* brushNode) const;
+            bool selectable(const Model::BrushNode* brushNode, const Model::BrushFace& face) const;
 
             bool canChangeSelection() const;
             bool inOpenGroup(const Model::Object* object) const;
@@ -131,4 +111,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_EditorContext) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ViewUtils
-#define TrenchBroom_ViewUtils
+#pragma once
 
 #include <memory>
 #include <string>
@@ -41,8 +40,8 @@ namespace TrenchBroom {
         bool loadEntityDefinitionFile(std::weak_ptr<MapDocument> document, QWidget* parent, const QString& path);
         size_t loadEntityDefinitionFile(std::weak_ptr<MapDocument> document, QWidget* parent, const QStringList& pathStrs);
 
-        std::string queryGroupName(QWidget* parent);
+        std::string queryGroupName(QWidget* parent, const std::string& suggestion);
+        std::string queryLayerName(QWidget* parent, const std::string& suggestion);
     }
 }
 
-#endif /* defined(TrenchBroom_ViewUtils) */

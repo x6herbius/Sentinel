@@ -17,21 +17,17 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Logger.h"
 #include "IO/Path.h"
 #include "IO/TestEnvironment.h"
 #include "Assets/Texture.h"
 #include "Assets/TextureCollection.h"
 #include "Assets/TextureManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
 #include "Model/ChangeBrushFaceAttributesRequest.h"
-#include "Model/Entity.h"
-#include "Model/Layer.h"
+#include "Model/EntityNode.h"
+#include "Model/LayerNode.h"
 #include "Model/Tag.h"
 #include "Model/TagMatcher.h"
 #include "Model/TestGame.h"
@@ -39,36 +35,55 @@
 
 #include <vector>
 
+#include "TestUtils.h"
+
+#include "Catch2.h"
+
 namespace TrenchBroom {
     namespace View {
         class TagManagementTest : public MapDocumentTest {
         protected:
-            Assets::Texture* m_matchingTexture;
-            Assets::Texture* m_nonMatchingTexture;
-            Assets::TextureCollection* m_textureCollection;
+            Assets::Texture* m_textureA;
+            Assets::Texture* m_textureB;
+            Assets::Texture* m_textureC;
+            const Assets::TextureCollection* m_textureCollection;
         private:
             void SetUp() {
-                auto matchingTexture = std::make_unique<Assets::Texture>("some_texture", 16, 16);
-                auto nonMatchingTexture = std::make_unique<Assets::Texture>("other_texture", 32, 32);
+                auto textureA = Assets::Texture("some_texture", 16, 16);
+                auto textureB = Assets::Texture("other_texture", 32, 32);
+                auto textureC = Assets::Texture("yet_another_texture", 64, 64);
 
-                matchingTexture->setSurfaceParms({"some_parm"});
+                const std::string singleParam("some_parm");
+                const std::set<std::string> multiParams({"parm1", "parm2"});
 
-                auto textureCollection = std::make_unique<Assets::TextureCollection>(std::vector<Assets::Texture*>({
-                    matchingTexture.get(),
-                    nonMatchingTexture.get()
-                }));
+                textureA.setSurfaceParms({singleParam});
+                textureB.setSurfaceParms(multiParams);
 
-                document->textureManager().setTextureCollections(std::vector<Assets::TextureCollection*>({
-                    textureCollection.get()
-                }));
+                std::vector<Assets::Texture> textures;
+                textures.push_back(std::move(textureA));
+                textures.push_back(std::move(textureB));
+                textures.push_back(std::move(textureC));
 
-                m_matchingTexture = matchingTexture.release();
-                m_nonMatchingTexture = nonMatchingTexture.release();
-                m_textureCollection = textureCollection.release();
+                std::vector<Assets::TextureCollection> collections;
+                collections.emplace_back(std::move(textures));
+                
+                auto& textureManager = document->textureManager();
+                textureManager.setTextureCollections(std::move(collections));
+                m_textureCollection = &textureManager.collections().back();
 
+                m_textureA = textureManager.texture("some_texture");
+                m_textureB= textureManager.texture("other_texture");
+                m_textureC = textureManager.texture("yet_another_texture");
+
+                const std::string textureMatch("some_texture");
+                const std::string texturePatternMatch("*er_texture");
+                const std::string singleParamMatch("parm2");
+                const kdl::vector_set<std::string> multiParamsMatch{"some_parm", "parm1", "parm3"};
                 game->setSmartTags({
-                    Model::SmartTag("texture", {}, std::make_unique<Model::TextureNameTagMatcher>("some_texture")),
-                    Model::SmartTag("surfaceparm", {}, std::make_unique<Model::SurfaceParmTagMatcher>("some_parm")),
+                    Model::SmartTag("texture", {}, std::make_unique<Model::TextureNameTagMatcher>(textureMatch)),
+                    Model::SmartTag("texturePattern", {}, std::make_unique<Model::TextureNameTagMatcher>(texturePatternMatch)),
+                    Model::SmartTag("surfaceparm_single", {}, std::make_unique<Model::SurfaceParmTagMatcher>(singleParamMatch)),
+                    Model::SmartTag("surfaceparm_multi", {}, std::make_unique<Model::SurfaceParmTagMatcher>(multiParamsMatch)),
                     Model::SmartTag("contentflags", {}, std::make_unique<Model::ContentFlagsTagMatcher>(1)),
                     Model::SmartTag("surfaceflags", {}, std::make_unique<Model::SurfaceFlagsTagMatcher>(1)),
                     Model::SmartTag("entity", {}, std::make_unique<Model::EntityClassNameTagMatcher>("brush_entity", ""))
@@ -95,432 +110,505 @@ namespace TrenchBroom {
         };
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagRegistration") {
-            ASSERT_TRUE(document->isRegisteredSmartTag("texture"));
-            ASSERT_TRUE(document->isRegisteredSmartTag("surfaceparm"));
-            ASSERT_TRUE(document->isRegisteredSmartTag("contentflags"));
-            ASSERT_TRUE(document->isRegisteredSmartTag("surfaceflags"));
-            ASSERT_TRUE(document->isRegisteredSmartTag("entity"));
-            ASSERT_FALSE(document->isRegisteredSmartTag(""));
-            ASSERT_FALSE(document->isRegisteredSmartTag("asdf"));
+            CHECK(document->isRegisteredSmartTag("texture"));
+            CHECK(document->isRegisteredSmartTag("texturePattern"));
+            CHECK(document->isRegisteredSmartTag("surfaceparm_single"));
+            CHECK(document->isRegisteredSmartTag("surfaceparm_multi"));
+            CHECK(document->isRegisteredSmartTag("contentflags"));
+            CHECK(document->isRegisteredSmartTag("surfaceflags"));
+            CHECK(document->isRegisteredSmartTag("entity"));
+            CHECK_FALSE(document->isRegisteredSmartTag(""));
+            CHECK_FALSE(document->isRegisteredSmartTag("asdf"));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagRegistrationAssignsIndexes") {
-            CHECK(0u == document->smartTag("texture").index());
-            CHECK(1u == document->smartTag("surfaceparm").index());
-            CHECK(2u == document->smartTag("contentflags").index());
-            CHECK(3u == document->smartTag("surfaceflags").index());
-            CHECK(4u == document->smartTag("entity").index());
+            CHECK(document->smartTag("texture").index() == 0u);
+            CHECK(document->smartTag("texturePattern").index() == 1u);
+            CHECK(document->smartTag("surfaceparm_single").index() == 2u);
+            CHECK(document->smartTag("surfaceparm_multi").index() == 3u);
+            CHECK(document->smartTag("contentflags").index() == 4u);
+            CHECK(document->smartTag("surfaceflags").index() == 5u);
+            CHECK(document->smartTag("entity").index() == 6u);
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagRegistrationAssignsTypes") {
-            CHECK(1u == document->smartTag("texture").type());
-            CHECK(2u == document->smartTag("surfaceparm").type());
-            CHECK(4u == document->smartTag("contentflags").type());
-            CHECK(8u == document->smartTag("surfaceflags").type());
-            CHECK(16u == document->smartTag("entity").type());
+            CHECK(document->smartTag("texture").type() == 1u);
+            CHECK(document->smartTag("texturePattern").type() == 2u);
+            CHECK(document->smartTag("surfaceparm_single").type() == 4u);
+            CHECK(document->smartTag("surfaceparm_multi").type() == 8u);
+            CHECK(document->smartTag("contentflags").type() == 16u);
+            CHECK(document->smartTag("surfaceflags").type() == 32u);
+            CHECK(document->smartTag("entity").type() == 64u);
         }
     
-        // https://github.com/kduske/TrenchBroom/issues/2905
+
+        // https://github.com/TrenchBroom/TrenchBroom/issues/2905
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.duplicateTag") {
             game->setSmartTags({
                 Model::SmartTag("texture", {}, std::make_unique<Model::TextureNameTagMatcher>("some_texture")),
                 Model::SmartTag("texture", {}, std::make_unique<Model::SurfaceParmTagMatcher>("some_other_texture")),
             });
-            ASSERT_THROW(document->registerSmartTags(), std::logic_error);
+            CHECK_THROWS_AS(document->registerSmartTags(), std::logic_error);
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.matchTextureNameTag") {
-            auto matchingBrush = std::unique_ptr<Model::Brush>(createBrush("some_texture"));
-            auto nonMatchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-
+            auto nodeA = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureA->name()));
+            auto nodeB = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureB->name()));
+            auto nodeC = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureC->name()));
             const auto& tag = document->smartTag("texture");
-            for (const auto* face : matchingBrush->faces()) {
-                ASSERT_TRUE(tag.matches(*face));
+            const auto& patternTag = document->smartTag("texturePattern");
+            for (const auto& face : nodeA->brush().faces()) {
+                CHECK(tag.matches(face));
+                CHECK_FALSE(patternTag.matches(face));
             }
-            for (const auto* face : nonMatchingBrush->faces()) {
-                ASSERT_FALSE(tag.matches(*face));
+            for (const auto& face : nodeB->brush().faces()) {
+                CHECK_FALSE(tag.matches(face));
+                CHECK(patternTag.matches(face));
+            }
+            for (const auto& face : nodeC->brush().faces()) {
+                CHECK_FALSE(tag.matches(face));
+                CHECK(patternTag.matches(face));
             }
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableTextureNameTag") {
-            auto* nonMatchingBrush = createBrush("asdf");
-            document->addNode(nonMatchingBrush, document->currentParent());
+            auto* nonMatchingBrushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), nonMatchingBrushNode);
 
             const auto& tag = document->smartTag("texture");
-            ASSERT_TRUE(tag.canEnable());
+            CHECK(tag.canEnable());
 
-            auto* face = nonMatchingBrush->faces().front();
-            ASSERT_FALSE(tag.matches(*face));
+            const auto faceHandle = Model::BrushFaceHandle(nonMatchingBrushNode, 0u);
+            CHECK_FALSE(tag.matches(faceHandle.face()));
 
-            document->select(face);
+            document->select(faceHandle);
 
             TestCallback callback(0);
             tag.enable(callback, *document);
 
-            ASSERT_TRUE(tag.matches(*face));
+            CHECK(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.disableTextureNameTag") {
             const auto& tag = document->smartTag("texture");
-            ASSERT_FALSE(tag.canDisable());
+            CHECK_FALSE(tag.canDisable());
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.matchSurfaceParmTag") {
-            auto texture = std::make_unique<Assets::Texture>("texturename", 16, 16);
-            texture->setSurfaceParms({"some_parm"});
-
-            auto matchingBrush = std::unique_ptr<Model::Brush>(createBrush("some_texture"));
-            auto nonMatchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-
-            for (auto* face : matchingBrush->faces()) {
-                face->setTexture(texture.get());
+            auto nodeA = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureA->name(), [&](auto& b) {
+                for (auto& face : b.faces()) {
+                    face.setTexture(m_textureA);
+                }
+            }));
+            auto nodeB = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureB->name(), [&](auto& b) {
+                for (auto& face : b.faces()) {
+                    face.setTexture(m_textureB);
+                }
+            }));
+            auto nodeC = std::unique_ptr<Model::BrushNode>(createBrushNode(m_textureC->name(), [&](auto& b) {
+                for (auto& face : b.faces()) {
+                    face.setTexture(m_textureC);
+                }
+            }));
+            const auto& singleTag = document->smartTag("surfaceparm_single");
+            const auto& multiTag = document->smartTag("surfaceparm_multi");
+            for (const auto& face : nodeA->brush().faces()) {
+                CHECK_FALSE(singleTag.matches(face));
+                CHECK(multiTag.matches(face));
             }
-
-            const auto& tag = document->smartTag("surfaceparm");
-            for (const auto* face : matchingBrush->faces()) {
-                ASSERT_TRUE(tag.matches(*face));
+            for (const auto& face : nodeB->brush().faces()) {
+                CHECK(singleTag.matches(face));
+                CHECK(multiTag.matches(face));
             }
-            for (const auto* face : nonMatchingBrush->faces()) {
-                ASSERT_FALSE(tag.matches(*face));
+            for (const auto& face : nodeC->brush().faces()) {
+                CHECK_FALSE(singleTag.matches(face));
+                CHECK_FALSE(multiTag.matches(face));
             }
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableSurfaceParmTag") {
-            const auto& tag = document->smartTag("surfaceparm");
-            ASSERT_FALSE(tag.canEnable());
+            auto* nonMatchingBrushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), nonMatchingBrushNode);
+
+            const auto& tag = document->smartTag("surfaceparm_single");
+            CHECK(tag.canEnable());
+
+            const auto faceHandle = Model::BrushFaceHandle(nonMatchingBrushNode, 0u);
+            CHECK_FALSE(tag.matches(faceHandle.face()));
+
+            document->select(faceHandle);
+
+            TestCallback callback(0);
+            tag.enable(callback, *document);
+
+            CHECK(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.disableSurfaceParmTag") {
-            const auto& tag = document->smartTag("surfaceparm");
-            ASSERT_FALSE(tag.canDisable());
+            const auto& tag = document->smartTag("surfaceparm_single");
+            CHECK_FALSE(tag.canDisable());
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.matchContentFlagsTag") {
-            auto matchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-            auto nonMatchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-
-            for (auto* face : matchingBrush->faces()) {
-                face->setSurfaceContents(1);
-            }
-            for (auto* face : nonMatchingBrush->faces()) {
-                face->setSurfaceContents(2);
-            }
+            auto matchingBrushNode = std::unique_ptr<Model::BrushNode>(createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceContents(1);
+                    face.setAttributes(attributes);
+                }
+            }));
+            auto nonMatchingBrushNode = std::unique_ptr<Model::BrushNode>(createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceContents(2);
+                    face.setAttributes(attributes);
+                }
+            }));
 
             const auto& tag = document->smartTag("contentflags");
-            for (const auto* face : matchingBrush->faces()) {
-                ASSERT_TRUE(tag.matches(*face));
+            for (const auto& face : matchingBrushNode->brush().faces()) {
+                CHECK(tag.matches(face));
             }
-            for (const auto* face : nonMatchingBrush->faces()) {
-                ASSERT_FALSE(tag.matches(*face));
+            for (const auto& face : nonMatchingBrushNode->brush().faces()) {
+                CHECK_FALSE(tag.matches(face));
             }
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableContentFlagsTag") {
-            auto* nonMatchingBrush = createBrush("asdf");
-            document->addNode(nonMatchingBrush, document->currentParent());
+            auto* nonMatchingBrushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), nonMatchingBrushNode);
 
             const auto& tag = document->smartTag("contentflags");
-            ASSERT_TRUE(tag.canEnable());
+            CHECK(tag.canEnable());
 
-            auto* face = nonMatchingBrush->faces().front();
-            ASSERT_FALSE(tag.matches(*face));
+            const auto faceHandle = Model::BrushFaceHandle(nonMatchingBrushNode, 0u);
+            CHECK_FALSE(tag.matches(faceHandle.face()));
 
-            document->select(face);
+            document->select(faceHandle);
 
             TestCallback callback(0);
             tag.enable(callback, *document);
 
-            ASSERT_TRUE(tag.matches(*face));
+            CHECK(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.disableContentFlagsTag") {
-            auto* matchingBrush = createBrush("asdf");
-            for (auto* face : matchingBrush->faces()) {
-                face->setSurfaceContents(1);
-            }
+            auto* matchingBrushNode = createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceContents(1);
+                    face.setAttributes(attributes);
+                }
+            });
 
-            document->addNode(matchingBrush, document->currentParent());
+            addNode(*document, document->parentForNodes(), matchingBrushNode);
 
             const auto& tag = document->smartTag("contentflags");
-            ASSERT_TRUE(tag.canDisable());
+            CHECK(tag.canDisable());
 
-            auto* face = matchingBrush->faces().front();
-            ASSERT_TRUE(tag.matches(*face));
+            const auto faceHandle = Model::BrushFaceHandle(matchingBrushNode, 0u);
+            CHECK(tag.matches(faceHandle.face()));
 
-            document->select(face);
+            document->select(faceHandle);
 
             TestCallback callback(0);
             tag.disable(callback, *document);
 
-            ASSERT_FALSE(tag.matches(*face));
+            CHECK_FALSE(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.matchSurfaceFlagsTag") {
-            auto matchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-            auto nonMatchingBrush = std::unique_ptr<Model::Brush>(createBrush("asdf"));
-
-            for (auto* face : matchingBrush->faces()) {
-                face->setSurfaceFlags(1);
-            }
-            for (auto* face : nonMatchingBrush->faces()) {
-                face->setSurfaceFlags(2);
-            }
+            auto matchingBrushNode = std::unique_ptr<Model::BrushNode>(createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceFlags(1);
+                    face.setAttributes(attributes);
+                }
+            }));
+            auto nonMatchingBrushNode = std::unique_ptr<Model::BrushNode>(createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceFlags(2);
+                    face.setAttributes(attributes);
+                }
+            }));
 
             const auto& tag = document->smartTag("surfaceflags");
-            for (const auto* face : matchingBrush->faces()) {
-                ASSERT_TRUE(tag.matches(*face));
+            for (const auto& face : matchingBrushNode->brush().faces()) {
+                CHECK(tag.matches(face));
             }
-            for (const auto* face : nonMatchingBrush->faces()) {
-                ASSERT_FALSE(tag.matches(*face));
+            for (const auto& face : nonMatchingBrushNode->brush().faces()) {
+                CHECK_FALSE(tag.matches(face));
             }
         }
+
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableSurfaceFlagsTag") {
-            auto* nonMatchingBrush = createBrush("asdf");
-            document->addNode(nonMatchingBrush, document->currentParent());
+            auto* nonMatchingBrushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), nonMatchingBrushNode);
 
             const auto& tag = document->smartTag("surfaceflags");
-            ASSERT_TRUE(tag.canEnable());
+            CHECK(tag.canEnable());
 
-            auto* face = nonMatchingBrush->faces().front();
-            ASSERT_FALSE(tag.matches(*face));
+            const auto faceHandle = Model::BrushFaceHandle(nonMatchingBrushNode, 0u);
+            CHECK_FALSE(tag.matches(faceHandle.face()));
 
-            document->select(face);
+            document->select(faceHandle);
 
             TestCallback callback(0);
             tag.enable(callback, *document);
 
-            ASSERT_TRUE(tag.matches(*face));
+            CHECK(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.disableSurfaceFlagsTag") {
-            auto* matchingBrush = createBrush("asdf");
-            for (auto* face : matchingBrush->faces()) {
-                face->setSurfaceFlags(1);
-            }
+            auto* matchingBrushNode = createBrushNode("asdf", [](auto& b) {
+                for (auto& face : b.faces()) {
+                    auto attributes = face.attributes();
+                    attributes.setSurfaceFlags(1);
+                    face.setAttributes(attributes);
+                }
+            });
 
-            document->addNode(matchingBrush, document->currentParent());
+            addNode(*document, document->parentForNodes(), matchingBrushNode);
 
             const auto& tag = document->smartTag("surfaceflags");
-            ASSERT_TRUE(tag.canDisable());
+            CHECK(tag.canDisable());
 
-            auto* face = matchingBrush->faces().front();
-            ASSERT_TRUE(tag.matches(*face));
+            const auto faceHandle = Model::BrushFaceHandle(matchingBrushNode, 0u);
+            CHECK(tag.matches(faceHandle.face()));
 
-            document->select(face);
+            document->select(faceHandle);
 
             TestCallback callback(0);
             tag.disable(callback, *document);
 
-            ASSERT_FALSE(tag.matches(*face));
+            CHECK_FALSE(tag.matches(faceHandle.face()));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.matchEntityClassnameTag") {
-            auto* matchingBrush = createBrush("asdf");
-            auto* nonMatchingBrush = createBrush("asdf");
+            auto* matchingBrushNode = createBrushNode("asdf");
+            auto* nonMatchingBrushNode = createBrushNode("asdf");
 
-            auto matchingEntity = std::make_unique<Model::Entity>();
-            matchingEntity->addOrUpdateAttribute("classname", "brush_entity");
-            matchingEntity->addChild(matchingBrush);
+            auto matchingEntity = std::make_unique<Model::EntityNode>(Model::Entity({
+                {"classname", "brush_entity"}
+            }));
+            matchingEntity->addChild(matchingBrushNode);
 
-            auto nonMatchingEntity = std::make_unique<Model::Entity>();
-            nonMatchingEntity->addOrUpdateAttribute("classname", "something");
-            nonMatchingEntity->addChild(nonMatchingBrush);
+            auto nonMatchingEntity = std::make_unique<Model::EntityNode>(Model::Entity({
+                {"classname", "something"}
+            }));
+            nonMatchingEntity->addChild(nonMatchingBrushNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_TRUE(tag.matches(*matchingBrush));
-            ASSERT_FALSE(tag.matches(*nonMatchingBrush));
+            CHECK(tag.matches(*matchingBrushNode));
+            CHECK_FALSE(tag.matches(*nonMatchingBrushNode));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableEntityClassnameTag") {
-            auto* brush = createBrush("asdf");
-            document->addNode(brush, document->currentParent());
+            auto* brushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), brushNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_FALSE(tag.matches(*brush));
+            CHECK_FALSE(tag.matches(*brushNode));
 
-            ASSERT_TRUE(tag.canEnable());
+            CHECK(tag.canEnable());
 
-            document->select(brush);
+            document->select(brushNode);
 
             TestCallback callback(0);
             tag.enable(callback, *document);
-            ASSERT_TRUE(tag.matches(*brush));
+            CHECK(tag.matches(*brushNode));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.enableEntityClassnameTagRetainsAttributes") {
-            auto* brush = createBrush("asdf");
+            auto* brushNode = createBrushNode("asdf");
 
-            auto* oldEntity = new Model::Entity();
-            oldEntity->addOrUpdateAttribute("classname", "something");
-            oldEntity->addOrUpdateAttribute("some_attr", "some_value");
+            auto* oldEntity = new Model::EntityNode({
+                {"classname", "something"},
+                {"some_attr", "some_value"}
+            });
 
-            document->addNode(oldEntity, document->currentParent());
-            document->addNode(brush, oldEntity);
+            addNode(*document, document->parentForNodes(), oldEntity);
+            addNode(*document, oldEntity, brushNode);
 
             const auto& tag = document->smartTag("entity");
-            document->select(brush);
+            document->select(brushNode);
 
             TestCallback callback(0);
             tag.enable(callback, *document);
-            ASSERT_TRUE(tag.matches(*brush));
+            CHECK(tag.matches(*brushNode));
 
-            auto* newEntity = brush->entity();
-            ASSERT_NE(oldEntity, newEntity);
+            auto* newEntityNode = brushNode->entity();
+            CHECK(newEntityNode != oldEntity);
 
-            ASSERT_NE(nullptr, newEntity);
-            ASSERT_TRUE(newEntity->hasAttribute("some_attr"));
-            ASSERT_EQ("some_value", newEntity->attribute("some_attr", ""));
+            CHECK(newEntityNode != nullptr);
+            CHECK(newEntityNode->entity().hasProperty("some_attr"));
+            CHECK(*newEntityNode->entity().property("some_attr") == "some_value");
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.disableEntityClassnameTag") {
-            auto* brush = createBrush("asdf");
+            auto* brushNode = createBrushNode("asdf");
 
-            auto* oldEntity = new Model::Entity();
-            oldEntity->addOrUpdateAttribute("classname", "brush_entity");
+            auto* oldEntity = new Model::EntityNode({
+                {"classname", "brush_entity"}
+            });
 
-            document->addNode(oldEntity, document->currentParent());
-            document->addNode(brush, oldEntity);
+            addNode(*document, document->parentForNodes(), oldEntity);
+            addNode(*document, oldEntity, brushNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_TRUE(tag.matches(*brush));
+            CHECK(tag.matches(*brushNode));
 
-            ASSERT_TRUE(tag.canDisable());
+            CHECK(tag.canDisable());
 
-            document->select(brush);
+            document->select(brushNode);
 
             TestCallback callback(0);
             tag.disable(callback, *document);
-            ASSERT_FALSE(tag.matches(*brush));
+            CHECK_FALSE(tag.matches(*brushNode));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagInitializeBrushTags") {
-            auto* entity = new Model::Entity();
-            entity->addOrUpdateAttribute("classname", "brush_entity");
-            document->addNode(entity, document->currentParent());
+            auto* entityNode = new Model::EntityNode({
+                {"classname", "brush_entity"}
+            });
+            addNode(*document, document->parentForNodes(), entityNode);
 
-            auto* brush = createBrush("some_texture");
-            document->addNode(brush, entity);
+            auto* brush = createBrushNode("some_texture");
+            addNode(*document, entityNode, brush);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_TRUE(brush->hasTag(tag));
+            CHECK(brush->hasTag(tag));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagRemoveBrushTags") {
-            auto* entity = new Model::Entity();
-            entity->addOrUpdateAttribute("classname", "brush_entity");
-            document->addNode(entity, document->currentParent());
+            auto* entityNode = new Model::EntityNode({
+                {"classname", "brush_entity"}
+            });
+            addNode(*document, document->parentForNodes(), entityNode);
 
-            auto* brush = createBrush("some_texture");
-            document->addNode(brush, entity);
+            auto* brush = createBrushNode("some_texture");
+            addNode(*document, entityNode, brush);
 
-            document->removeNode(brush);
+            removeNode(*document, brush);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_FALSE(brush->hasTag(tag));
+            CHECK_FALSE(brush->hasTag(tag));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagUpdateBrushTags") {
-            auto* brush = createBrush("some_texture");
-            document->addNode(brush, document->currentParent());
+            auto* brushNode = createBrushNode("some_texture");
+            addNode(*document, document->parentForNodes(), brushNode);
 
-            auto* entity = new Model::Entity();
-            entity->addOrUpdateAttribute("classname", "brush_entity");
-            document->addNode(entity, document->currentParent());
+            auto* entityNode = new Model::EntityNode({
+                {"classname", "brush_entity"}
+            });
+            addNode(*document, document->parentForNodes(), entityNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_FALSE(brush->hasTag(tag));
+            CHECK_FALSE(brushNode->hasTag(tag));
 
-            document->reparentNodes(entity, { brush });
-            ASSERT_TRUE(brush->hasTag(tag));
+            reparentNodes(*document, entityNode, { brushNode });
+            CHECK(brushNode->hasTag(tag));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagUpdateBrushTagsAfterReparenting") {
-            auto* lightEntity = new Model::Entity();
-            lightEntity->addOrUpdateAttribute("classname", "brush_entity");
-            document->addNode(lightEntity, document->currentParent());
+            auto* lightEntityNode = new Model::EntityNode({
+                {"classname", "brush_entity"}
+            });
+            addNode(*document, document->parentForNodes(), lightEntityNode);
 
-            auto* otherEntity = new Model::Entity();
-            otherEntity->addOrUpdateAttribute("classname", "other");
-            document->addNode(otherEntity, document->currentParent());
+            auto* otherEntityNode = new Model::EntityNode({
+                {"classname", "other"}
+            });
+            addNode(*document, document->parentForNodes(), otherEntityNode);
 
-            auto* brush = createBrush("some_texture");
-            document->addNode(brush, otherEntity);
+            auto* brushNode = createBrushNode("some_texture");
+            addNode(*document, otherEntityNode, brushNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_FALSE(brush->hasTag(tag));
+            CHECK_FALSE(brushNode->hasTag(tag));
 
-            document->reparentNodes(lightEntity, { brush });
-            ASSERT_TRUE(brush->hasTag(tag));
+            reparentNodes(*document, lightEntityNode, { brushNode });
+            CHECK(brushNode->hasTag(tag));
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagUpdateBrushTagsAfterChangingClassname") {
-            auto* lightEntity = new Model::Entity();
-            lightEntity->addOrUpdateAttribute("classname", "asdf");
-            document->addNode(lightEntity, document->currentParent());
+            auto* lightEntityNode = new Model::EntityNode({
+                {"classname", "asdf"}
+            });
+            addNode(*document, document->parentForNodes(), lightEntityNode);
 
-            auto* brush = createBrush("some_texture");
-            document->addNode(brush, lightEntity);
+            auto* brushNode = createBrushNode("some_texture");
+            addNode(*document, lightEntityNode, brushNode);
 
             const auto& tag = document->smartTag("entity");
-            ASSERT_FALSE(brush->hasTag(tag));
+            CHECK_FALSE(brushNode->hasTag(tag));
 
-            document->select(lightEntity);
-            document->setAttribute("classname", "brush_entity");
+            document->select(lightEntityNode);
+            document->setProperty("classname", "brush_entity");
             document->deselectAll();
 
-            ASSERT_TRUE(brush->hasTag(tag));
+            CHECK(brushNode->hasTag(tag));
         }
 
-        TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagInitializeBrushFaceTags") {
-            auto* brushWithTags = createBrush("some_texture");
-            document->addNode(brushWithTags, document->currentParent());
+        TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagInitializeBrushFaceTags", "[TagManagementTest]") {
+            auto* brushNodeWithTags = createBrushNode("some_texture");
+            addNode(*document, document->parentForNodes(), brushNodeWithTags);
+            document->select(brushNodeWithTags);
 
-            const auto& tag = document->smartTag("texture");
-            for (const auto* face : brushWithTags->faces()) {
-                ASSERT_TRUE(face->hasTag(tag));
+            SECTION("No modification to brush") {
+            }
+            SECTION("Vertex manipulation") {
+                const auto result = document->moveVertices({vm::vec3::fill(16.0)}, vm::vec3::fill(1.0));
+                REQUIRE(result.success);
+                REQUIRE(result.hasRemainingVertices);
             }
 
-            auto* brushWithoutTags = createBrush("asdf");
-            document->addNode(brushWithoutTags, document->currentParent());
+            const auto& tag = document->smartTag("texture");
+            for (const auto& face : brushNodeWithTags->brush().faces()) {
+                CHECK(face.hasTag(tag));
+            }
 
-            for (const auto* face : brushWithoutTags->faces()) {
-                ASSERT_FALSE(face->hasTag(tag));
+            auto* brushNodeWithoutTags = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), brushNodeWithoutTags);
+
+            for (const auto& face : brushNodeWithoutTags->brush().faces()) {
+                CHECK(!face.hasTag(tag));
             }
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagRemoveBrushFaceTags") {
-            auto* brushWithTags = createBrush("some_texture");
-            document->addNode(brushWithTags, document->currentParent());
-            document->removeNode(brushWithTags);
+            auto* brushNodeWithTags = createBrushNode("some_texture");
+            addNode(*document, document->parentForNodes(), brushNodeWithTags);
+            removeNode(*document, brushNodeWithTags);
 
             const auto& tag = document->smartTag("texture");
-            for (const auto* face : brushWithTags->faces()) {
-                ASSERT_FALSE(face->hasTag(tag));
+            for (const auto& face : brushNodeWithTags->brush().faces()) {
+                CHECK_FALSE(face.hasTag(tag));
             }
         }
 
         TEST_CASE_METHOD(TagManagementTest, "TagManagementTest.tagUpdateBrushFaceTags") {
-            auto* brush = createBrush("asdf");
-            document->addNode(brush, document->currentParent());
+            auto* brushNode = createBrushNode("asdf");
+            addNode(*document, document->parentForNodes(), brushNode);
 
             const auto& tag = document->smartTag("contentflags");
 
-            auto* face = brush->faces().front();
-            ASSERT_FALSE(face->hasTag(tag));
+            const auto faceHandle = Model::BrushFaceHandle(brushNode, 0u);
+            CHECK_FALSE(faceHandle.face().hasTag(tag));
 
             Model::ChangeBrushFaceAttributesRequest request;
-            request.setContentFlag(0);
+            request.setContentFlags(1);
 
-            document->select(face);
+            document->select(faceHandle);
             document->setFaceAttributes(request);
             document->deselectAll();
 
-            for (const auto* f : brush->faces()) {
-                if (f == face) {
-                    ASSERT_TRUE(f->hasTag(tag));
-                } else {
-                    ASSERT_FALSE(f->hasTag(tag));
-                }
+            const auto& faces = brushNode->brush().faces();
+            CHECK(faces[0].hasTag(tag));
+            for (size_t i = 1u; i < faces.size(); ++i) {
+                CHECK(!faces[i].hasTag(tag));
             }
         }
     }

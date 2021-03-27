@@ -19,8 +19,8 @@
 
 #include "LayerListBox.h"
 
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocument.h"
 #include "View/ViewConstants.h"
 #include "View/QtUtils.h"
@@ -32,13 +32,24 @@
 #include <QAbstractButton>
 #include <QListWidgetItem>
 #include <QMouseEvent>
+#include <QRadioButton>
+#include <QToolButton>
+#include <QtGlobal>
 
 namespace TrenchBroom {
     namespace View {
-        LayerListBoxWidget::LayerListBoxWidget(std::weak_ptr<MapDocument> document, Model::Layer* layer, QWidget* parent) :
+        // LayerListBoxWidget
+
+        LayerListBoxWidget::LayerListBoxWidget(std::weak_ptr<MapDocument> document, Model::LayerNode* layer, QWidget* parent) :
         ControlListBoxItemRenderer(parent),
         m_document(std::move(document)),
-        m_layer(layer) {
+        m_layer(layer),
+        m_activeButton(nullptr),
+        m_nameText(nullptr),
+        m_infoText(nullptr),
+        m_omitFromExportButton(nullptr),
+        m_hiddenButton(nullptr),
+        m_lockButton(nullptr) {
             m_nameText = new QLabel(QString::fromStdString(m_layer->name()));
             // Ignore the label's minimum width, this prevents a horizontal scroll bar from appearing on the list widget,
             // and instead just cuts off the label for long layer names.
@@ -46,10 +57,18 @@ namespace TrenchBroom {
             m_infoText = new QLabel("");
             makeInfo(m_infoText);
 
-            m_hiddenButton = createBitmapToggleButton("Hidden.png", "");
-            m_lockButton = createBitmapToggleButton("Lock.png", "");
+            m_activeButton = new QRadioButton();
+            m_omitFromExportButton = createBitmapToggleButton("OmitFromExport.svg", tr("Toggle omit from export"));
+            m_hiddenButton = createBitmapToggleButton("Hidden.svg", tr("Toggle hidden state"));
+            m_lockButton = createBitmapToggleButton("Lock.svg", tr("Toggle locked state"));
 
             auto documentS = kdl::mem_lock(m_document);
+            connect(m_omitFromExportButton, &QAbstractButton::clicked, this, [this]() {
+                emit layerOmitFromExportToggled(m_layer);
+            });
+            connect(m_activeButton, &QAbstractButton::clicked, this, [this]() {
+                emit layerActiveClicked(m_layer);
+            });
             connect(m_hiddenButton, &QAbstractButton::clicked, this, [this](){
                 emit layerVisibilityToggled(m_layer);
             });
@@ -61,24 +80,22 @@ namespace TrenchBroom {
             m_nameText->installEventFilter(this);
             m_infoText->installEventFilter(this);
 
-            auto* itemPanelBottomLayout = new QHBoxLayout();
-            itemPanelBottomLayout->setContentsMargins(0, 0, 0, 0);
-            itemPanelBottomLayout->setSpacing(0);
+            auto* textLayout = new QVBoxLayout();
+            textLayout->setContentsMargins(0, LayoutConstants::NarrowVMargin, 0, LayoutConstants::NarrowVMargin);
+            textLayout->setSpacing(LayoutConstants::NarrowVMargin);
+            textLayout->addWidget(m_nameText, 1);
+            textLayout->addWidget(m_infoText, 1);
 
-            itemPanelBottomLayout->addWidget(m_hiddenButton, 0, Qt::AlignVCenter);
-            itemPanelBottomLayout->addWidget(m_lockButton, 0, Qt::AlignVCenter);
-            itemPanelBottomLayout->addWidget(m_infoText, 0, Qt::AlignVCenter);
-            itemPanelBottomLayout->addStretch(1);
-            itemPanelBottomLayout->addSpacing(LayoutConstants::NarrowHMargin);
-
-            auto* itemPanelLayout = new QVBoxLayout();
+            auto* itemPanelLayout = new QHBoxLayout();
             itemPanelLayout->setContentsMargins(0, 0, 0, 0);
-            itemPanelLayout->setSpacing(0);
+            itemPanelLayout->setSpacing(LayoutConstants::MediumHMargin);
 
-            itemPanelLayout->addSpacing(LayoutConstants::NarrowVMargin);
-            itemPanelLayout->addWidget(m_nameText);
-            itemPanelLayout->addLayout(itemPanelBottomLayout);
-            itemPanelLayout->addSpacing(LayoutConstants::NarrowVMargin);
+            itemPanelLayout->addWidget(m_activeButton);
+            itemPanelLayout->addSpacing(LayoutConstants::NarrowHMargin);
+            itemPanelLayout->addLayout(textLayout, 1);
+            itemPanelLayout->addWidget(m_omitFromExportButton);
+            itemPanelLayout->addWidget(m_hiddenButton);
+            itemPanelLayout->addWidget(m_lockButton);
             setLayout(itemPanelLayout);
 
             updateLayerItem();
@@ -93,7 +110,8 @@ namespace TrenchBroom {
          */
         void LayerListBoxWidget::updateLayerItem() {
             // Update labels
-            m_nameText->setText(QString::fromStdString(m_layer->name()));
+            m_nameText->setText(tr("%1")
+                .arg(QString::fromStdString(m_layer->name())));
             if (kdl::mem_lock(m_document)->currentLayer() == m_layer) {
                 makeEmphasized(m_nameText);
             } else {
@@ -104,15 +122,14 @@ namespace TrenchBroom {
             m_infoText->setText(info);
 
             // Update buttons
+            auto document = kdl::mem_lock(m_document);
+            m_activeButton->setChecked(document->currentLayer() == m_layer);
             m_lockButton->setChecked(m_layer->locked());
             m_hiddenButton->setChecked(m_layer->hidden());
-
-            auto document = kdl::mem_lock(m_document);
-            m_lockButton->setEnabled(m_layer->locked() || m_layer != document->currentLayer());
-            m_hiddenButton->setEnabled(m_layer->hidden() || m_layer != document->currentLayer());
+            m_omitFromExportButton->setChecked(m_layer->layer().omitFromExport());
         }
 
-        Model::Layer* LayerListBoxWidget::layer() const {
+        Model::LayerNode* LayerListBoxWidget::layer() const {
             return m_layer;
         }
 
@@ -145,15 +162,15 @@ namespace TrenchBroom {
             unbindObservers();
         }
 
-        Model::Layer* LayerListBox::selectedLayer() const {
+        Model::LayerNode* LayerListBox::selectedLayer() const {
             return layerForRow(currentRow());
         }
 
-        void LayerListBox::setSelectedLayer(Model::Layer* layer) {
+        void LayerListBox::setSelectedLayer(Model::LayerNode* layer) {
             for (int i = 0; i < count(); ++i) {
                 if (layerForRow(i) == layer) {
                     setCurrentRow(i);
-                    break;
+                    return;
                 }
             }
             setCurrentRow(-1);
@@ -165,10 +182,11 @@ namespace TrenchBroom {
             document->documentWasLoadedNotifier.addObserver(this, &LayerListBox::documentDidChange);
             document->documentWasClearedNotifier.addObserver(this, &LayerListBox::documentDidChange);
             document->currentLayerDidChangeNotifier.addObserver(this, &LayerListBox::currentLayerDidChange);
-            document->nodesWereAddedNotifier.addObserver(this, &LayerListBox::nodesWereAddedOrRemoved);
-            document->nodesWereRemovedNotifier.addObserver(this, &LayerListBox::nodesWereAddedOrRemoved);
+            document->nodesWereAddedNotifier.addObserver(this, &LayerListBox::nodesDidChange);
+            document->nodesWereRemovedNotifier.addObserver(this, &LayerListBox::nodesDidChange);
             document->nodesDidChangeNotifier.addObserver(this, &LayerListBox::nodesDidChange);
             document->nodeVisibilityDidChangeNotifier.addObserver(this, &LayerListBox::nodesDidChange);
+            document->nodeLockingDidChangeNotifier.addObserver(this, &LayerListBox::nodesDidChange);
         }
 
         void LayerListBox::unbindObservers() {
@@ -178,10 +196,11 @@ namespace TrenchBroom {
                 document->documentWasLoadedNotifier.removeObserver(this, &LayerListBox::documentDidChange);
                 document->documentWasClearedNotifier.removeObserver(this, &LayerListBox::documentDidChange);
                 document->currentLayerDidChangeNotifier.removeObserver(this, &LayerListBox::currentLayerDidChange);
-                document->nodesWereAddedNotifier.removeObserver(this, &LayerListBox::nodesWereAddedOrRemoved);
-                document->nodesWereRemovedNotifier.removeObserver(this, &LayerListBox::nodesWereAddedOrRemoved);
+                document->nodesWereAddedNotifier.removeObserver(this, &LayerListBox::nodesDidChange);
+                document->nodesWereRemovedNotifier.removeObserver(this, &LayerListBox::nodesDidChange);
                 document->nodesDidChangeNotifier.removeObserver(this, &LayerListBox::nodesDidChange);
                 document->nodeVisibilityDidChangeNotifier.removeObserver(this, &LayerListBox::nodesDidChange);
+                document->nodeLockingDidChangeNotifier.removeObserver(this, &LayerListBox::nodesDidChange);
             }
         }
 
@@ -189,22 +208,20 @@ namespace TrenchBroom {
             reload();
         }
 
-        void LayerListBox::nodesWereAddedOrRemoved(const std::vector<Model::Node*>& nodes) {
+        void LayerListBox::nodesDidChange(const std::vector<Model::Node*>& nodes) {
             for (const auto* node : nodes) {
-                if (dynamic_cast<const Model::Layer*>(node) != nullptr) {
-                    // A layer was added or removed, so we need to clear and repopulate the list
+                if (dynamic_cast<const Model::LayerNode*>(node) != nullptr) {
+                    // A layer was added or removed or modified, so we need to clear and repopulate the list
+                    auto* previouslySelectedLayer = selectedLayer();
                     reload();
+                    setSelectedLayer(previouslySelectedLayer);
                     return;
                 }
             }
             updateItems();
         }
 
-        void LayerListBox::nodesDidChange(const std::vector<Model::Node*>&) {
-            updateItems();
-        }
-
-        void LayerListBox::currentLayerDidChange(const Model::Layer*) {
+        void LayerListBox::currentLayerDidChange(const Model::LayerNode*) {
             updateItems();
         }
 
@@ -219,23 +236,21 @@ namespace TrenchBroom {
 
         ControlListBoxItemRenderer* LayerListBox::createItemRenderer(QWidget* parent, const size_t index) {
             auto document = kdl::mem_lock(m_document);
-            const auto* world = document->world();
-            const auto layers = world->allLayers();
-            auto* renderer = new LayerListBoxWidget(document, layers[index], parent);
+            auto* world = document->world();
 
-            connect(renderer, &LayerListBoxWidget::layerDoubleClicked, this, [this](auto* layer){
-                emit layerSetCurrent(layer);
-            });
-            connect(renderer, &LayerListBoxWidget::layerRightClicked, this, [this](auto* layer) {
-                emit layerRightClicked(layer);
-            });
-            connect(renderer, &LayerListBoxWidget::layerVisibilityToggled, this, [this](auto* layer) {
-                emit layerVisibilityToggled(layer);
-            });
-            connect(renderer, &LayerListBoxWidget::layerLockToggled, this, [this](auto* layer) {
-                emit layerLockToggled(layer);
-            });
-
+            Model::LayerNode* layer;
+            if (index == 0) {
+                layer = world->defaultLayer();
+            } else {
+                layer = world->customLayersUserSorted().at(index - 1);
+            }
+            auto* renderer = new LayerListBoxWidget(document, layer, parent);
+            connect(renderer, &LayerListBoxWidget::layerActiveClicked,     this, &LayerListBox::layerSetCurrent);
+            connect(renderer, &LayerListBoxWidget::layerDoubleClicked,     this, &LayerListBox::layerSetCurrent);
+            connect(renderer, &LayerListBoxWidget::layerRightClicked,      this, &LayerListBox::layerRightClicked);
+            connect(renderer, &LayerListBoxWidget::layerOmitFromExportToggled, this, &LayerListBox::layerOmitFromExportToggled);
+            connect(renderer, &LayerListBoxWidget::layerVisibilityToggled, this, &LayerListBox::layerVisibilityToggled);
+            connect(renderer, &LayerListBoxWidget::layerLockToggled,       this, &LayerListBox::layerLockToggled);
             return renderer;
         }
 
@@ -252,7 +267,7 @@ namespace TrenchBroom {
             }
         }
 
-        Model::Layer* LayerListBox::layerForRow(const int row) const {
+        Model::LayerNode* LayerListBox::layerForRow(const int row) const {
             const auto* widget = widgetAtRow(row);
             if (widget == nullptr) {
                 return nullptr;

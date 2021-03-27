@@ -17,17 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Ensure.h"
 #include "Macros.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Ensure {
         TEST_CASE("EnsureTest.successfulEnsure", "[EnsureTest]") {
-            EXPECT_NO_THROW([](){
+            CHECK_NOTHROW([](){
                 ensure(true, "this shouldn't fail");
             }());
         }

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Preferences_h
-#define TrenchBroom_Preferences_h
+#pragma once
 
 #include "Color.h"
 #include "Preference.h"
@@ -37,7 +36,12 @@ namespace TrenchBroom {
 
         extern Preference<int> MapViewLayout;
 
+        QString systemTheme();
+        QString darkTheme();
+        extern Preference<QString> Theme;
+
         extern Preference<bool>  ShowAxes;
+        extern Preference<Color> SoftMapBoundsColor;
         extern Preference<Color> BackgroundColor;
         extern Preference<float> AxisLength;
         extern Preference<Color> XAxisColor;
@@ -57,6 +61,7 @@ namespace TrenchBroom {
         extern Preference<Color> CameraFrustumColor;
 
         extern Preference<Color> DefaultGroupColor;
+        extern Preference<Color> LinkedGroupColor;
 
         extern Preference<Color> TutorialOverlayTextColor;
         extern Preference<Color> TutorialOverlayBackgroundColor;
@@ -67,7 +72,7 @@ namespace TrenchBroom {
         extern Preference<float> TransparentFaceAlpha;
         extern Preference<Color> EdgeColor;
         extern Preference<Color> SelectedEdgeColor;
-        extern Preference<Color> OccludedSelectedEdgeColor;
+        extern Preference<float> OccludedSelectedEdgeAlpha;
         extern Preference<Color> LockedEdgeColor;
         extern Preference<Color> UndefinedEntityColor;
 
@@ -76,7 +81,7 @@ namespace TrenchBroom {
         extern Preference<Color> InfoOverlayTextColor;
         extern Preference<Color> GroupInfoOverlayTextColor;
         extern Preference<Color> InfoOverlayBackgroundColor;
-        extern Preference<Color> WeakInfoOverlayBackgroundColor;
+        extern Preference<float> WeakInfoOverlayBackgroundAlpha;
         extern Preference<Color> SelectedInfoOverlayTextColor;
         extern Preference<Color> SelectedInfoOverlayBackgroundColor;
         extern Preference<Color> LockedInfoOverlayTextColor;
@@ -99,7 +104,7 @@ namespace TrenchBroom {
         extern Preference<Color> ScaleHandleColor;
         extern Preference<Color> ScaleFillColor;
         extern Preference<Color> ScaleOutlineColor;
-        extern Preference<Color> ScaleOutlineDimColor;
+        extern Preference<float> ScaleOutlineDimAlpha;
         extern Preference<Color> ShearFillColor;
         extern Preference<Color> ShearOutlineColor;
 
@@ -119,6 +124,7 @@ namespace TrenchBroom {
 
         extern Preference<int> TextureMinFilter;
         extern Preference<int> TextureMagFilter;
+        extern Preference<bool> EnableMSAA;
 
         extern Preference<bool> TextureLock;
         extern Preference<bool> UVLock;
@@ -129,6 +135,7 @@ namespace TrenchBroom {
         extern Preference<int> BrowserFontSize;
         extern Preference<Color> BrowserTextColor;
         extern Preference<Color> BrowserSubTextColor;
+        extern Preference<Color> BrowserBackgroundColor;
         extern Preference<Color> BrowserGroupBackgroundColor;
         extern Preference<float> TextureBrowserIconSize;
         extern Preference<Color> TextureBrowserDefaultColor;
@@ -149,6 +156,8 @@ namespace TrenchBroom {
 
         extern Preference<float> CameraFov;
 
+        static constexpr auto MinCameraFlyMoveSpeed = 0.1f;
+        static constexpr auto MaxCameraFlyMoveSpeed = 10.0f;
         extern Preference<float> CameraFlyMoveSpeed;
 
         extern Preference<bool> Link2DCameras;
@@ -159,6 +168,34 @@ namespace TrenchBroom {
         extern Preference<QKeySequence>& CameraFlyRight();
         extern Preference<QKeySequence>& CameraFlyUp();
         extern Preference<QKeySequence>& CameraFlyDown();
+
+        // Map view config
+        extern Preference<bool> ShowEntityClassnames;
+        extern Preference<bool> ShowGroupBounds;
+        extern Preference<bool> ShowBrushEntityBounds;
+        extern Preference<bool> ShowPointEntityBounds;
+        extern Preference<bool> ShowPointEntityModels;
+
+        QString faceRenderModeTextured();
+        QString faceRenderModeFlat();
+        QString faceRenderModeSkip();
+        extern Preference<QString> FaceRenderMode;
+
+        extern Preference<bool> ShadeFaces;
+        extern Preference<bool> ShowFog;
+        extern Preference<bool> ShowEdges;
+
+        extern Preference<bool> ShowSoftMapBounds;
+
+        // Editor context
+        extern Preference<bool> ShowPointEntities;
+        extern Preference<bool> ShowBrushes;
+
+        QString entityLinkModeAll();
+        QString entityLinkModeTransitive();
+        QString entityLinkModeDirect();
+        QString entityLinkModeNone();
+        extern Preference<QString> EntityLinkMode;
 
         /**
          * Returns all Preferences declared in this file. Needed for migrating preference formats
@@ -172,6 +209,7 @@ namespace TrenchBroom {
         std::vector<Preference<QKeySequence>*> keyPreferences();
 
         extern DynamicPreferencePattern<QString> GamesPath;
+        extern DynamicPreferencePattern<QString> GamesToolPath;
         extern DynamicPreferencePattern<QString> GamesDefaultEngine;
         extern DynamicPreferencePattern<QKeySequence> FiltersTagsToggle;
         extern DynamicPreferencePattern<QKeySequence> TagsEnable;
@@ -182,5 +220,3 @@ namespace TrenchBroom {
         const std::vector<DynamicPreferencePatternBase*>& dynaimcPreferencePatterns();
     }
 }
-
-#endif

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_AttrString
-#define TrenchBroom_AttrString
+#pragma once
 
 #include <string>
 #include <vector>
@@ -54,7 +53,6 @@ namespace TrenchBroom {
         public:
             AttrString();
 
-            // cppcheck-suppress noExplicitConstructor
             AttrString(const std::string& string);
 
             bool operator<(const AttrString& other) const;
@@ -69,4 +67,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_AttrString) */

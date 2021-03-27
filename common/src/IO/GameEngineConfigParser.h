@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GameEngineConfigParser_h
-#define GameEngineConfigParser_h
+#pragma once
 
 #include "Macros.h"
 #include "EL/EL_Forward.h"
@@ -39,8 +38,7 @@ namespace TrenchBroom {
 
         class GameEngineConfigParser : public ConfigParserBase {
         public:
-            GameEngineConfigParser(const char* begin, const char* end, const Path& path);
-            GameEngineConfigParser(const std::string& str, const Path& path);
+            GameEngineConfigParser(std::string_view str, const Path& path);
 
             Model::GameEngineConfig parse();
         private:
@@ -52,4 +50,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* GameEngineConfigParser_h */

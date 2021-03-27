@@ -1,4 +1,4 @@
-% TrenchBroom Manual
+% TrenchBroom  \_\_TB_VERSION\_\_ Reference Manual
 % Kristian Duske
 % 11-13-2015
 
@@ -13,6 +13,7 @@ TrenchBroom is a level editing program for brush-based game engines such as Quak
 	- High performance renderer with support for huge maps
 	- Unlimited Undo and Redo
 	- Macro-like command repetition
+    - Linked groups
 	- Issue browser with automatic quick fixes
 	- Run external compilers and launch game engines
 	- Point file support
@@ -57,7 +58,7 @@ In Quake-engine based games, levels are usually called maps. The following simpl
     4. Brush 		= {Face}
     5. Face         = Plane Texture Offset Scale Rotation ...
 
-The first line specifies that a **map** contains of an entity followed by zero or more entities. In EBNF, the braces surrounding the word "Entity" indicate that it stands for a possibly empty sequence of entities. Altogether, line one means that a map is just a sequence of one or more entities. An **entity** is a possibly empty sequence of properties followed by zero or more brushes. A **property** is just a key-value pair, and both the key and the value are strings (this information was omitted from the EBNF).
+The first line specifies that a **map** contains an entity followed by zero or more entities. In EBNF, the braces surrounding the word "Entity" indicate that it stands for a possibly empty sequence of entities. Altogether, line one means that a map is just a sequence of one or more entities. An **entity** is a possibly empty sequence of properties followed by zero or more brushes. A **property** is just a key-value pair, and both the key and the value are strings (this information was omitted from the EBNF).
 
 Line four defines a **Brush** as a possibly empty sequence of faces (but usually it will have at least four, otherwise the brush would be invalid). And in line five, we finally define that a **Face** has a plane, a texture, the X and Y offsets and scales, the rotation angle, and possibly other attributes depending on the game.
 
@@ -101,7 +102,7 @@ To TrenchBroom, entities are just a sequence of properties (key value pairs), mo
 
 A mod (short for game modification) is a way of extending a Quake-engine based game with custom gameplay and assets. Custom assets include models, sounds, and textures. From the perspective of the game, a mod is a subdirectory in the game directory where the additional assets reside in the form of loose files or archives such as pak files. As far as TrenchBroom is concerned, a mod just provides assets, some of which replace existing assets from the game and some of which are new. For example, a mod might provide a new model for an entity, or it provides an entirely new entity. In order to make these new entities usable in TrenchBroom, two things are required: First, TrenchBroom needs an entity definition for these entities, and TrenchBroom needs to know where it should look for the models to display in the viewports. The first issue can be addressed by pointing TrenchBroom to an alternate [entity definition file](#entity_definitions), and the second issue can be addressed by [adding a mod directory](#mod_setup) for the current map.
 
-Every game has a default mod which is always loaded by TrenchBroom. As an example, the default mod for Quake is _id1_, which is the directory that contains all game content. TrenchBroom supports multiple mods, and in the case of multiple mods, there has to be a policy for resolving name conflicts between resources. For example, a mod might provide an entity model for an entity defined in the default mod in order to replace the default model with a more detailed one. To do this, the mod provides an entity model with the same name as the one it wants to replace. To resolve such name conflicts, TrenchBroom assigns priorities for mods, and if a name conflict occurs between different mods, the mod with the highest priority wins. Note that the default mod always has the loest priority.
+Every game has a default mod which is always loaded by TrenchBroom. As an example, the default mod for Quake is _id1_, which is the directory that contains all game content. TrenchBroom supports multiple mods, and in the case of multiple mods, there has to be a policy for resolving name conflicts between resources. For example, a mod might provide an entity model for an entity defined in the default mod in order to replace the default model with a more detailed one. To do this, the mod provides an entity model with the same name as the one it wants to replace. To resolve such name conflicts, TrenchBroom assigns priorities for mods, and if a name conflict occurs between different mods, the mod with the highest priority wins. Note that the default mod always has the lowest priority.
 
 ### Textures and Texture Collections {#textures}
 
@@ -129,15 +130,15 @@ Once you have selected a game and a map format, TrenchBroom will open the main e
 
 ## Main Window {#main_window}
 
-The main window consists of a menu bar, a toolbar, the editing area, an inspector on the right and an info panel at the bottom. In the screenshot below, there are three editing area: one 3D viewport and two orthographic 2D editing area.
+The main window consists of a menu bar, a toolbar, the editing area, an inspector on the right and an info panel at the bottom. In the screenshot below, there are three editing areas: one 3D viewport and two orthographic 2D editing areas.
 
-![The main editing window (Linux XFCE)](images/MainWindow.png)
+![The main editing window (Ubuntu Linux)](images/MainWindow.png)
 
 The sizes of the editing area, the inspector and the info bar can be changed by dragging the dividers with the mouse. This applies to some of the dividers in the inspector as well. If a divider is 2 pixels thick, it can be dragged with the mouse. The positions of the dividers and the size of the editing window are saved when you close a window. The following subsections introduce the most important parts of the main window: the editing area, the inspector, and the info bar. The toolbar and the menu will be explained in more detail in later sections.
 
 ### The Editing Area
 
-The editing area is divided in two sections: The context sensitive info bar at the top and the viewports below. The info bar contains different controls depending on which tool is currently activated. You can switch between tools such as the rotate tool and the vertex tool using the toolbar buttons, the menu or with the respective keyboard shortcuts. The context sensitive controls allow you to perform certain actions that are relevant to the current tool such as setting the rotation center when in the rotate tool or moving objects by a given delta when in the default move tool. Additonally, there is a button labeled "View" on the right of the info bar. Clicking on this button unfolds a dropdown containing controls to [filter out](#filtering_rendering_options) certain objects in the viewports or to change how the viewport [renders its contents](#filtering_rendering_options).
+The editing area is divided in two sections: The context sensitive info bar at the top and the viewports below. The info bar contains different controls depending on which tool is currently activated. You can switch between tools such as the rotate tool and the vertex tool using the toolbar buttons, the menu or with the respective keyboard shortcuts. The context sensitive controls allow you to perform certain actions that are relevant to the current tool such as setting the rotation center when in the rotate tool or moving objects by a given delta when in the default move tool. Additonally, there is a button labeled "View Options" on the right of the info bar. Clicking on this button unfolds a dropdown containing controls to [filter out](#filtering_rendering_options) certain objects in the viewports or to change how the viewport [renders its contents](#filtering_rendering_options).
 
 ![The info bar with view dropdown (Windows 10)](images/ViewDropdown.png)
 
@@ -164,13 +165,25 @@ The normal axis is the axis that would be protruding from the screen when lookin
 
 At most one of the viewports can have focus, that is, only one of them can receive mouse and keyboard events. Focus is indicated by a highlight rectangle at the border of the viewport. If no viewport is focused, you have to click on one of them to give it focus. Once a viewport has focus, the focus follows the mouse pointer, that is, to move focus from one viewport to another, simply move the mouse to the other viewport. The focused viewport can also be maximized by choosing #menu(Menu/View/Maximize Current View) from the menu. Hit the same keyboard shortcut again to restore the previous view layout.
 
+### Map Bounds {#map_bounds}
+
+![McKinley Base and Quake map bounds](images/CTF1Bounds.png)
+
+Game engines often impose a limit on the usable/playable volume of space. Trenchbroom can display this limit as a guide to use when creating your map. Such bounds will appear as an orange square or rectangle in the 2D viewports. For example, the image above shows the Quake map McKinley Base (ctf1 from Threewave CTF) within the normal bounds for a Quake map.
+
+![Map Properties (Ubuntu Linux)](images/SoftBounds.png) If bounds are configured for a game, they will usually represent the limits observed by the last official release or patch of a particular game engine. Those bounds may not be correct for your situation, so you can disable or modify the displayed bounds using the Map Properties portion of the Map Inspector, as shown here. (More about the Map Inspector in the next section below.) 
+
+In Quake-engine games, these bounds represent a limit on the volume that can contain players, items, or other entities. Static geometry (plain brushes) can extend further, which is why these limits are often called "soft bounds". As far as TrenchBroom is concerned however, it is just drawing orange lines at whatever coordinates are indicated in the [game configuration file](#game_configuration_files)... if this is a non-Quake-engine game then the bounds could represent something else.
+
+In any case, keep in mind that the displayed bounds are just a guide that you should use to help yourself stay within the limits of your target game engine. Changing the bounds in TrenchBroom will not change the behavior in the game!
+
 ### The Inspector
 
 The inspector is located at the right of the main window and contains various controls, distributed to several pages, to change certain properties of the currently selected objects. You can show or hide the inspector by choosing #menu(Menu/View/Toggle Inspector). To switch directly to a particular inspector page, choose #menu(Menu/View/Switch to Map Inspector) for the map inspector, #menu(Menu/View/Switch to Entity Inspector) for the entity inspector, and #menu(Menu/View/Switch to Face Inspector) for the face inspector.
 
 ![Map, Entity, and Face inspectors (Mac OS X)](images/Inspector.png)
 
-The **Map Inspector** allows you to edit [layers](#layers) and to set up which game modifications ([mods](#mods)) you are working with. The **Entity Inspector** is the tool of choice to change the [properties](#entity_properties) of entities. It also contains an entity browser that allows you to [create new entities](#creating_entities) by dragging them from the browser to a viewport and it allows you to [set up entity definitions](#entity_definitions). Additionally, you can manage entity definition files in the entity inspector. The face inspector is used to edit the attributes of the currently selected faces. At the top, it has a graphical [UV editor](#uv_editor). Below that, you can edit the face attributes directly by editing their values. To select a texture for the currently selected faces, you can use the [texture browser](#texture_browser). Finally, the face inspector allows you to [manage your texture collections](#texture_management).
+The **Map Inspector** allows you to edit [layers](#layers), configure displayed [map bounds](#map_bounds), and set up which game modifications ([mods](#mods)) you are working with. The **Entity Inspector** is the tool of choice to change the [properties](#entity_properties) of entities. It also contains an entity browser that allows you to [create new entities](#creating_entities) by dragging them from the browser to a viewport and it allows you to [set up entity definitions](#entity_definitions). Additionally, you can manage entity definition files in the entity inspector. The face inspector is used to edit the attributes of the currently selected faces. At the top, it has a graphical [UV editor](#uv_editor). Below that, you can edit the face attributes directly by editing their values. To select a texture for the currently selected faces, you can use the [texture browser](#texture_browser). Finally, the face inspector allows you to [manage your texture collections](#texture_management).
 
 ### The Info Bar
 
@@ -193,6 +206,8 @@ Right        #action(Controls/Camera/Move right)
 Up           #action(Controls/Camera/Move up)
 Down         #action(Controls/Camera/Move down)
 
+To adjust the movement speed of the these keyboard shortcuts, you can either go the [preferences](#mouse_input) and adjust the corresponding slider, or you can turn the mouse wheel while holding the right mouse button in the 3D view.
+
 ### Orbiting
 
 The camera orbit mode allows you to rotate the camera about a selectable point. To get an idea as to what this means, imagine that you define a point in the map by clicking on a brush. The point where you clicked will be the center of your camera orbit. Now image a sphere whose center is the point where you just clicked and whose radius is the distance between the camera and the point. Orbiting will move the camera on the surface of that sphere while adjusting the camera's direction so that you keep looking at the same point. Visually, this is the same as rotating the entire map about the orbit center. Of course, you are not actually rotating anything - only the camera's position and direction are modified. Note that, since up and down are always fixed, you cannot cross the north and south poles of the orbit sphere.
@@ -213,7 +228,7 @@ Navigating the 2D viewports is naturally a lot simpler than navigating the 3D vi
 
 ## FOV and Zoom
 
-For the 3D view, the camera FOV (field of vision) can be adjusted in the view preferences by dragging the slider. This is a permanent setting.
+For the 3D view, the camera FOV (field of vision) can be adjusted in the [view preferences](#view_layout_and_rendering) by dragging the slider. This is a permanent setting.
 
 To temporarily adjust the camera's zoom, hold #key(Shift) and scroll the mouse wheel. To reset the zoom factor, hit #action(Controls/Map view/Reset camera zoom).
 
@@ -245,7 +260,7 @@ A similar operation can be found under #menu(Menu/Edit/Select Tall), but this pa
 
 If you have selected a single brush that belongs to an entity or group, and you wish to select every other object belonging to that entity or group, you can choose #menu(Menu/Edit/Select Siblings). The same effect can be achieved by left double clicking on a brush that belongs to an entity or group. The menu command #menu(Menu/Edit/Select by Line Number) is useful for diagnostic purposes. If an external program such as a map compiler presents you with an error message and a line number indicating where in the map file that error occured, you can use this menu command to have TrenchBroom select the offending object for you.
 
-#menu(Menu/Edit/Select Inverse) will invert the selection, i.e. selecting everything that is currently unselected (excluding hidden and locked objects).
+Choose #menu(Menu/Edit/Select Inverse) from the menu to invert the selection, i.e. select everything that is currently unselected (excluding hidden and locked objects).
 
 Finally, you can deselect everything by left clicking in the void, or by choosing #menu(Menu/Edit/Select None).
 
@@ -257,7 +272,7 @@ To select a brush face, you need to hold #key(Shift) and left click it in the 3D
 
 # Editing
 
-In this section, we will cover all topics related to the actual editing of a map. We begin by explaining how to set up the map itself, that is, how to set up mods, entity definitions, and texture collection. Afterwards, we show how to create new objects such as entities or brushes, how to edit and transform them, and how to delete them. After that, we explain how you can work with textures in TrenchBroom. The following section introduces the various tools at your disposal to shape brushes while the section after that focuses on entities and how to edit their properties. The goal of the final section is to help you keep an overview in your map by using layers, groups, and by various other means.
+In this section, we will cover all topics related to the actual editing of a map. We begin by explaining how to set up the map itself, that is, how to set up mods, entity definitions, and texture collection. Afterwards, we show you how to create new objects such as entities or brushes, how to edit and transform them, and how to delete them. After that, we explain how you can work with textures in TrenchBroom. The following section introduces the various tools at your disposal to shape brushes while the section after that focuses on entities and how to edit their properties. The goal of the final section is to help you keep an overview in your map by using layers, groups, and by various other means.
 
 ## Map Setup
 
@@ -386,6 +401,49 @@ TrenchBroom provides you with a static grid to align your objects to each other.
 
 The grid size can be set via the menu, or by scrolling the mouse wheel while holding both #key(Alt) and #key(Ctrl).
 
+### Map View Context Menu {#map_view_context_menu}
+
+Right clicking in a map view gives the following context menu:
+
+Group
+:   [Groups](#groups) the selected objects.
+
+Ungroup
+:   [Ungroups](#groups) the selected objects.
+
+Merge groups
+:   When multiple groups are selected, merges them into a single group.
+
+Rename Groups
+:   Rename the selected groups.
+
+Move to Layer
+:   Move the selected objects to the chosen [layer](#layers).
+
+Make Layer LAYERNAME Active
+:   Changes the [current layer](#layers) to the chosen layer.
+
+Hide Layers
+:   Hide all layers which contain selected objects.
+
+Isolate Layers
+:   Isolate the layers containing selected objects.
+
+Select All in Layers
+:   Select all objects in the layers which contain the selected objects.
+
+Make Structural
+:   Moves brushes back into the world and clears any content flags. See [Brush Entities](#brush_entities).
+
+Reveal TEXTURENAME in Texture Browser
+:   Switches to the face inspector and scroll to the clicked texture in the [Texture Browser](#texture_browser).
+
+Create Point Entity
+:   Create a [Point Entity](#point_entities) of the chosen type.
+
+Create Brush Entity
+:   Create a [Brush Entity](#brush_entities) with the selected brushes.
+
 ## Creating Objects
 
 TrenchBroom gives you various options on how to create new objects. In the following sections, we will introduce these options one by one.
@@ -414,9 +472,9 @@ It is not possible to modify or remove points after they have been placed, excep
 
 There are two types of entities: point entities and brush entities, and it depends on the type how an entity is created. In the following sections, we present three ways of creating point entities and two ways to create brush entities.
 
-#### Point Entities
+#### Point Entities {#point_entities}
 
-There are three ways of creating new point entities. Firstly, you can drop new entities in the 3D and 2D viewports by using the context menu. To open the context menu, right click into the viewport. To create a point entity such as a pickup weapon or a monster, open the "Create Point Entity" sub menu and select the correct entity definition from the sub menus.
+There are three ways of creating new point entities. Firstly, you can drop new entities in the 3D and 2D viewports by using the [map view context menu](#map_view_context_menu). To open the context menu, right click into the viewport. To create a point entity such as a pickup weapon or a monster, open the "Create Point Entity" sub menu and select the correct entity definition from the sub menus.
 
 ![Dropping an entity with the context menu (Mac OS X)](images/CreateEntityContextMenu.png)
 
@@ -430,9 +488,9 @@ To create a new entity, simply drag it out of the browser and onto the 3D or a 2
 
 Finally, you can create specific entities by assigning a keyboard shorcut in the [preferences](#keyboard_shortcuts). This is useful for entities that are used very often such as lights. The entity will be created under the mouse cursor; its position will be computed in the same way as if the context menu was used.
 
-#### Brush Entities
+#### Brush Entities {#brush_entities}
 
-![Moving brushes to brush entities](images/MoveBrushesToEntity.png) Creating brush entities is also done using the context menu. Select a couple of brushes and right click on them, then select the desired brush entity from the menu. To move brushes from one brush entity to another, select the brushes you wish to move and right click on a brush belonging to the brush entity to which you want to move the brushes, and select "Move brushes to Entity ENTITY", where "ENTITY" is the name of the target brush entity, for example "func_door" in the picture on the left. If the brush entity containing the brushes to be moved becomes empty, it will be automatically deleted. To move brushes from a brush entity back into the world, select the brushes, right click and select "Make Structural".
+![Moving brushes to brush entities](images/MoveBrushesToEntity.png) Creating brush entities is also done using the context menu. Select a couple of brushes and right click on them, then select the desired brush entity from the menu. To move brushes from one brush entity to another, select the brushes you wish to move and right click on a brush belonging to the brush entity to which you want to move the brushes, and select "Move brushes to Entity ENTITY", where "ENTITY" is the name of the target brush entity, for example "func_door" in the picture on the left. If the brush entity containing the brushes to be moved becomes empty, it will be automatically deleted. To move brushes from a brush entity back into the world and clear content flags, select the brushes, right click and select "Make Structural".
 
 Additionally, you can also assign a keyboard shorcut to create a specific brush entity in the [preferences](#keyboard_shortcuts).
 
@@ -626,7 +684,7 @@ Both snap modes are used simultaneously. There may be situations when you have t
 
 The brush resize tool offers a quick way to move an individual face of a brush in 2D views. Hold #key(Alt) in addition to #key(Shift) when starting to drag a face in a 2D view to enable this mode. You will notice that a face is highlighted as usual, but when you start dragging the mouse, the face will just be moved in the direction you are dragging. The move is not restricted by the face normal, and other faces will be affected as well.
 
-![Resizing multiple brushes](images/ResizeTool2DFaceMoving.gif)
+![Moving faces](images/ResizeTool2DFaceMoving.gif)
 
 The distance is snapped to the current grid size. Moving multiple faces is possible if the faces lie on the same plane. The [UV Lock](#uv_lock) setting controls whether texture lock is used when dragging faces using this mode.
 
@@ -843,7 +901,9 @@ In TrenchBroom, there is the notion of a current texture, which we have already 
 
 To change the texture of the currently selected faces, left click on a texture in the texture browser. This also works if you have selected brushes (and nothing else) - in this case, the new texture is applied to all faces of the currently selected brushes. 
 
-To transfer the texture and texture attributes (such as the offset or scale) from one face to another, start by selecting the source face with #key(Shift) + left click. Then, hold one of the following modifier combinations depending on what you want to transfer:
+You can also transfer texture and attributes from one face to another. "Attributes" in this context refers to almost any characteristic &mdash; such as offset, scale, or surface flags &mdash; that you can modify through the [face attribute editor](#face_attribute_editor). The sole exception to this is content flags; the content flags on the target face(s) will always be preserved unchanged.
+
+To do this transfer, start by selecting the source face with #key(Shift) + left click. Then, hold one of the following modifier combinations depending on what you want to transfer:
 
 Modifier Keys            Meaning
 -------------            -------
@@ -878,13 +938,13 @@ Select the texture you wish to replace in the left texture browser. This browser
 
 Face attributes control how textures are mapped onto brush faces. At the very least, every face has the attributes offset, scale, and angle. The offset allows you to shift a texture on a face, the scale factors stretch the texture, and by changing the angle you can rotate the texture. Additionally, some engines have further attributes. Quake 2 adds surface flags and a surface value, and additional content flags. All of these values can be changed in different ways: There is a face attribute editor that allows you to enter the values directly, you can use keyboard shortcuts in the 3D viewport, or you can use the UV editor.
 
-#### The Face Attribute Editor
+#### The Face Attribute Editor {#face_attribute_editor}
 
 The face attribute editor is located in the face inspector, right between the UV editor and the texture browser. It contains several controls to edit the face attributes of one or several selected brush faces.
 
 ![Face Attribute Editor (Mac OS X)](images/FaceAttribsEditor.png)
 
-Two types of controls are visible in the screenshot above. Numerical input controls consist of a text field and small buttons to increase or decrease the value in the field. The text field will show the value of the respective face attribute, such as "1" for the X Scale in the screenshot. If more than one brush face is selected, the text field will also show the value if all faces have the same value for the respective attribute, or it will show the placeholder word "multi" otherwise (not supported on Windows). In the screenshot above, the X Offsets of the selected brush faces differ, hence the text field shows "multi". All other values are identical for all selected brush faces, so all other attribute editors show concrete values instead of the placeholder. By entering a number into the text field, the attribute value of all selected brush faces can be set to that value. Consequently, if you were to enter the value "32" into the X Offset editor in our example above, all selected brush faces would have this value as their X Offset afterwards.
+Two types of controls are visible in the screenshot above. Numerical input controls consist of a text field and small buttons to increase or decrease the value in the field. The text field will show the value of the respective face attribute, such as "1" for the X Scale in the screenshot. If more than one brush face is selected, the text field will also show the value if all faces have the same value for the respective attribute, or it will show the placeholder word "multi" otherwise. In the screenshot above, the X Offsets of the selected brush faces differ, hence the text field shows "multi". All other values are identical for all selected brush faces, so all other attribute editors show concrete values instead of the placeholder. By entering a number into the text field, the attribute value of all selected brush faces can be set to that value. Consequently, if you were to enter the value "32" into the X Offset editor in our example above, all selected brush faces would have this value as their X Offset afterwards.
 
 The spin button however works differently. By clicking the up- or down arrow button, you can increase or decrease the value of the respective face attribute by a certain delta value, which depends on the grid settings and the currently pressed modifier keys. The following table explains which delta value is chosen in each case.
 
@@ -900,16 +960,27 @@ In addition to using the buttons to change the values, you can use the scroll wh
 
 For attributes that represent flag values, such as the surface and content flags for Quake 2, there is a different type of control available in the face attribute editor. This control shows a textual representation of the flag values in a text field, and you can change the flags using a dropdown window that is shown if you click on the button labeled "..." next to the text field. The dropdown window contains one checkbox for each flag, and you can check or uncheck them individually.
 
-#### Keyboard Shortcuts
+The text field for content flags will display "multi" if the currently selected faces have different sets of content flags. Note that for games that support content flags, it is almost always desirable to use identical content flags on all faces of a given brush, to avoid unexpected behavior in-game; therefore if the content flags text field shows "multi" when a single brush is selected, this can be an indicator of an error that should be corrected.
 
-In the 3D viewport, you can change the offset and angle of the currently selected brush faces using the following keyboard shortcuts:
+The surface flags text field will also display "multi" if the selected faces have different sets of surface flags, but this is not necessarily a situation that needs to be corrected. It is often valid to have different surface flags on different faces of a brush.
+
+#### Texture Alignment Keyboard Shortcuts
+
+The following shortcuts work in the 3D viewport, and affect all selected brushes or brush faces:
 
 Attribute    Keys                                    Default      #key(Shift) pressed  #key(Ctrl) pressed
 ---------    ----                                    -------      -------------------  -----------------
 Offset       #key(Left)#key(Right)#key(Up)#key(Down) Grid size    2 * grid size        1.0
 Angle        #key(PgUp)#key(PgDown)                  15°          90°                  1°
 
-Note that TrenchBroom attempts to match the shortcuts to the directions in which the textures will move visually. This means that pressing #key(Up) will move a texture roughly in that directiony visually instead of always applying to the same face attribute. So depending on the camera angle and the orientation of the face itself, pressing #key(Up) may affect the X or Y offset by incrementing or decrementing it. The angle is treated similarly: Pressing #key(PgUp) will rotate the texture counter clockwise visually, and pressing #key(PgDown) will rotate it clockwise.
+Command                                   Keys
+-------                                   ----
+Flip Horizontally                         #action(Controls/Map view/Flip textures horizontally)
+Flip Vertically                           #action(Controls/Map view/Flip textures vertically)
+Reset texture alignment                   #action(Controls/Map view/Reset texture alignment)
+Reset texture alignment to world aligned  #action(Controls/Map view/Reset texture alignment to world aligned)
+
+These are interpreted relative to the 3D camera (except "Reset"). This means that pressing #key(Up) will move a texture roughly in that direction visually, possibly increasing or decreasing the X or Y offset depending on the camera and face orientation. The angle is treated similarly: Pressing #key(PgUp) will rotate the texture counterclockwise visually, and pressing #key(PgDown) will rotate it clockwise.
 
 #### The UV Editor {#uv_editor}
 
@@ -927,7 +998,17 @@ To rotate the texture about the origin, left click and drag the large yellow cir
 
 Shearing the texture is possible if the map uses a [parallel texture projection](#texture_projection_modes). Shear by holding #key(Alt) while left clicking and dragging the gray texture grid lines.
 
-At the bottom of the UV editor, you can find a number of controls. On the left, there are five buttons. The first button resets the face attributes to their defaults. The second and third buttons flip the texture horizontally and vertically, respectively, and the fourth and firth buttons rotate the texture by 90° counter clockwise and clockwise. The two controls on the right allow you to subdivide the texture grid. This can be useful to align the texture to smaller brush faces.
+At the bottom of the UV editor are the following controls:
+
+![UV Editor Toolbar](images/UVEditorToolbar.png)
+
+- Reset texture alignment. All attributes are reset, and in [parallel texture projection](#texture_projection_modes) format maps, the texture is projected from the face plane. In standard format maps, acts the same as "Reset texture alignment to world aligned".
+- Reset texture alignment to world aligned. All attributes are reset and the texture is projected from an axial plane.
+- Flip texture horizontally
+- Flip texture vertically
+- Rotate texture 90° counterclockwise
+- Rotate texture 90° clockwise
+- Grid controls for subdividing the texture grid. This can be useful to align part of a larger trim sheet to the face.
 
 ## Entity Properties {#entity_properties}
 
@@ -939,15 +1020,15 @@ The entity property editor is split into two separate areas. At the top, there i
 
 ### Editing Properties
 
-To select an entity property, just click in the row that represents that property in the table. The row will be highlighted, and at the same time, the field which you clicked on will get a black outline. The black outline is called a _cursor_ and it indicates that you can change the outlined field by entering text. In the screenshot above, the "origin" property has been selected, and its key has the cursor, indicating that it is ready to be changed.
+To select an entity property, just click in the row that represents that property in the table. The clicked field will be highlighted, indicating that it has focus. The highlight indicates that you can change the field by entering text. In the screenshot above, the "mangle" property has been selected, and its value has focus, indicating that it is ready to be changed.
 
-If you are changing a lot of properties, you may wish to navigate quickly through the table. You can use the cursor keys to move the cursor around in the table. Alternatively, you can hit #key(Tab) to move field by field. If the cursor is on a key of some property, hitting tab will move the cursor the value field of that property, and hitting tab again will move it to the key field of the next property, and so on until you reaach the end of the table. You can also move in the opposite direction by hittin #key(Shift)#key(Tab). #key(Return) moves vertically through the list, meaning that if the cursor is on a property key and you hit enter, the cursor will move to the key of the next property in the list. Use this navigation method to mass renamed property keys, for example.
+If you are changing a lot of properties, you may wish to navigate quickly through the table. You can use the cursor keys to move focus around in the table. Alternatively, you can hit #key(Tab) to move field by field. If the focus is on a key of some property, hitting tab will move the cursor the value field of that property, and hitting tab again will move it to the key field of the next property, and so on until you reach the end of the table. You can also move in the opposite direction by hittin #key(Shift)#key(Tab). #key(Return) moves vertically through the list, meaning that if focus is on a property key and you hit enter, focus will move to the key of the next property in the list. Use this navigation method to mass rename property keys, for example.
 
 To change the key or the value of a property, set the focus to the appropriate field in the table. If you enter some text now, that text will replace the key of the property. An alternative way to change a field is to click on it while its property is already selected. This will show an actual text field in which you can enter the text.
 
 There are several ways to add a property to an entity. First, you can click on the button with the "+" label at the bottom of the table. This will insert a new property with a default name and no value into the table. Second, you can hit #key(Ctrl)#key(Return) to add a new property. In both cases, the new property will be selected so that you can start editing its key and value right away as described above. Finally, you can add a property by changing the value of a default property. This will promote the default property to an actual property of the entity.
 
-To remove entity properties, you should select the rows in the table that represent them and hit the button labeled "-" at the bottom of the table.
+To remove entity properties, you should click the rows in the table that represent them and hit the button labeled "-" at the bottom of the table.
 
 ### Multiple Entity Selections
 
@@ -1032,19 +1113,263 @@ Objects can be locked either if you are editing an open group or if you set a la
 
 Groups allow you to treat several objects as one and to give them a name. A group can contain the following types of objects: entities, brushes, and more groups. The fact that a group can contain groups induces a hierarchy - but in practice, you will rarely create such nested groups. In the viewports, groups have their bounding box rendered in blue, and their name is displayed above them.
 
-To create a group, make sure that no tool is currently active and select some objects and choose #menu(Menu/Edit/Group). The editor will ask you for a name. Group names need not be unique, so you can have several groups with the same name. To select a group, you can click on any of the objects contained in it. This will not select the individual object, but the entire group, which is why you can only editor all objects within a group as one. If you want to edit individual objects in a group, you have to open the group by double clicking on it with the left mouse button. This will lock every other object in the map (locked objects are not editable and rendered in blue). Once the group is opened, you can edit the individual objects in it, or you can create new objects within the group in the usual ways. Once you are done editing the group, you can close it again by left double clicking anywhere outside of the group. Finally, you can remove a group by selecting it and choosing #menu(Menu/Edit/Ungroup). Note that removing a group does not remove the objects in the group from the map, the objects are merely ungrouped.
+To create a group, make sure that no tool is currently active and select some objects and choose #menu(Menu/Edit/Group). The editor will ask you for a name. Group names need not be unique, so you can have several groups with the same name. To select a group, you can click on any of the objects contained in it. This will not select the individual object, but the entire group, which is why you can only edit all objects within a group as one. If you want to edit individual objects in a group, you have to open the group by double clicking on it with the left mouse button. This will lock every other object in the map (locked objects are not editable and rendered in blue). Once the group is opened, you can edit the individual objects in it, or you can create new objects within the group in the usual ways. Once you are done editing the group, you can close it again by left double clicking anywhere outside of the group. Finally, you can remove a group by selecting it and choosing #menu(Menu/Edit/Ungroup). Note that removing a group does not remove the objects in the group from the map, the objects are merely ungrouped.
 
-To add objects to an existing group, select the objects you wish to add to the group, then right click on an object already existing to that group and select "Add Objects to GROUPNAME", where GROUPNAME is the name of the group. Likewise, you can remove objects from a group by opening that group, selecting the objects you wish to remove from the group, and selecting "Remove Objects from GROUPNAME" from the right click context menu. The removed objects are added to the current layer. If you remove all objects from a group, the group is deleted automatically.
+To add objects to an existing group, select the objects you wish to add to the group, then right click on an object already existing to that group and select "Add Objects to GROUPNAME", where GROUPNAME is the name of the group. Likewise, you can remove objects from a group by opening that group, selecting the objects you wish to remove from the group, and selecting "Remove Objects from GROUPNAME" from the [map view context menu](#map_view_context_menu). The removed objects are added to the current layer. If you remove all objects from a group, the group is deleted automatically.
+
+## Linked Groups {#linked_groups}
+
+Groups can also be linked together to allow a form of instancing. Linked groups contain the same objects, but can be transformed into different positions and shapes as a whole. Changing one of the linked groups will update all the other linked groups. Linked groups are useful to build reusable structures such as doorways that you want to keep in sync. The workflow for linked groups is always the same:
+
+- Create some objects that form a reusable structure, e.g. a doorway.
+- Group the objects.
+- Select the group and create a linked duplicate via the context menu or by choosing #menu(Menu/Edit/Create Linked Duplicate) from the menu.
+- Move the duplicate to its intended position and apply further transformations to it (e.g. rotation).
+- Create more linked duplicates by duplicating a linked group in the usual way.
+- At any time, open any of the linked groups and change its contents. These changes will then be replicated into the other linked groups.
+
+You can apply various transformations to linked groups such as translation, rotation, scaling, or flipping. Groups and linked groups can be nested arbitrarily, so a linked group can contain a group, or a group can contain a linked group, and linked groups can even contain linked groups.
+
+It is important not to think of linked groups as instancing. In TrenchBroom, there is no fixed "primary" version of the linked group that you create instances of. Indeed, linked groups are much simpler under the hood: When you change a linked group, that group will temporarily become the "primary" version and all of its contents are copied into all of its linked siblings, independent of whether or not the contained objects were changed. With this in mind, you may think of TrenchBroom performing a manual updating process automatically for you.
+
+You can add objects to linked groups or remove objects from linked groups in the usual way, and the change is reflected in the linked groups immediately. To edit an object in a linked group, open the group as usual and perform your changes. Again, the changes are reflected in the linked groups immediately.
+
+Consider the following example where you have two linked groups, each containing a brush and an entity.
+
+```
+Group A
+- Brush A
+- Entity A
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "0 0 0"
+
+Group B (translated by 128 0 0)
+- Brush B
+- Entity B
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "128 0 0"
+```
+
+`Group B` is structurally identical to `Group A`, but it's translated by 128 units on the X axis. Suppose you change `Brush A` by moving one of its vertices. Then all contents of `Group A` are copied, translated by 128 on the X axis, and added to `Group B`, replacing its existing content. Or let's say you set `Entity B`'s spawnflags to `1`, then the same process happens, but this time `Group B`s content is copied, translated by -128 on the X axis, and finally `Group A`'s contents are replaced by the copies. The result would look as follows:
+
+```
+Group A
+- Brush A
+- Entity A
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "0 0 0"
+  - "spawnflags" "1"
+
+Group B (translated by 128 0 0)
+- Brush B
+- Entity B
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "128 0 0"
+  - "spawnflags" "1"
+```
+
+There are some situations in which you might not want all of your changes to be reflected in all linked groups. For example, when building a door, you will usually hook the door brushes to a trigger brush using `target` and `targetname` properties. But of course, you want to use different names for different doors so that all doors don't open at once when one of them opens in the game. To allow these properties to have different values in different linked groups, you can protect entity properties against changes from their counterparts in a linked group.
+
+### Protected Entity Properties {#protected_entity_properties}
+
+Marking an entity property as protected blocks any changes to this property from the corresponding entity in a linked group. Furthermore, any changes to a protected entity property are not reflected in the corresponding entities in linked groups. Let's consider an example again.
+
+```
+Group A
+- Entity A
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "0 0 0"
+  - "spawnflags" "1"
+
+Group B (translated by 128 0 0)
+- Entity B
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "128 0 0"
+  - "spawnflags" "1"
+```
+
+Let's assume you want to change `Entity B`'s angle, but you don't want this change to affect `Entity A`. In this case, you can set the `angle` property of `Entity B` to protected before changing its value to `180`. The result will look as follows.
+
+```
+Group A
+- Entity A
+  - "classname" "monster_army"
+  - "angle" "90"
+  - "origin" "0 0 0"
+  - "spawnflags" "1"
+
+Group B (translated by 128 0 0)
+- Entity B
+  - "classname" "monster_army"
+  - "angle" "180" (protected)
+  - "origin" "128 0 0"
+  - "spawnflags" "1"
+```
+
+Note that `Entity A`'s `angle` property still has a value of 90. If you now change `Entity A`'s `angle` property, this change will not be reflected in `Entity B` either.
+
+You can use the entity property editor in the entity inspector to protect entity properties. When editing an entity inside of a linked group, a new column with checkboxes appears like in the following screenshot.
+
+![Protected Entity Properties (macOS)](images/ProtectedProperties.png)
+
+To set a property to protected, click on its checkbox. To remove the protection, click on the checkbox again. When you set a property to unprotected, its value will be reset to the value of the corresponding unprotected properties in the other entities. In our example from above, Setting `Entity B`'s `angle` property to unprotected will reset its value to `90`, which is the value from `Entity A`'s unprotected `angle` property.
+
+To set all properties of one or multiple entities to unprotected, select the entities (or their containing groups) and choose #menu(Menu/Edit/Clear Protected Properties).
+
+Since all changes you make to a linked group are immediately replicated into the other linked groups, newly added properties show up in the linked groups right away. If you want to add a property without replicating it, you can add it as protected by clicking on the shielded `+` icon in the toolbar below the entity property editor (see previous screenshot). Conversely, if you want to suppress a property in a linked group, that is, you don't want it to be created when adding it to another linked group, you can add it as a protected property and immediately delete it again. It will still be shown in the property editor until you remove its protected checkmark, but the name will be in italics, so it will look like a default property.
+
+To illustrate the value of these deleted protected properties, consider the following example.
+
+```
+Group A
+- Entity A
+  - "classname" "monster_army"
+  - "origin" "0 0 0"
+
+Group B (translated by 128 0 0)
+- Entity B
+  - "classname" "monster_army"
+  - "origin" "128 0 0"
+
+Group C (translated by 0 64 0)
+- Entity C
+  - "classname" "monster_army"
+  - "origin" "0 64 0"
+```
+
+Suppose you want to set an angle for all of the `monster_army` entities except for `Entity A`. In this case, you would first add the `angle` property to `Entity A` as a protected property, and then delete it again from `Entity A`. Then you would add the `angle` property to `Entity B` and give it a value. This property would be replicated into `Entity C`, but not `Entity A` because there it is protected, even though the property isn't even present. In the following screenshot, the `angle` property has been set to protected and was then subsequently deleted. If you click its checkbox to remove the protection, the property will no longer show up in the entity property editor.
+
+![Protected Deleted Entity Properties (macOS)](images/ProtectedProperties.png)
+
+### Unlinking and Separating Linked Groups {#separating_linked_groups}
+
+To unlink a linked group, select the group and choose #menu(Menu/Edit/Separate Linked Groups). This will turn the linked group into a regular group again. If you select multiple linked groups from a set of mutually linked groups, the selected groups will not be turned into regular groups, but rather they will become a separate set of linked groups. This separate set of linked groups is still mutually linked to each other, but they are no longer linked to the other, unselected members of the set.
+
+Note that if you remove all members of a set of linked groups, either by separation or by deleting them, the single remaining member of the set will become a regular group.
+
+### Visualization {#linked_group_visualization}
+
+![Linked Groups in 3D view (macOS)](images/LinkedGroups.png)
+
+Linked groups are rendered with a different color than regular linked groups. If you select a linked group, the editor will render arrows eminating from the selected group and ending in the other linked groups to indicate which groups will be updated when the selected group changes. These arrows are still shown if you open a linked group.
+
+### Linked Groups in the Map File {#linked_groups_map_file}
+
+Like regular groups, linked groups are stored in the map file using `func_group` entities with additional, TrenchBroom specific properties. If you edit a map file with linked groups in another editor than TrenchBroom and you change objects belonging to a linked group, then that linked group is out of sync with its linked counterparts. TrenchBroom will load such groups without issue and you can keep editing them as usual. However, if you change one of the linked groups, then this group will overwrite the contents of all other linked groups, so afterwards they will be in sync again. So if you purposefully changed one of the linked groups in an external editor, and want to replicate these changes into the linked groups, just open this specific group in the editor, make change to it, and close the group again. This will update all of the linked groups and they will be in sync again.
+
+Consider the following linked groups:
+
+```
+Group A
+- Brush A
+- Entity A
+  - "classname" "monster_army"
+  - "origin" "0 0 0"
+
+Group B (translated by 128 0 0)
+- Brush B
+- Entity B
+  - "classname" "monster_army"
+  - "origin" "128 0 0"
+```
+
+In the map file, these groups would be stored as follows. Refer to the comments for information about the TrenchBroom specific properties for linked groups.
+
+```
+// entity 0
+{
+"classname" "func_group"
+"_tb_type" "_tb_group"
+"_tb_name" "group"
+"_tb_id" "1"
+
+// The following property is the ID of a set of linked groups.
+// All groups with this linked group ID will be mutually linked.
+"_tb_linked_group_id" "{38b3b39d-a165-4999-985d-d40563ce51c1}"
+
+// The transformation that has been applied to the group as a whole. 
+// This will get updated when you transform a group by moving, rotating or scaling it.
+"_tb_transformation" "1 0 0 128 0 1 0 0 0 0 1 0 0 0 0 1"
+
+// brush 0
+{
+// faces omitted
+}
+}
+// entity 1
+{
+"classname" "monster_army"
+"origin" "128 0 0"
+"_tb_group" "1"
+}
+// entity 2
+{
+"classname" "func_group"
+"_tb_type" "_tb_group"
+"_tb_name" "group"
+"_tb_id" "2"
+
+// This group entity has the same linked group ID as the previous one, 
+// so they will be linked.
+"_tb_linked_group_id" "{38b3b39d-a165-4999-985d-d40563ce51c1}"
+
+"_tb_transformation" "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+// brush 0
+{
+// faces omitted
+}
+}
+// entity 3
+{
+"classname" "monster_army"
+"origin" "0 0 0"
+"angle" "90"
+"_tb_group" "2"
+"_tb_protected_properties" "angle"
+}
+```
 
 ## Layers {#layers}
 
-Layers decompose your map into several parts. For example, you might create a layer for separate rooms or areas. Layers can contain groups, entities, or brushes, and each of these objects can belong to one layer only. Each layer has a name and can be set to hidden or locked. Every map contains a "Default Layer" that cannot be removed. This layer receives all objects that haven't been assigned to another layer.
+Layers decompose your map into several parts. For example, you might create a layer for separate rooms or areas. Layers can contain groups, entities, or brushes, and each of these objects can belong to one layer only. Each layer has a name and can be set to hidden or locked, or omitted from exported maps. Every map contains a "Default Layer" that cannot be removed.
 
 ![Layer Editor](images/LayerEditor.png)
 
-Layers are managed in the layer editor, which is part of the map inspector. The layer editor displays a list of all layers in your map. You can hide or show a layer by clicking on the eye icon below the layer name, and you can lock or unlock a layer by clicking on the lock icon. To create a new layer, click the plus button at the bottom of the layer list, and to remove one ore more layers, select them and click on the minus button. They eye button next to the minus button shows all layers.
+The layer editor, part of the map inspector, displays all layers in your map.
 
-When you create new objects, TrenchBroom puts them into the current layer (unless you are working in a group). The current layer is indicated in the layer list by having its name in bold, and you can set the current layer by double clicking on a layer in the layer list. Note that you cannot hide or lock the current layer, and if you make a layer the current layer, that layer is shown and unlocked automatically. The fact that the current layer can neither be hidden nor locked also implies that you cannot delete the only visible or the only unlocked layer, because then TrenchBroom would have to choose a hidden or a locked layer to be the new current layer at random. You will need to set another layer visible and / or unlocked first.
+- Omit a layer from export by clicking the hollow circle icon (the "X" indicates the layer is omitted from export)
+- Hide or show a layer by clicking on the eye icon
+- Lock or unlock a layer by clicking on the lock icon
+- Create a new layer by clicking the plus button at the bottom of the layer list
+- Remove one or more layers by selecting them and click on the minus button
+
+New objects created from scratch or pasted from the clipboard are inserted into the current layer (unless you are working in a group). Objects created from other objects (e.g. by duplicating or extrusion) are inserted into the layer of the source object.
+
+The current layer is indicated in the layer list by a radio button and by having its name in bold, and you can set the current layer by double clicking on a layer in the layer list.
+
+Right click on a layer in the layer editor for the layer context menu:
+
+- Make active layer
+- Move selection to layer
+- Select all in layer
+- Hide layer
+- Isolate layer
+- Lock layer
+- Omit from export
+- Show all Layers
+- Hide all Layers
+- Unlock All Layers
+- Lock All Layers
+- Rename Layer
+- Remove Layer
+
+The [map view context menu](#map_view_context_menu) also has some layer related shortcuts.
 
 # Preferences
 
@@ -1052,7 +1377,7 @@ The preferences dialog allows you to set the game configurations, to change the 
 
 ## Game Configuration {#game_configuration}
 
-![Game Configuration Dialog (Linux XFCE)](images/GamePreferences.png)
+![Game Configuration Dialog (Ubuntu Linux)](images/GamePreferences.png)
 
 The game configuration preference pane is where you set up the paths to the games that TrenchBroom supports. For each game, you can set the game path by clicking on the "..." button and selecting the folder in which the game is stored on your hard drive. Alternatively, you can enter a path manually in the text box, but you have to hit #key(Return) to apply the change.
 
@@ -1062,9 +1387,20 @@ Additionally, you can configure the game engines for the selected game by clicki
 
 In this dialog, you can add a game engine profile by clicking on the '+' button below the profile list on the left, and you can delete the selected profile by clicking on the '-' button. To the right of the list, you can edit the details of the selected game engine profile, specifically its name and path. Similar to the game path, if you edit the engine path manually, you have to apply the changes by pressing #key(Return) while in the path text box. Click [here](#launching_game_engines) to find out how to launch game engines from within TrenchBroom.
 
+For some game configurations (such as for Quake, shown above) you can also optionally enter paths for a set of compilation tools. If it's not clear what you should be specifying a path to here, then hovering over the path entry box may give you a tooltip with additional info about that compilation tool.
+
+If you do enter a path here, then the name shown to the left of the path can be used as a variable in your [compilation profiles](#compiling_maps) for this game. Wherever that variable occurs, the path specified here will be used. For example if your path to the `qbsp` tool is `C:\mapping\ericw-tools-v0.18.1-win64\bin\qbsp.exe`, and you set that path here... then in your compilation profiles you can enter `${qbsp}` wherever you need to refer to that whole qbsp.exe path.
+
+The benefits of specifying your tool paths here (if the game configuration allows) are:
+
+- It will be easier to create, edit, and share your compilation profiles.
+- If your tool paths need to be changed, you only have to change them here.
+
+So in the example above, if you wanted to try a later version of ericw-tools that are located in a different folder like `C:\mapping\ericw-tools-v0.19-win64\bin`, then you would only need to change the paths in this dialog. You wouldn't need to edit all of your compilation profiles.
+
 ## View Layout and Rendering {#view_layout_and_rendering}
 
-![View Configuration Dialog (Linux XFCE)](images/ViewPreferences.png)
+![View Preferences (macOS)](images/ViewPreferences.png)
 
 In this preference pane, you can choose the layout of the editing area. There are four layouts available:
 
@@ -1084,13 +1420,14 @@ Setting 					Description
 Brightness 					The brightness of the textures (affects the 3D viewport, the entity and the texture browser)
 Grid 						Opacity of the grid in the 3D and 2D viewports
 Coordinate System Axes 		Show the coordinate system axes in the 3D and 2D viewports
-Background Color 			The background color of the 3D and 2D viewports
 Texture Mode 				Texture filtering mode in the 3D viewport
-Texture Browser Icon Size 	The size of the texture icons in the texture browser
+Enable multisampling        Whether rendering is antialiased
+Texture Browser Icon Size   The size of the texture icons in the texture browser
+Renderer Font Size          Text size in the map viewports (e.g. entity classnames)
 
 ## Mouse Input {#mouse_input}
 
-![Mouse Configuration Dialog (Linux XFCE)](images/MousePreferences.png)
+![Mouse Configuration Dialog (Ubuntu Linux)](images/MousePreferences.png)
 
 The mouse input preference pane allows you to change how TrenchBroom interprets mouse movements.
 
@@ -1103,17 +1440,17 @@ Move Keys 	Keyboard shortcuts for moving around in the map, with a separate slid
 
 ## Keyboard Shortcuts {#keyboard_shortcuts}
 
-![Keyboard Configuration Dialog (Linux XFCE)](images/KeyboardPreferences.png)
+![Keyboard Configuration Dialog (Ubuntu Linux)](images/KeyboardPreferences.png)
 
 In this preference pane, you can change the keybaord shortcuts used in TrenchBroom. The table lists all available shortcuts, their context, and the description. To change a keyboard shortcut, click twice (do not double click) on the shortcut in the first column of the table and enter the new shortcut. The context determines when this shortcut is available, for example, the PgDn key triggers different actions depending on whether the rotate tool is active or not. Finally, the desription column explains what a shortcut does in a particular context. Sometimes a shortcut triggers different actions depending on whether the viewport in which it was used is a 3D or a 2D viewport. For example, the PgDn key can move objects backward (away from the camera) in a 2D viewport or down along the Z axis in the 3D viewport. These different actions are listed together in the description column, but they are separated with a semicolon.
 
 If you open the preference dialog when a map is currently opened, the list of shortcuts will contain additional entries depending on the loaded entity configuration file and the game configuration file. For each entity and special brush or face types, the following keyboard shortcuts are available.
 
 * **Entity**
-	- `View Filter > Toggle CLASSNAME visible` to toggle entities with this classname visible and invisible ([more info](filtering_rendering_options))
+	- `View Filter > Toggle CLASSNAME visible` to toggle entities with this classname visible and invisible ([more info](#filtering_rendering_options))
 	- `Create CLASSNAME` to create entities with this classname ([more info](#creating_entities))
 * **Brush / Face Type**
-	- `View Filter > Toggle TYPE visible` to toggle brushes or faces with this type visible and invisible ([more info](filtering_rendering_options))
+	- `View Filter > Toggle TYPE visible` to toggle brushes or faces with this type visible and invisible ([more info](#filtering_rendering_options))
 	- `Turn selection into TYPE` to set this type to the selected brushes or faces
 	- `Turn selection into non-TYPE` to unset this type from the selected brushes or faces
 
@@ -1147,9 +1484,9 @@ In addition to making you aware of issues, TrenchBroom can also fix them for you
 
 TrenchBroom supports compiling your maps from inside the editor. This means that you can create compilation profiles and configure those profiles to run external compilation tools for you. Note however that TrenchBroom does not come with prepackaged compilation tools - you'll have to download and install those yourself. The following screenshot shows the compilation dialog that comes up when choosing #menu(Menu/Run/Compile...).
 
-![Compilation Dialog (Windows 7)](images/CompilationDialog.png)
+![Compilation Dialog (Windows 10)](images/CompilationDialog.png)
 
-This dialog allows you to create compilation profiles, which are listed on the left of the dialog. Each compilation profile has a name, a working directory, and a list of tasks. Click the '+' button below the profile list to create a new compilation profile, or click the '-' button to delete the selected profile. If you select a profile, you can edit its name, working directory, and tasks on the right side of the dialog.
+This dialog allows you to create compilation profiles, which are listed on the left of the dialog. Each compilation profile has a name, a working directory, and a list of tasks. Click the '+' button below the profile list to create a new compilation profile, or click the '-' button to delete the selected profile. To duplicate a profile, right click on it and select "Duplicate" from the menu. If you select a profile, you can edit its name, working directory, and tasks on the right side of the dialog.
 
 Name
 :	The name of this compilation profile. Need not be unique and can even be empty.
@@ -1160,17 +1497,21 @@ Working directory
 Tasks
 :   A list of tasks which are executed sequentially when the compilation profile is run.
 
+The checkbox on each task lets you selectively exclude a task from running when you run the compilation profile. 
+
 There are three types of tasks, each with different parameters:
 
 Export Map
 :	Exports the map to a file. This file should be different from the actual file where the map is stored.
+
+    Layers marked "Omit From Export" will not be present in the exported map.
 
     Parameter 	Description
     ---------   -----------
     Target 		The path of the exported file. Variables are allowed.
 
 Run Tool
-:	Runs an external tool and captures its output.
+:	Runs an external tool and captures its output. Note that for the Tool parameter's value, you can use a compilation tool variable defined in the [game configuration](#game_configuration), as discussed below.
 
     Parameter 	Description
     ---------   -----------
@@ -1199,6 +1540,10 @@ Variable 		Scope 			Description
 `APP_DIR_PATH` 	Tool, Workdir 	The full path to the directory containing the TrenchBroom application binary.
 `CPU_COUNT` 	Tool 			The number of CPUs in the current machine.
 
+If the [game configuration](#game_configuration) for the current game includes compilation tools, then the names of those tools are also available as variables in the Tool scope. The following screenshot is a section of a compilation profile showing the use of such variables.
+
+![Compilation Dialog Section, with Tool Variables (Ubuntu Linux)](images/CompilationDialogToolVars.png)
+
 It is recommended to use the following general process for compiling maps and to adapt it to your specified needs:
 
 1. Set the working directory to `${MAP_DIR_PATH}`.
@@ -1210,7 +1555,7 @@ The last step will copy the bsp file to the appropriate directory within the gam
 
 To run a compilation profile, click the 'Run' button in the compilation dialog. Note that the 'Run' button changes into a 'Stop' button once the compilation profile is running. If you click on this button again, TrenchBroom will terminate the currently running tool. A running compilation will also be terminated if you close the compilation dialog or if you close the main window, but TrenchBroom will ask you before this happens. Note that the compilation tools are run in the background. You can keep working on your map if you wish.
 
-If you want to test your compilation profile without actually running it, you can hold the #key(Alt) when clicking on the 'Run' button. A test run will only print what each task will do without actually executing it.
+If you want to test your compilation profile without actually running it, click the 'Test' button. A test run will only print what each task will do without actually executing it.
 
 Once the compilation is done, you can launch a game engine and check out your map in the game. The following section explains how you can configure game engines and launch them from within the editor.
 
@@ -1743,26 +2088,27 @@ Since an expression can be another instance of a binary operator, you can simply
 
 Operator Name 					Precedence
 ----     ----                   ----
-`*`      Multiplication			11
-`/`      Division				11
-`%`      Modulus				11
-`+`      Addition 				10
-`-`      Subtraction 			10
-`<<` 	 Bitwise shift left     9
-`>>` 	 Bitwise shift right    9
-`<`      Less 					8
-`<=`     Less or equal 			8
-`>`      Greater 				8
-`>=`     Greater or equal 		8
-`==`     Equal 					7
-`!=`     Inequal 				7
-`&` 	 Bitwise and   			6
-`^` 	 Bitwise xor   			5
-`|` 	 Bitwise or             4
-`&&`     Logical and 			3
-`||`     Logical or 			2
-`[]`     Range 					1
-`->`     Case 					0
+`*`      Multiplication			12
+`/`      Division				12
+`%`      Modulus				12
+`+`      Addition 				11
+`-`      Subtraction 			11
+`<<` 	 Bitwise shift left     10
+`>>` 	 Bitwise shift right    10
+`<`      Less 					9
+`<=`     Less or equal 			9
+`>`      Greater 				9
+`>=`     Greater or equal 		9
+`==`     Equal 					8
+`!=`     Inequal 				8
+`&` 	 Bitwise and   			7
+`^` 	 Bitwise xor   			6
+`|` 	 Bitwise or             5
+`&&`     Logical and 			4
+`||`     Logical or 			3
+`..`     Range 					2
+`->`     Case 					1
+` `      Other operators        13
 
 Some examples:
 
@@ -1789,7 +2135,7 @@ This section contains some information about what you can do if you run into pro
 
 ### Automatic Backups
 
-TrenchBroom automatically creates backups of your work. As a prerequisite, you have to work on a saved file, that is, a file that exists somewhere on your computer. So when you create a new file, you should save it as soon as you decide that you want to keep it. At that point, TrenchBroom will create its automatic backups. These backups are stored in a folder called "autosave" within the folder where your map file is located. It will create a new backup every ten minutes after the last backup, unless the map file has not been changed since then. To prevent the autosaving from interrupting your workflow, TrenchBroom will only create an autosave if the map file has not been changed for three seconds, however. In total, TrenchBroom will create up to 50 backups. After that, it will delete the oldest backup when it creates a new one so that the total number of backups does not exceed 50. The backups have the same name as the map file you are editing, but with the backup number added to the name just before the extension.
+TrenchBroom automatically creates backups of your work. As a prerequisite, you have to work on a saved file, that is, a file that exists somewhere on your computer. So when you create a new file, you should save it as soon as you decide that you want to keep it. At that point, TrenchBroom will create its automatic backups. These backups are stored in a folder called "autosave" within the folder where your map file is located. It will create a new backup every ten minutes after the last backup, unless the map file has not been changed since then. To prevent the autosaving from interrupting your workflow, TrenchBroom will only create an autosave you are not interacting with it, however. In total, TrenchBroom will create up to 50 backups. After that, it will delete the oldest backup when it creates a new one so that the total number of backups does not exceed 50. The backups have the same name as the map file you are editing, but with the backup number added to the name just before the extension.
 
 You can use these backups to go back to previous versions of you map if problems arise. This may help you when you are fixing bugs or if your map file gets corrupted somehow.
 
@@ -2025,87 +2371,131 @@ Game configuration files need to specify the following information.
 	* The supported **model formats**, e.g. mdl
 * **Tags** to attach additional information to faces or brushes in the editor, e.g. whether a face is detail or hint. (optional)
 * **Face attributes** to specify which additional attributes to allow on brush faces (optional)
+* **Map bounds** to be displayed in the 2D viewports (optional)
+* **Compilation tools** that can have their paths configured by the user (optional)
 
 The game configuration is an [expression language](#expression_language) map with a specific structure, which is explained using an example.
 
     {
-	    "version": 2, // mandatory, indicates the version of the file's syntax
-		"name": "Quake 2", // mandatory, the name to use in the UI
-		"icon": "Quake2/Icon.png", // optional, the icon to show in the UI
-	 	"fileformats": [ // a list of supported file formats with custom initial maps to be loaded when a new file is created
-	 	    { "format": "Standard", "initialmap": "initial_standard.map" },
-	 	    { "format": "Valve", "initialmap": "initial_valve.map" },
-	 	    { "format": "Quake2", "initialmap": "initial_quake2.map" }
-	 	],
-		"filesystem": { // defines the file system used to search for game assets
-			"searchpath": "baseq2", // the path in the game folder at which to search for assets
-	        "packageformat": { "extension": "pak", "format": "idpak" } // the package file format
-		},
-		"textures": { // where to search for textures and how to read them, see below
-	        "package": { "type": "directory", "root": "textures" },
-	        "format": { "extensions": [ "wal" ], "format": "wal" },
-	        "palette": "pics/colormap.pcx",
-	        "attribute": "_tb_textures"
-		},
-	  	"entities": { // the builtin entity definition files for this game
-			"definitions": [ "Quake2/Quake2.fgd" ],
-	    	"defaultcolor": "0.6 0.6 0.6 1.0",
-			"modelformats": [ "md2" ]
-	    },
-	    "tags": {
-	        "brush": [
-	            {
-	                "name": "Trigger",
-	                "attribs": [ "transparent" ],
-	                "match": "classname",
-	                "pattern": "trigger*"
-	            }
-	        ],
-	        "brushface": [
-	            {
-	                "name": "Clip",
-	                "attribs": [ "transparent" ],
-	                "match": "texture",
-	                "pattern": "clip"
-	            },
-	            {
-	                "name": "Skip",
-	                "attribs": [ "transparent" ],
-	                "match": "texture",
-	                "pattern": "skip"
-	            },
-	            {
-	                "name": "Hint",
-	                "attribs": [ "transparent" ],
-	                "match": "texture",
-	                "pattern": "hint*"
-	            },
-	            {
-	                "name": "Liquid",
-	                "match": "texture",
-	                "pattern": "\**"
-	            }
-	        ]
-	    }
+        "version": 4, // mandatory, indicates the version of the file's syntax
+        "name": "Example Resembling Quake 2", // mandatory, the name to use in the UI
+        "icon": "Icon.png", // optional, the icon to show in the UI
+        "fileformats": [ // supported file formats, each with optional initial map to use as "new map"
+            { "format": "Quake2" },
+            { "format": "Quake2 (Valve)", "initialmap": "initial_valve.map" }
+        ],
+        "filesystem": { // defines the file system used to search for game assets
+            "searchpath": "baseq2", // the path in the game folder at which to search for assets
+            "packageformat": { "extension": "pak", "format": "idpak" } // the package file format
+        },
+        "textures": { // where to search for textures and how to read them, see below
+            "package": { "type": "directory", "root": "textures" },
+            "format": { "extensions": [ "wal" ], "format": "wal" },
+            "palette": "pics/colormap.pcx",
+            "attribute": "_tb_textures"
+        },
+        "entities": { // the builtin entity definition files for this game
+            "definitions": [ "Quake2.fgd" ],
+            "defaultcolor": "0.6 0.6 0.6 1.0",
+            "modelformats": [ "md2" ]
+        },
+        "tags": { // "smart tags" select or modify a brush/face based on its characteristics
+            "brush": [
+                {
+                    "name": "Trigger",
+                    "attribs": [ "transparent" ],
+                    "match": "classname",
+                    "pattern": "trigger*",
+                    "texture": "trigger"
+                }
+            ],
+            "brushface": [
+                {
+                    "name": "Clip",
+                    "attribs": [ "transparent" ],
+                    "match": "texture",
+                    "pattern": "clip"
+                },
+                {
+                    "name": "Liquid",
+                    "match": "contentflag",
+                    "flags": [ "lava", "water" ]
+                },
+                {
+                    "name": "Transparent",
+                    "attribs": [ "transparent" ],
+                    "match": "surfaceflag",
+                    "flags": [ "trans33" ]
+                }
+            ]
+        },
+        "faceattribs": { // bitflags assigned to a face to affect its behavior
+            "surfaceflags": [
+                {
+                    "name": "light",
+                    "description": "Emit light from the surface, brightness is specified in the 'value' field"
+                },
+                {
+                    "name": "trans33",
+                    "description": "The surface is 33% transparent"
+                },
+                {
+                    "name": "hint",
+                    "description": "Make a primary bsp splitter"
+                }
+            ],
+            "contentflags": [
+                {
+                    "name": "solid",
+                    "description": "Default for all brushes"
+                },
+                {
+                    "name": "lava",
+                    "description": "The brush is lava"
+                },
+                {
+                    "unused": true
+                },
+                {
+                    "name": "water",
+                    "description": "The brush is water"
+                }
+            ]
+        },
+        "softMapBounds":"-4096 -4096 -4096 4096 4096 4096",
+        "compilationTools": [
+            { "name": "bsp" },
+            { "name": "vis" },
+            { "name": "rad" }
+        ]
     }
 
 #### Versions
 
-The game configuration files are versioned. Whenever a breaking change to the game configuration format is introduced, the version number will increase and TrenchBroom will reject the old format with an error message. The following sections will explain how to migrate a game configuration file for each version change.
+The game configuration files are versioned. Whenever a breaking change to the game configuration format is introduced, the version number will increase and TrenchBroom will reject the old format with an error message.
 
-**Migrating to Version 3**
+**Current Versions**
 
-Version 3 deprecates the `brushtypes` key in favor of the `tags` key, but the contents are very similar. The value of the `brushtypes` key is an array of type matchers. The following brush type matchers are supported in version 2:
+TrenchBroom currently supports game config versions 3 and 4. Version 4 has the following changes from version 3:
+
+* Version 4 adds support for the `unused` key in surface flags and content flags; this key does not exist in version 3.
+* Version 4 adds support for specifying a list of values for the `pattern` key in surfaceparm-type smart tags; in version 3 only a single value is allowed.
+* Version 4 adds the optional `softMapBounds` key.
+* Version 4 adds the optional `compilationTools` key.
+
+**Migrating from Version 2**
+
+Version 3 deprecated the `brushtypes` key in favor of the `tags` key, but the contents are very similar. The value of the `brushtypes` key is an array of type matchers. The following brush type matchers are supported in version 2:
 
 Match        Description
 -----        -----------
 texture      Match against a texture name, must match all brush faces
 contentflag  Match against face content flags (used by Quake 2, Quake 3)
-surfaceflag  Match against face surface flags (used by Quake 2, Quake 3)
+surfaceflag  Match against face surface flags (used by Quake 2)
 surfaceparm  Match against shader surface parameters (used by Quake 3)
 classname    Match against a brush entity class name
 
-In version 3, the `tags` key is a map with two possible keys: `brush` and `brushface`. For both keys, the value is again an array of type matchers. The `brush` key supports the `classname` matcher and the `brushface` key supports the `texture`, `contentflag`, `surfaceflag` and `surfaceparm` matchers. To migrate the `brushtypes` key to the `tags` key, you create the basic structure as follows:
+In versions 3 and 4, the `tags` key is a map with two possible keys: `brush` and `brushface`. For both keys, the value is again an array of type matchers. The `brush` key supports the `classname` matcher and the `brushface` key supports the `texture`, `contentflag`, `surfaceflag` and `surfaceparm` matchers. To migrate the `brushtypes` key to the `tags` key, you create the basic structure as follows:
 
     "tags": {
         "brush": [ ... ],
@@ -2124,8 +2514,8 @@ Standard         Standard Quake map file
 Valve            Valve map file (like Standard, but with more control over texture mapping)
 Quake2           Quake 2 map file with Standard style texture info
 Quake2 (Valve)   Quake 2 map file with Valve style texture info
-Quake3 (Valve)   Quake 3 map file with Valve style texture info
 Quake3 (legacy)  Quake 3 map file with Standard style texture info
+Quake3 (Valve)   Quake 3 map file with Valve style texture info
 Hexen2           Hexen 2 map file (like Quake, but with an additional, but unused value per face)
 
 Note that the "Quake3" format, which will include Quake 3 brush primitives support, is not yet fully implemented and so is omitted from the list above. The "Quake3 (Valve)" format is as expressive for texture placement as the brush primitives format, but "Quake3 (Valve)" cannot be used to read existing map files that contain brush primitives. Also note that none of the Quake 3 formats yet support patch meshes.
@@ -2152,7 +2542,9 @@ The following package formats are supported.
 
 Format       Description
 ------       -----------
-idpak        Id pak file, used by Quake, Quake 2, Hexen 2
+idpak        Id pak file
+dkpak        Daikatana pak file
+zip          Zip file, often uses other extensions such as pk3
 
 #### Texture Configurations
 
@@ -2238,7 +2630,11 @@ dkm          Daikatana model format
 
 #### Tags {#game_configuration_files_tags}
 
-TrenchBroom can recognize certain special brush or face types. An example would be clip faces or trigger brushes. But since the details can be game dependent, these special types are defined in the game configuration. For greater flexibility and future enhancements, a general tagging system is used to realize this functionality. Thereby, the game configuration defines smart tags which are applied automatically to brushes or brush faces depending on certain conditions.
+TrenchBroom can recognize certain special brush or face types. An example would be clip faces or trigger brushes. But since the details can be game dependent, these special types are defined in the game configuration. For greater flexibility and future enhancements, a general "smart tags" system is used to realize this functionality.
+
+TrenchBroom uses these tag definitions to automatically apply attributes to matching brushes/faces &mdash; for example to render trigger brushes partially transparent &mdash; and to populate the filtering options available in the [View menu](#filtering_rendering_options). 
+
+Each smart tag definition also makes one or more related [keyboard shortcuts](#keyboard_shortcuts) available (searching the shortcuts by "Tags" will show all of these). Each tag will always have a related shortcut that can be used to toggle the visibility of brushes whose faces match the tag. Additional shortcuts may also be available to apply the characteristics of the tag to the current selection, or remove those characteristics. These shortcuts depend on the tag's `match` criteria as described below.
 
 The tags are specified separately for brushes and faces under the corresponding keys:
 
@@ -2256,29 +2652,38 @@ Each of these keys has a list of tags. Each tag looks as follows.
         "pattern": "clip"
     },
 
-The most important key is `match`, which specifies how TrenchBroom will determine whether or not to apply this tag. This key can have the following values.
+The only attribute type currently supported in the `attribs` list is "transparent", which as mentioned above will cause faces matching this tag to be rendered with partial transparency in the 3D viewport.
 
-Match        Description
------        -----------
-texture      Match against a texture name, must match all brush faces
-contentflag  Match against face content flags (used by Quake 2, Quake 3)
-surfaceflag  Match against face surface flags (used by Quake 2, Quake 3)
-surfaceparm  Match against shader surface parameters (used by Quake 3)
-classname    Match against a brush entity class name
+The `match` key specifies how TrenchBroom will determine whether or not this tag applies to a brush or face.
 
-Depending on the value of the `match` key, additional keys may be required to configure the matcher.
+For a `brush` smart tag, the `match` key can only have the "classname" value. In addition to the usual keyboard shortcut for view filtering, this kind of smart tag will also generate keyboard shortcuts to either apply the tag (create a brush entity from selected brushes) or remove it (return selected brushes to worldspawn). This can be summarized as follows:
 
-* For the `texture` matcher, the key `pattern` contains a pattern that is matched against the texture name. Wildcards `*` and `?` are allowed. Use backslashes to escape literal `*` and `?` chars.
+Match        Description                            Shortcut to apply  Shortcut to remove
+-----        -----------                            -----------------  ------------------
+classname    Match against brush entity class name  Yes                Yes
+
+For a `brushface` smart tag, the `match` key can have the following values and will generate keyboard shortcuts to apply or remove the match criteria on selected faces accordingly:
+
+Match        Description                            Shortcut to apply  Shortcut to remove
+-----        -----------                            -----------------  ------------------
+texture      Match against a texture name           Yes                No
+contentflag  Match against face content flags       Yes                Yes
+surfaceflag  Match against face surface flags       Yes                Yes
+surfaceparm  Match against shader surface parameter Yes                No
+
+Additional keys will be required to configure the matcher, depending on the value of the `match` key.
+
+* For the `classname` matcher, the key `pattern` contains a pattern that is matched against the classname of the brush entity that contains the brush. Wildcards `*` and `?` are allowed. Use backslashes to escape literal `*` and `?` chars.
+    - Additionally, the `classname` matcher can contain an optional `texture` key. When this tag is applied by the use of its keyboard shortcut, then the selected brushes will receive the texture with the name given as the value of this key (e.g. `"texture": "trigger"` will assign the `trigger` texture).
+* For the `texture` matcher, the key `pattern` contains a pattern that is matched against a face's texture name. If the pattern does *not* contain a slash, it will only be matched against the segment after the final slash (if any) in the texture name. Wildcards `*` and `?` are allowed. Use backslashes to escape literal `*` and `?` chars.
 * For the `contentflag` and `surfaceflag` matchers, the key `flags` contains a list of content or surface flag names to match against (see below for more info on content and surface flags).
-* For the `surfaceparm` matcher, the key `pattern` contains a pattern that is matched against the surface parameters. Wildcards `*` and `?` are allowed. Use backslashes to escape literal `*` and `?` chars.
-* For the `classname` matcher, key `pattern` contains a pattern that is matched against the classname of the brush entity that contains the brush. Wildcards `*` and `?` are allowed. Use backslashes to escape literal `*` and `?` chars.
-	- Additionally, the `classname` matcher can contain an optional `texture` key - when this type is set by the user, then the selected brushes will receive the texture with the name given as the value of this key (e.g. `"texture": "trigger"` will assign the `trigger` texture).
+* For the `surfaceparm` matcher, the key `pattern` contains a name that is matched against the surface parameters of a face's shader. No wildcards allowed; the parameter name must match exactly. In version 4 of the game config format, you may alternately specify a *list* of surfaceparm names for this value, which will match against a shader if it has any of those surfaceparms.
 
 #### Face Attributes
 
-Face attributes currently come in two flavors: surface flags and content flags. Therefore, the `faceattribs` key contains two entries with keys `surfaceflags` and `contentflags` for the surface and content flags, respectively.
+The main part of the `faceattribs` object is the set of definitions of available surface flags (generally affecting the appearance/behavior of an individual face) and content flags (generally affecting the behavior of the brush containing the face). These definitions are specified through the `surfaceflags` and `contentflags` keys.
 
-Each of these entries contains a list where each entry consists of two entries with keys `name` and `description`. Note that the position of each flag entry determines the value of that flag. Suppose that `i` is the 0-based index of the entry, then the flags value corresponds to 2 to the power of `i`: The first entry has value 2^0 = 1, the second has value 2^1 = 2, the third has value 2^2 = 4, and so on.
+The value for each of those keys is a list of flag definitions. Note that the position of each flag definition within its list determines the value of that flag. Suppose that `i` is the 0-based list index of a flag; that flag's value then corresponds to 2 to the power of `i`. The first flag in the list has value 2^0 = 1, the second has value 2^1 = 2, the third has value 2^2 = 4, and so on.
 
 Consider the following example:
 
@@ -2303,7 +2708,7 @@ Consider the following example:
                 "description": "Brush is a window (not really used)"
             }, // value 2
             {
-            	"name": "unused"
+                "unused": true
             }, // value 4
             {
                 "name": "playerclip",
@@ -2312,7 +2717,52 @@ Consider the following example:
         ]
     }
 
-There are two surface flags with values 1 and 2, and four content flags with values 1, 2, 4, and 8. Note that the third flag, named "unused", is just a placeholder. This is necessary so that the next flag, "playerclip", receives the correct value of 8. Note that the `name` key is mandatory while the `description` key is optional.
+There are two surface flags with values 1 and 2, and three valid content flags with values 1, 2, and 8. Note that the third element in the contentflags list, marked as unused, is just a placeholder. This is necessary so that the next flag, "playerclip", receives the correct value of 8.
+
+For any flag definition *not* marked as unused, the `name` key is mandatory and the `description` key is optional. The name value will appear in the flag editor UI, and the description (if provided) will be visible in a tooltip when hovering over a flag checkbox.
+
+Note that before version 4 of the game config format, the `unused` key is not available for flag definitions. You can still effectively skip unused flag values in version 3 with placeholder flag definitions that by convention simply have the name "unused", for example the third element in the contentflags list above could instead be
+
+            {
+                "name": "unused"
+            }, // value 4
+
+This approach will however cause flags named "unused" to appear in the flag editor UI.
+
+The `faceattribs` object may contain one other key, `defaults`. The value of this key is an object that defines the initial values seen in the [face attribute editor](#face_attribute_editor) for the face of a newly created brush. The following `defaults` keys are supported:
+
+Key              Description
+------           -----------
+offset           List of two numbers specifying the default X and Y offset
+scale            List of two numbers specifying the default X and Y scale
+rotation         Number specifying the default rotation angle
+surfaceValue     Number specifying the default surface value (only applicable if surfaceflags exist)
+surfaceFlags     List of strings naming the default surface flags
+surfaceContents  List of strings naming the default content flags
+color            String specifying the default surface color (only applicable for Daikatana)
+
+List values must be given in array format, e.g. a default scale of 0.5 along each axis would be specified within the `defaults` object as: `"scale": [0.5, 0.5]`
+
+The flag names specified for `surfaceFlags` or `surfaceContents` must correspond to the `name` value for existing flags defined in the `surfaceflags` or `contentflags` (respectively) of the `faceattribs` object.
+
+The `color` value must be a string of the form "R G B" or "R G B A". R G B and A are each a floating-point number from 0.0 to 1.0. If A is omitted it is assumed to be 1.0.
+
+#### Map Bounds
+
+The optional `softMapBounds` key defines the default [map bounds](#map_bounds) to draw in the 2D viewports. Its value is a string that contains the coordinates of two opposite points that define the volume enclosed by the bounds. The example here defines a cube from the point (-4096, -4096, -4096) to the point (4096, 4096, 4096):
+
+    "softMapBounds":"-4096 -4096 -4096 4096 4096 4096",
+
+#### Compilation Tools
+
+The optional `compilationTools` list identifies tool names that will appear in the [game configuration dialog](#game_configuration), allowing the user to associate these names with paths to tool executables. Such a name can be used as a variable in this game's [compilation profiles](#compiling_maps) to represent the associated path.
+
+Each element in the list is an object that must have a `name` key and may optionally have a `description` key (used for tooltips). An example from the Quake 3 game configuration that defines two tools:
+
+    "compilationTools": [
+        { "name": "q3map2", "description": "Path to your q3map2 executable, which performs the main bsp/vis/light compilation phases" },
+        { "name": "bspc", "description": "Path to your bspc or mbspc executable, which creates .aas files for bot support" }
+    ]
 
 # Getting Involved
 
@@ -2349,9 +2799,9 @@ Open the "About TrenchBroom" dialog from the menu. The light gray text on the le
 - [Quake Mapping Discord] - Quake Mapping Discord
 - [Tome of Preach] - Quake Map Hacks and QuakeC Hacks
 
-[TrenchBroom on GitHub]: http://github.com/kduske/TrenchBroom/
-[TrenchBroom issue tracker]: http://github.com/kduske/TrenchBroom/issues/
-[TrenchBroom Discord]: https://discord.gg/n7K8Cps
+[TrenchBroom on GitHub]: http://github.com/TrenchBroom/TrenchBroom/
+[TrenchBroom issue tracker]: http://github.com/TrenchBroom/TrenchBroom/issues/
+[TrenchBroom Discord]: https://discord.gg/WGf9uve
 [func_msgboard]: http://celephais.net/board/
 [Quake Tools]: https://joshua.itch.io/quake-tools
 [Tome of Preach]: https://tomeofpreach.wordpress.com/

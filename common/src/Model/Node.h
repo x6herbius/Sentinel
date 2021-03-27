@@ -17,29 +17,39 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Node
-#define TrenchBroom_Node
+#pragma once
 
 #include "FloatType.h"
 #include "Model/IssueType.h"
+#include "Model/NodeVisitor.h"
 #include "Model/Tag.h"
 
 #include <vecmath/forward.h>
+#include <vecmath/bbox.h>
 
+#include <iosfwd>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace TrenchBroom {
     namespace Model {
-        class AttributableNode;
+        class EntityNodeBase;
         class ConstNodeVisitor;
         class Issue;
         class IssueGenerator;
         enum class LockState;
-        class NodeSnapshot;
         class NodeVisitor;
         class PickResult;
         enum class VisibilityState;
+
+        struct NodePath {
+            std::vector<std::size_t> indices;
+        };
+
+        bool operator==(const NodePath& lhs, const NodePath& rhs);
+        bool operator!=(const NodePath& lhs, const NodePath& rhs);
+        std::ostream& operator<<(std::ostream& str, const NodePath& path);
 
         class Node : public Taggable {
         private:
@@ -54,8 +64,8 @@ namespace TrenchBroom {
             VisibilityState m_visibilityState;
             LockState m_lockState;
 
-            size_t m_lineNumber;
-            size_t m_lineCount;
+            mutable size_t m_lineNumber;
+            mutable size_t m_lineCount;
 
             mutable std::vector<Issue*> m_issues;
             mutable bool m_issuesValid;
@@ -69,6 +79,23 @@ namespace TrenchBroom {
             ~Node() override;
         public: // getters
             const std::string& name() const;
+
+            /**
+             * Returns a path from the given ancestor to this node.
+             *
+             * If the given node is not an ancestor of this node, then the returned path is undefined.
+             */
+            NodePath pathFrom(const Node& fromAncestor) const;
+            
+            /**
+             * Resolves the given path starting at this node.
+             *
+             * Returns the descendant of this node to which the given path resolves or null if the given
+             * path is not valid from this node.
+             */
+            Node* resolvePath(const NodePath& path);
+            const Node* resolvePath(const NodePath& path) const;
+
             /**
              * Returns a box that encloses the "logical" part of this node and its children; these are the bounds that are
              * used in game (for entities, the bounds specified in the entity definition file), and used
@@ -86,7 +113,6 @@ namespace TrenchBroom {
         public: // cloning and snapshots
             Node* clone(const vm::bbox3& worldBounds) const;
             Node* cloneRecursively(const vm::bbox3& worldBounds) const;
-            NodeSnapshot* takeSnapshot();
         protected:
             void cloneAttributes(Node* node) const;
 
@@ -144,7 +170,9 @@ namespace TrenchBroom {
                 incDescendantCount(descendantCountDelta);
             }
 
-            void addChild(Node* child);
+            Node& addChild(Node* child);
+
+            std::vector<std::unique_ptr<Node>> replaceChildren(std::vector<std::unique_ptr<Node>> newChildren);
 
             template <typename I>
             void removeChildren(I cur, I end) {
@@ -194,7 +222,6 @@ namespace TrenchBroom {
             void descendantWasAdded(Node* node, size_t depth);
             void descendantWillBeRemoved(Node* node, size_t depth);
             void descendantWasRemoved(Node* oldParent, Node* node, size_t depth);
-            bool shouldPropagateDescendantEvents() const;
 
             void incDescendantCount(size_t delta);
             void decDescendantCount(size_t delta);
@@ -217,15 +244,23 @@ namespace TrenchBroom {
             void nodeWillChange();
             void nodeDidChange();
 
-            void nodePhysicalBoundsDidChange(vm::bbox3 oldBounds);
+            friend class NotifyPhysicalBoundsChange;
+            class NotifyPhysicalBoundsChange {
+            private:
+                Node* m_node;
+            public:
+                explicit NotifyPhysicalBoundsChange(Node* node);
+                ~NotifyPhysicalBoundsChange();
+            };
+            void nodePhysicalBoundsDidChange();
         private:
             void childWillChange(Node* node);
             void childDidChange(Node* node);
             void descendantWillChange(Node* node);
             void descendantDidChange(Node* node);
 
-            void childPhysicalBoundsDidChange(Node* node, const vm::bbox3& oldBounds);
-            void descendantPhysicalBoundsDidChange(Node* node, const vm::bbox3& oldBounds, size_t depth);
+            void childPhysicalBoundsDidChange(Node* node);
+            void descendantPhysicalBoundsDidChange(Node* node, size_t depth);
         public: // selection
             bool selected() const;
             void select();
@@ -257,7 +292,7 @@ namespace TrenchBroom {
              * it's a list of the contained brushes (excluding the Entity itself).
              */
             virtual std::vector<Node*> nodesRequiredForViewSelection();
-        protected:
+        private:
             void incChildSelectionCount(size_t delta);
             void decChildSelectionCount(size_t delta);
         private:
@@ -282,7 +317,7 @@ namespace TrenchBroom {
             void findNodesContaining(const vm::vec3& point, std::vector<Node*>& result);
         public: // file position
             size_t lineNumber() const;
-            void setFilePosition(size_t lineNumber, size_t lineCount);
+            void setFilePosition(size_t lineNumber, size_t lineCount) const;
             bool containsLine(size_t lineNumber) const;
         public: // issue management
             const std::vector<Issue*>& issues(const std::vector<IssueGenerator*>& issueGenerators);
@@ -295,141 +330,114 @@ namespace TrenchBroom {
             void validateIssues(const std::vector<IssueGenerator*>& issueGenerators);
             void clearIssues() const;
         public: // visitors
-            template <class V>
-            void acceptAndRecurse(V& visitor) {
-                accept(visitor);
-                if (!visitor.recursionStopped() && !visitor.cancelled())
-                    recurse(visitor);
-            }
-
-            template <class V>
-            void acceptAndRecurse(V& visitor) const {
-                accept(visitor);
-                if (!visitor.recursionStopped() && !visitor.cancelled())
-                    recurse(visitor);
-            }
-
-            template <typename I, typename V>
-            static void acceptAndRecurse(I cur, I end, V& visitor) {
-                while (cur != end && !visitor.cancelled()) {
-                    (*cur)->acceptAndRecurse(visitor);
-                    ++cur;
-                }
-            }
-
-            template <class V>
-            void acceptAndEscalate(V& visitor) {
-                accept(visitor);
-                if (!visitor.recursionStopped() && !visitor.cancelled())
-                    escalate(visitor);
-            }
-
-            template <class V>
-            void acceptAndEscalate(V& visitor) const {
-                accept(visitor);
-                if (!visitor.recursionStopped() && !visitor.cancelled())
-                    escalate(visitor);
-            }
-
-            template <typename I, typename V>
-            static void acceptAndEscalate(I cur, I end, V& visitor) {
-                while (cur != end && !visitor.cancelled()) {
-                    (*cur)->acceptAndEscalate(visitor);
-                    ++cur;
-                }
-            }
-
-            template <class V>
-            void accept(V& visitor) {
+            /**
+             * Visit this node with the given lambda and return the lambda's return value or nothing
+             * if the lambda doesn't return anything.
+             *
+             * Passes a non-const pointer to this node to the lambda.
+             */
+            template <typename L>
+            auto accept(const L& lambda) {
+                NodeLambdaVisitor<L> visitor(lambda);
                 doAccept(visitor);
+                return visitor.result();
             }
 
-            template <class V>
-            void accept(V& visitor) const {
+            /**
+             * Visit this node with the given lambda and return the lambda's return value or nothing
+             * if the lambda doesn't return anything.
+             *
+             * Passes a const pointer to this node to the lambda.
+             */
+            template <typename L>
+            auto accept(const L& lambda) const {
+                ConstNodeLambdaVisitor<L> visitor(lambda);
                 doAccept(visitor);
+                return visitor.result();
             }
 
-            template <typename I, typename V>
-            static void accept(I cur, I end, V& visitor) {
-                while (cur != end && !visitor.cancelled()) {
-                    (*cur)->accept(visitor);
-                    ++cur;
+            /**
+             * Visit this node's parent with the given lambda and return the lambda's return value or
+             * nothing if the lambda doesn't return anything.
+             *
+             * If the lambda returns a value and not void, the value is wrapped in std::optional. If
+             * this node does not have a parent, then an empty optional is returned.
+             *
+             * Passes a non-const pointer to this node's parent to the lambda.
+             */
+            template <typename L>
+            auto visitParent(const L& lambda) {
+                if constexpr(NodeLambdaHasResult_v<L>) {
+                    using R = typename NodeLambdaVisitorResult<L>::R;
+                    if (auto* parent = this->parent()) {
+                        return std::optional<R>{parent->accept(lambda)};
+                    } else {
+                        return std::optional<R>{};
+                    }
+                } else {
+                    if (auto* parent = this->parent()) {
+                        parent->accept(lambda);
+                    }
                 }
             }
 
-            template <class V>
-            void recurse(V& visitor) {
-                for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
-                    Node* node = *it;
-                    node->acceptAndRecurse(visitor);
+
+            /**
+             * Visit this node's parent with the given lambda and return the lambda's return value or
+             * nothing if the lambda doesn't return anything.
+             *
+             * If the lambda returns a value and not void, the value is wrapped in std::optional. If
+             * this node does not have a parent, then an empty optional is returned.
+             *
+             * Passes a const pointer to this node's parent to the lambda.
+             */
+            template <typename L>
+            auto visitParent(const L& lambda) const {
+                if constexpr(NodeLambdaHasResult_v<L>) {
+                    using R = typename NodeLambdaVisitorResult<L>::R;
+                    if (const auto* parent = this->parent()) {
+                        return std::optional<R>{parent->accept(lambda)};
+                    } else {
+                        return std::optional<R>{};
+                    }
+                } else {
+                    if (const auto* parent = this->parent()) {
+                        parent->accept(lambda);
+                    }
                 }
             }
 
-            template <class V>
-            void recurse(V& visitor) const {
-                for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
-                    Node* node = *it;
-                    node->acceptAndRecurse(visitor);
+            /**
+             * Visit every node in the given vector with the given lambda.
+             */
+            template <typename N, typename L>
+            static void visitAll(const std::vector<N*>& nodes, const L& lambda) {
+                for (auto* node : nodes) {
+                    node->accept(lambda);
                 }
             }
 
-            template <typename I, typename V>
-            static void recurse(I cur, I end, V& visitor) {
-                while (cur != end) {
-                    (*cur)->recurse(visitor);
-                    ++cur;
-                }
+            /**
+             * Visit all children of this node with the given lambda.
+             */
+            template <typename L>
+            void visitChildren(const L& lambda) {
+                visitAll(m_children, lambda);
             }
 
-            template <class V>
-            void iterate(V& visitor) {
-                for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
-                    Node* node = *it;
-                    node->accept(visitor);
-                }
-            }
-
-            template <class V>
-            void iterate(V& visitor) const {
-                for (auto it = std::begin(m_children), end = std::end(m_children); it != end && !visitor.cancelled(); ++it) {
-                    Node* node = *it;
-                    node->accept(visitor);
-                }
-            }
-
-            template <typename I, typename V>
-            static void iterate(I cur, I end, V& visitor) {
-                while (cur != end && !visitor.cancelled()) {
-                    (*cur)->iterate(visitor);
-                    ++cur;
-                }
-            }
-
-            template <class V>
-            void escalate(V& visitor) {
-                if (parent() != nullptr && !visitor.cancelled())
-                    parent()->acceptAndEscalate(visitor);
-            }
-
-            template <class V>
-            void escalate(V& visitor) const {
-                if (parent() != nullptr && !visitor.cancelled())
-                    parent()->acceptAndEscalate(visitor);
-            }
-
-            template <typename I, typename V>
-            static void escalate(I cur, I end, V& visitor) {
-                while (cur != end && !visitor.cancelled()) {
-                    (*cur)->escalate(visitor);
-                    ++cur;
-                }
+            /**
+             * Visit all children of this node with the given lambda.
+             */
+            template <typename L>
+            void visitChildren(const L& lambda) const {
+                visitAll(m_children, lambda);
             }
         protected: // index management
-            void findAttributableNodesWithAttribute(const std::string& name, const std::string& value, std::vector<AttributableNode*>& result) const;
-            void findAttributableNodesWithNumberedAttribute(const std::string& prefix, const std::string& value, std::vector<AttributableNode*>& result) const;
+            void findEntityNodesWithProperty(const std::string& key, const std::string& value, std::vector<EntityNodeBase*>& result) const;
+            void findEntityNodesWithNumberedProperty(const std::string& prefix, const std::string& value, std::vector<EntityNodeBase*>& result) const;
 
-            void addToIndex(AttributableNode* attributable, const std::string& name, const std::string& value);
-            void removeFromIndex(AttributableNode* attributable, const std::string& name, const std::string& value);
+            void addToIndex(EntityNodeBase* node, const std::string& key, const std::string& value);
+            void removeFromIndex(EntityNodeBase* node, const std::string& key, const std::string& value);
         private: // subclassing interface
             virtual const std::string& doGetName() const = 0;
             virtual const vm::bbox3& doGetLogicalBounds() const = 0;
@@ -437,7 +445,6 @@ namespace TrenchBroom {
 
             virtual Node* doClone(const vm::bbox3& worldBounds) const = 0;
             virtual Node* doCloneRecursively(const vm::bbox3& worldBounds) const;
-            virtual NodeSnapshot* doTakeSnapshot();
 
             virtual bool doCanAddChild(const Node* child) const = 0;
             virtual bool doCanRemoveChild(const Node* child) const = 0;
@@ -454,7 +461,6 @@ namespace TrenchBroom {
             virtual void doDescendantWasAdded(Node* node, size_t depth);
             virtual void doDescendantWillBeRemoved(Node* node, size_t depth);
             virtual void doDescendantWasRemoved(Node* oldParent, Node* node, size_t depth);
-            virtual bool doShouldPropagateDescendantEvents() const;
 
             virtual void doParentWillChange();
             virtual void doParentDidChange();
@@ -480,13 +486,12 @@ namespace TrenchBroom {
             virtual void doAccept(NodeVisitor& visitor) = 0;
             virtual void doAccept(ConstNodeVisitor& visitor) const = 0;
 
-            virtual void doFindAttributableNodesWithAttribute(const std::string& name, const std::string& value, std::vector<AttributableNode*>& result) const;
-            virtual void doFindAttributableNodesWithNumberedAttribute(const std::string& prefix, const std::string& value, std::vector<AttributableNode*>& result) const;
+            virtual void doFindEntityNodesWithProperty(const std::string& key, const std::string& value, std::vector<EntityNodeBase*>& result) const;
+            virtual void doFindEntityNodesWithNumberedProperty(const std::string& prefix, const std::string& value, std::vector<EntityNodeBase*>& result) const;
 
-            virtual void doAddToIndex(AttributableNode* attributable, const std::string& name, const std::string& value);
-            virtual void doRemoveFromIndex(AttributableNode* attributable, const std::string& name, const std::string& value);
+            virtual void doAddToIndex(EntityNodeBase* node, const std::string& key, const std::string& value);
+            virtual void doRemoveFromIndex(EntityNodeBase* node, const std::string& key, const std::string& value);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_Node) */

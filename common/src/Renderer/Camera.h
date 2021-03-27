@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Camera
-#define TrenchBroom_Camera
+#pragma once
 
 #include "FloatType.h"
 #include "Notifier.h"
@@ -110,13 +109,13 @@ namespace TrenchBroom {
             void frustumPlanes(vm::plane3f& topPlane, vm::plane3f& rightPlane, vm::plane3f& bottomPlane, vm::plane3f& leftPlane) const;
 
             vm::ray3f viewRay() const;
-            vm::ray3f pickRay(int x, int y) const;
+            vm::ray3f pickRay(float x, float y) const;
             vm::ray3f pickRay(const vm::vec3f& point) const;
             float distanceTo(const vm::vec3f& point) const;
             float squaredDistanceTo(const vm::vec3f& point) const;
             float perpendicularDistanceTo(const vm::vec3f& point) const;
             vm::vec3f defaultPoint(const float distance = DefaultPointDistance) const;
-            vm::vec3f defaultPoint(int x, int y) const;
+            vm::vec3f defaultPoint(float x, float y) const;
 
             template <typename T>
             static vm::vec<T,3> defaultPoint(const vm::ray<T,3>& ray, const T distance = T(DefaultPointDistance)) {
@@ -182,4 +181,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_Camera) */

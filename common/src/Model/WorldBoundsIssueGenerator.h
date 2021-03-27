@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_WorldBoundsIssueGenerator
-#define TrenchBroom_WorldBoundsIssueGenerator
+#pragma once
 
 #include "FloatType.h"
 #include "Model/IssueGenerator.h"
@@ -38,10 +37,9 @@ namespace TrenchBroom {
         public:
             explicit WorldBoundsIssueGenerator(const vm::bbox3& bounds);
         private:
-            void doGenerate(Entity* brush, IssueList& issues) const override;
-            void doGenerate(Brush* brush, IssueList& issues) const override;
+            void doGenerate(EntityNode* brush, IssueList& issues) const override;
+            void doGenerate(BrushNode* brush, IssueList& issues) const override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_WorldBoundsIssueGenerator) */

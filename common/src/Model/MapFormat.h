@@ -17,10 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapFormat
-#define TrenchBroom_MapFormat
+#pragma once
 
 #include <string>
+#include <vector>
 
 namespace TrenchBroom {
     namespace Model {
@@ -74,7 +74,7 @@ namespace TrenchBroom {
          * @param formatName the name
          * @return the enum value
          */
-        MapFormat mapFormat(const std::string& formatName);
+        MapFormat formatFromName(const std::string& formatName);
 
         /**
          * Returns the name of the given map format enum value.
@@ -83,7 +83,14 @@ namespace TrenchBroom {
          * @return the name
          */
         std::string formatName(MapFormat format);
+        /**
+         * Returns a vector starting with the given format, then the other formats which are compatible with it.
+         *
+         * @param format the preferred format
+         * @return the preferred format, then the other compatible formats
+         */
+        std::vector<MapFormat> compatibleFormats(MapFormat format);
+        bool isParallelTexCoordSystem(MapFormat format);
     }
 }
 
-#endif /* defined(TrenchBroom_MapFormat) */

@@ -20,11 +20,16 @@
 #include "Model/Issue.h"
 
 #include "Ensure.h"
+#include "Model/Brush.h"
 #include "Model/BrushFace.h"
-#include "Model/CollectSelectableNodesVisitor.h"
+#include "Model/BrushNode.h"
 #include "Model/EditorContext.h"
+#include "Model/Entity.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
 #include "Model/Node.h"
 
+#include <kdl/overload.h>
 #include <kdl/vector_utils.h>
 
 #include <string>
@@ -53,25 +58,24 @@ namespace TrenchBroom {
             return m_node;
         }
 
-        class Issue::MatchSelectableIssueNodes {
-        public:
-            bool operator()(const Model::World*) const         { return false; }
-            bool operator()(const Model::Layer*) const         { return false; }
-            bool operator()(const Model::Group*) const         { return true; }
-            bool operator()(const Model::Entity* entity) const { return !entity->hasChildren(); }
-            bool operator()(const Model::Brush*) const         { return true; }
-        };
-
         bool Issue::addSelectableNodes(const EditorContext& /* editorContext */, std::vector<Model::Node*>& nodes) const {
             if (m_node->parent() == nullptr) {
                 return false;
             }
 
-            using CollectSelectableIssueNodesVisitor = CollectMatchingNodesVisitor<MatchSelectableIssueNodes, StandardNodeCollectionStrategy, StopRecursionIfMatched>;
-
-            CollectSelectableIssueNodesVisitor collect;
-            m_node->acceptAndRecurse(collect);
-            kdl::vec_append(nodes, collect.nodes());
+            m_node->accept(kdl::overload(
+                [](WorldNode*) {},
+                [](LayerNode*) {},
+                [&](GroupNode* group) { nodes.push_back(group); },
+                [&](auto&& thisLambda, EntityNode* entity) { 
+                    if (!entity->hasChildren()) { 
+                        nodes.push_back(entity); 
+                    } else {
+                        entity->visitChildren(thisLambda);
+                    }
+                },
+                [&](BrushNode* brush) { nodes.push_back(brush); }
+            ));
 
             return true;
         }
@@ -106,25 +110,33 @@ namespace TrenchBroom {
             return m_node->lineNumber();
         }
 
-        BrushFaceIssue::BrushFaceIssue(BrushFace* face) :
-        Issue(face->brush()),
-        m_face(face) {}
+        BrushFaceIssue::BrushFaceIssue(BrushNode* node, const size_t faceIndex) :
+        Issue(node),
+        m_faceIndex(faceIndex) {}
 
         BrushFaceIssue::~BrushFaceIssue() = default;
 
-        BrushFace* BrushFaceIssue::face() const {
-            return m_face;
+        size_t BrushFaceIssue::faceIndex() const {
+            return m_faceIndex;
+        }
+
+        const BrushFace& BrushFaceIssue::face() const {
+            const BrushNode* brushNode = static_cast<const BrushNode*>(node());
+            const Brush& brush = brushNode->brush();
+            return brush.face(m_faceIndex);
         }
 
         size_t BrushFaceIssue::doGetLineNumber() const {
-            return m_face->lineNumber();
+            return face().lineNumber();
         }
 
-        AttributeIssue::~AttributeIssue() = default;
+        EntityPropertyIssue::~EntityPropertyIssue() = default;
 
-        const std::string& AttributeIssue::attributeValue() const {
-            const AttributableNode* attributableNode = static_cast<AttributableNode*>(node());
-            return attributableNode->attribute(attributeName());
+        const std::string& EntityPropertyIssue::propertyValue() const {
+            static const auto NoValue = std::string("");
+            const EntityNodeBase* entityNode = static_cast<EntityNodeBase*>(node());
+            const auto* value = entityNode->entity().property(propertyKey());
+            return value ? *value : NoValue;
         }
     }
 }

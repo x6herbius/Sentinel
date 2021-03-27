@@ -17,10 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapFacade
-#define TrenchBroom_MapFacade
+#pragma once
 
 #include "FloatType.h"
+#include "Model/BrushFaceHandle.h"
 #include "Model/EntityColor.h"
 
 #include <vecmath/forward.h>
@@ -42,27 +42,31 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class Brush;
         class BrushFace;
+        class BrushNode;
         class BrushFaceAttributes;
         class ChangeBrushFaceAttributesRequest;
-        class Entity;
+        class EntityNode;
         class Game;
-        class Group;
-        class Layer;
+        class GroupNode;
+        class LayerNode;
         class Node;
         class NodeCollection;
 
+        /**
+         * Interface of MapDocument that is exposed to the Model package.
+         * Exists mostly so Issues (from the Model package) can perform quick fixes.
+         */
         class MapFacade {
         public:
             virtual ~MapFacade();
         public: // getters
             virtual std::shared_ptr<Model::Game> game() const = 0;
 
-            virtual Layer* currentLayer() const = 0;
-            virtual Group* currentGroup() const = 0;
+            virtual LayerNode* currentLayer() const = 0;
+            virtual GroupNode* currentGroup() const = 0;
             virtual Node* currentGroupOrWorld() const = 0;
-            virtual Node* currentParent() const = 0;
+            virtual Node* parentForNodes(const std::vector<Node*>& nodes) const = 0;
 
             virtual Assets::EntityDefinitionManager& entityDefinitionManager() = 0;
             virtual Assets::EntityModelManager& entityModelManager() = 0;
@@ -73,10 +77,10 @@ namespace TrenchBroom {
             virtual bool hasSelectedBrushFaces() const = 0;
             virtual bool hasAnySelectedBrushFaces() const = 0;
 
-            virtual std::vector<AttributableNode*> allSelectedAttributableNodes() const = 0;
+            virtual std::vector<EntityNodeBase*> allSelectedEntityNodes() const = 0;
             virtual const NodeCollection& selectedNodes() const = 0;
-            virtual std::vector<BrushFace*> allSelectedBrushFaces() const = 0;
-            virtual const std::vector<BrushFace*>& selectedBrushFaces() const = 0;
+            virtual std::vector<BrushFaceHandle> allSelectedBrushFaces() const = 0;
+            virtual std::vector<BrushFaceHandle> selectedBrushFaces() const = 0;
 
             virtual const vm::bbox3& referenceBounds() const = 0;
             virtual const vm::bbox3& lastSelectionBounds() const = 0;
@@ -91,29 +95,24 @@ namespace TrenchBroom {
             virtual void selectNodesWithFilePosition(const std::vector<size_t>& positions) = 0;
             virtual void select(const std::vector<Node*>& nodes) = 0;
             virtual void select(Node* node) = 0;
-            virtual void select(const std::vector<BrushFace*>& faces) = 0;
-            virtual void select(BrushFace* face) = 0;
+            virtual void select(const std::vector<BrushFaceHandle>& handles) = 0;
+            virtual void select(const BrushFaceHandle& handle) = 0;
             virtual void convertToFaceSelection() = 0;
 
             virtual void deselectAll() = 0;
             virtual void deselect(Node* node) = 0;
             virtual void deselect(const std::vector<Node*>& nodes) = 0;
-            virtual void deselect(BrushFace* face) = 0;
+            virtual void deselect(const BrushFaceHandle& handle) = 0;
         public: // adding, removing, reparenting, and duplicating nodes
-            virtual void addNode(Node* node, Node* parent) = 0;
-            virtual void removeNode(Node* node) = 0;
-
             virtual std::vector<Node*> addNodes(const std::map<Node*, std::vector<Node*>>& nodes) = 0;
-            virtual std::vector<Node*> addNodes(const std::vector<Node*>& nodes, Node* parent) = 0;
             virtual void removeNodes(const std::vector<Node*>& nodes) = 0;
 
-            virtual bool reparentNodes(Node* newParent, const std::vector<Node*>& children) = 0;
             virtual bool reparentNodes(const std::map<Node*, std::vector<Node*>>& nodes) = 0;
             virtual bool deleteObjects() = 0;
-            virtual bool duplicateObjects() = 0;
+            virtual void duplicateObjects() = 0;
         public: // entity management
-            virtual Model::Entity* createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) = 0;
-            virtual Model::Entity* createBrushEntity(const Assets::BrushEntityDefinition* definition) = 0;
+            virtual Model::EntityNode* createPointEntity(const Assets::PointEntityDefinition* definition, const vm::vec3& delta) = 0;
+            virtual Model::EntityNode* createBrushEntity(const Assets::BrushEntityDefinition* definition) = 0;
         public: // modifying transient node attributes
             virtual void hide(std::vector<Node*> nodes) = 0; // Don't take the nodes by reference!
             virtual void show(const std::vector<Node*>& nodes) = 0;
@@ -129,26 +128,24 @@ namespace TrenchBroom {
             virtual bool scaleObjects(const vm::vec3& center, const vm::vec3& scaleFactors) = 0;
             virtual bool shearObjects(const vm::bbox3& box, const vm::vec3& sideToShear, const vm::vec3& delta) = 0;
             virtual bool flipObjects(const vm::vec3& center, vm::axis::type axis) = 0;
-        public: // modifying entity attributes
-            virtual bool setAttribute(const std::string& name, const std::string& value) = 0;
-            virtual bool renameAttribute(const std::string& oldName, const std::string& newName) = 0;
-            virtual bool removeAttribute(const std::string& name) = 0;
+        public: // modifying entity properties
+            virtual bool setProperty(const std::string& key, const std::string& value, bool defaultToProtected = false) = 0;
+            virtual bool renameProperty(const std::string& oldKey, const std::string& newKey) = 0;
+            virtual bool removeProperty(const std::string& key) = 0;
 
             virtual bool convertEntityColorRange(const std::string& name, Assets::ColorRange::Type range) = 0;
             virtual bool updateSpawnflag(const std::string& name, size_t flagIndex, bool setFlag) = 0;
         public: // brush resizing
             virtual bool resizeBrushes(const std::vector<vm::polygon3>& faces, const vm::vec3& delta) = 0;
         public: // modifying face attributes
-            virtual void setTexture(Assets::Texture* texture, bool toggle) = 0;
             virtual bool setFaceAttributes(const BrushFaceAttributes& attributes) = 0;
+            virtual bool setFaceAttributesExceptContentFlags(const BrushFaceAttributes& attributes) = 0;
             virtual bool setFaceAttributes(const ChangeBrushFaceAttributesRequest& request) = 0;
             virtual bool moveTextures(const vm::vec3f& cameraUp, const vm::vec3f& cameraRight, const vm::vec2f& delta) = 0;
             virtual bool rotateTextures(float angle) = 0;
             virtual bool shearTextures(const vm::vec2f& factors) = 0;
         public: // modifying vertices
-            virtual void rebuildBrushGeometry(const std::vector<Brush*>& brushes) = 0;
             virtual bool snapVertices(FloatType snapTo) = 0;
-            virtual bool findPlanePoints() = 0;
 
             struct MoveVerticesResult {
                 bool success;
@@ -156,9 +153,9 @@ namespace TrenchBroom {
                 MoveVerticesResult(bool i_success, bool i_hasRemainingVertices);
             };
 
-            virtual MoveVerticesResult moveVertices(const std::map<vm::vec3, std::vector<Brush*>>& vertices, const vm::vec3& delta) = 0;
-            virtual bool moveEdges(const std::map<vm::segment3, std::vector<Brush*>>& edges, const vm::vec3& delta) = 0;
-            virtual bool moveFaces(const std::map<vm::polygon3, std::vector<Brush*>>& faces, const vm::vec3& delta) = 0;
+            virtual MoveVerticesResult moveVertices(std::vector<vm::vec3> vertexPositions, const vm::vec3& delta) = 0;
+            virtual bool moveEdges(std::vector<vm::segment3> edgePositions, const vm::vec3& delta) = 0;
+            virtual bool moveFaces(std::vector<vm::polygon3> facePositions, const vm::vec3& delta) = 0;
         public: // search paths and mods
             virtual std::vector<std::string> mods() const = 0;
             virtual void setMods(const std::vector<std::string>& mods) = 0;
@@ -166,4 +163,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_MapFacade) */

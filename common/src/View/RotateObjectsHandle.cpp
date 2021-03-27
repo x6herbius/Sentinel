@@ -58,7 +58,7 @@ namespace TrenchBroom {
             return { xAxis, yAxis, zAxis };
         }
 
-        const Model::HitType::Type RotateObjectsHandle::HandleHit = Model::HitType::freeType();
+        const Model::HitType::Type RotateObjectsHandle::HandleHitType = Model::HitType::freeType();
 
         RotateObjectsHandle::Handle::Handle(const vm::vec3& position) :
         m_position(position) {}
@@ -82,7 +82,7 @@ namespace TrenchBroom {
             if (vm::is_nan(distance)) {
                 return Model::Hit::NoHit;
             } else {
-                return Model::Hit(HandleHit, distance, vm::point_at_distance(pickRay, distance), HitArea::Center);
+                return Model::Hit(HandleHitType, distance, vm::point_at_distance(pickRay, distance), HitArea::Center);
             }
         }
 
@@ -102,7 +102,7 @@ namespace TrenchBroom {
                     const auto transformedHitPoint = vm::point_at_distance(transformedRay, transformedDistance);
                     const auto hitPoint = transform * transformedHitPoint;
                     const auto distance = vm::dot(hitPoint - pickRay.origin, pickRay.direction);
-                    return Model::Hit(HandleHit, distance, hitPoint, area);
+                    return Model::Hit(HandleHitType, distance, hitPoint, area);
                 }
             }
 
@@ -143,6 +143,35 @@ namespace TrenchBroom {
             }
         }
 
+        Model::Hit RotateObjectsHandle::Handle2D::pickRotateHandle(const vm::ray3& pickRay, const Renderer::Camera& camera, const HitArea area) const {
+            // Work around imprecision caused by 2D cameras being positioned at map bounds
+            // by placing the ray origin on the same plane as the handle itself.
+            // Fixes erratic handle selection behaviour at high zoom
+            // TODO: This should be removed once we replace the numerically unstable torus intersection code
+            auto ray = pickRay;
+            switch (area) {
+                case HitArea::XAxis:
+                    ray.origin[0] = m_position[0];
+                    break;
+
+                case HitArea::YAxis:
+                    ray.origin[1] = m_position[1];
+                    break;
+
+                case HitArea::ZAxis:
+                    ray.origin[2] = m_position[2];
+                    break;
+
+                case HitArea::None:
+                case HitArea::Center:
+                    break;
+
+                switchDefault();
+            }
+
+            return Handle::pickRotateHandle(ray, camera, area);
+        }
+
         void RotateObjectsHandle::Handle2D::renderHandle(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) const {
             const auto& camera = renderContext.camera();
             const auto radius = static_cast<float>(majorRadius() * scalingFactor(renderContext.camera()));
@@ -153,6 +182,7 @@ namespace TrenchBroom {
             Renderer::RenderService renderService(renderContext, renderBatch);
             renderService.setShowOccludedObjects();
 
+            renderService.setLineWidth(2.0f);
             renderService.setForegroundColor(pref(Preferences::axisColor(vm::find_abs_max_component(camera.direction()))));
             renderService.renderCircle(vm::vec3f(m_position), vm::find_abs_max_component(camera.direction()), 64, radius);
 
@@ -179,7 +209,7 @@ namespace TrenchBroom {
                 case HitArea::XAxis:
                 case HitArea::YAxis:
                 case HitArea::ZAxis:
-                    renderService.setLineWidth(2.0f);
+                    renderService.setLineWidth(3.0f);
                     renderService.setForegroundColor(pref(Preferences::axisColor(vm::find_abs_max_component(camera.direction()))));
                     renderService.renderCircle(vm::vec3f(m_position), vm::find_abs_max_component(camera.direction()), 64, radius);
                     break;
@@ -210,6 +240,7 @@ namespace TrenchBroom {
 
             renderService.renderCoordinateSystem(vm::bbox3f(radius).translate(vm::vec3f(m_position)));
 
+            renderService.setLineWidth(2.0f);
             renderService.setForegroundColor(pref(Preferences::XAxisColor));
             renderService.renderCircle(vm::vec3f(m_position), vm::axis::x, 64, radius, zAxis, yAxis);
             renderService.setForegroundColor(pref(Preferences::YAxisColor));
@@ -242,17 +273,17 @@ namespace TrenchBroom {
                     break;
                 case HitArea::XAxis:
                     renderService.setForegroundColor(pref(Preferences::XAxisColor));
-                    renderService.setLineWidth(2.0f);
+                    renderService.setLineWidth(3.0f);
                     renderService.renderCircle(vm::vec3f(m_position), vm::axis::x, 64, radius, zAxis, yAxis);
                     break;
                 case HitArea::YAxis:
                     renderService.setForegroundColor(pref(Preferences::YAxisColor));
-                    renderService.setLineWidth(2.0f);
+                    renderService.setLineWidth(3.0f);
                     renderService.renderCircle(vm::vec3f(m_position), vm::axis::y, 64, radius, xAxis, zAxis);
                     break;
                 case HitArea::ZAxis:
                     renderService.setForegroundColor(pref(Preferences::ZAxisColor));
-                    renderService.setLineWidth(2.0f);
+                    renderService.setLineWidth(3.0f);
                     renderService.renderCircle(vm::vec3f(m_position), vm::axis::z, 64, radius, xAxis, yAxis);
                     break;
                 case HitArea::None:

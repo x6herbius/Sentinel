@@ -1,12 +1,13 @@
 add_executable(kdl-test)
 target_sources(kdl-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/GTestCompat.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/binary_relation_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/collection_utils_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/compact_trie_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/invoke_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/intrusive_circular_list_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/parallel_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/map_utils_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/meta_utils_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/result_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/run_all.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/set_adapter_test.cpp"
@@ -19,6 +20,7 @@ target_sources(kdl-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/transform_range_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/vector_set_test.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/vector_utils_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/zip_iterator_test.cpp"
         )
 
 set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/run_all.cpp" PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)

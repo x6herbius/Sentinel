@@ -17,100 +17,114 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushBuilder.h"
-#include "Model/Entity.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
+
+#include <cstdio>
+
+#include "TestUtils.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace View {
         class RemoveNodesTest : public MapDocumentTest {};
 
         TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeLayer") {
-            Model::Layer* layer = new Model::Layer("Layer 1");
-            document->addNode(layer, document->world());
+            Model::LayerNode* layer = new Model::LayerNode(Model::Layer("Layer 1"));
+            addNode(*document, document->world(), layer);
 
-            document->removeNode(layer);
-            ASSERT_TRUE(layer->parent() == nullptr);
+            removeNode(*document, layer);
+            CHECK(layer->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->world(), layer->parent());
+            CHECK(layer->parent() == document->world());
         }
 
         TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeEmptyBrushEntity") {
-            Model::Layer* layer = new Model::Layer("Layer 1");
-            document->addNode(layer, document->world());
+            Model::LayerNode* layer = new Model::LayerNode(Model::Layer("Layer 1"));
+            addNode(*document, document->world(), layer);
 
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, layer);
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, layer, entity);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, entity);
+            Model::BrushNode* brush = createBrushNode();
+            addNode(*document, entity, brush);
 
-            document->removeNode(brush);
-            ASSERT_TRUE(brush->parent() == nullptr);
-            ASSERT_TRUE(entity->parent() == nullptr);
+            removeNode(*document, brush);
+            CHECK(brush->parent() == nullptr);
+            CHECK(entity->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(entity, brush->parent());
-            ASSERT_EQ(layer, entity->parent());
+            CHECK(brush->parent() == entity);
+            CHECK(entity->parent() == layer);
         }
 
         TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.removeEmptyGroup") {
-            Model::Group* group = new Model::Group("group");
-            document->addNode(group, document->currentParent());
+            Model::GroupNode* group = new Model::GroupNode(Model::Group("group"));
+            addNode(*document, document->parentForNodes(), group);
 
             document->openGroup(group);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, document->currentParent());
+            Model::BrushNode* brush = createBrushNode();
+            addNode(*document, document->parentForNodes(), brush);
 
-            document->removeNode(brush);
-            ASSERT_TRUE(document->currentGroup() == nullptr);
-            ASSERT_TRUE(brush->parent() == nullptr);
-            ASSERT_TRUE(group->parent() == nullptr);
+            removeNode(*document, brush);
+            CHECK(document->currentGroup() == nullptr);
+            CHECK(brush->parent() == nullptr);
+            CHECK(group->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(group, document->currentGroup());
-            ASSERT_EQ(group, brush->parent());
-            ASSERT_EQ(document->world()->defaultLayer(), group->parent());
+            CHECK(document->currentGroup() == group);
+            CHECK(brush->parent() == group);
+            CHECK(group->parent() == document->world()->defaultLayer());
         }
 
         TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.recursivelyRemoveEmptyGroups") {
-            Model::Group* outer = new Model::Group("outer");
-            document->addNode(outer, document->currentParent());
+            Model::GroupNode* outer = new Model::GroupNode(Model::Group("outer"));
+            addNode(*document, document->parentForNodes(), outer);
 
             document->openGroup(outer);
 
-            Model::Group* inner = new Model::Group("inner");
-            document->addNode(inner, document->currentParent());
+            Model::GroupNode* inner = new Model::GroupNode(Model::Group("inner"));
+            addNode(*document, document->parentForNodes(), inner);
 
             document->openGroup(inner);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, document->currentParent());
+            Model::BrushNode* brush = createBrushNode();
+            addNode(*document, document->parentForNodes(), brush);
 
-            document->removeNode(brush);
-            ASSERT_TRUE(document->currentGroup() == nullptr);
-            ASSERT_TRUE(brush->parent() == nullptr);
-            ASSERT_TRUE(inner->parent() == nullptr);
-            ASSERT_TRUE(outer->parent() == nullptr);
+            removeNode(*document, brush);
+            CHECK(document->currentGroup() == nullptr);
+            CHECK(brush->parent() == nullptr);
+            CHECK(inner->parent() == nullptr);
+            CHECK(outer->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(inner, document->currentGroup());
-            ASSERT_EQ(inner, brush->parent());
-            ASSERT_EQ(outer, inner->parent());
-            ASSERT_EQ(document->world()->defaultLayer(), outer->parent());
+            CHECK(document->currentGroup() == inner);
+            CHECK(brush->parent() == inner);
+            CHECK(inner->parent() == outer);
+            CHECK(outer->parent() == document->world()->defaultLayer());
+        }
+
+        TEST_CASE_METHOD(RemoveNodesTest, "RemoveNodesTest.unlinkSingletonLinkedGroups") {
+            auto* entityNode = new Model::EntityNode{};
+            document->addNodes({{document->parentForNodes(), {entityNode}}});
+
+            document->select(entityNode);
+            auto* groupNode = document->groupSelection("group");
+            auto* linkedGroupNode = document->createLinkedDuplicate();
+
+            REQUIRE(groupNode->group().linkedGroupId().has_value());
+            
+            document->removeNodes({linkedGroupNode});
+            CHECK_FALSE(groupNode->group().linkedGroupId().has_value());
         }
     }
 }

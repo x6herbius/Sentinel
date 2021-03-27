@@ -24,9 +24,11 @@
 #include "Preferences.h"
 #include "FloatType.h"
 #include "Assets/EntityDefinitionManager.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushGeometry.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
 #include "Model/HitAdapter.h"
 #include "Model/HitQuery.h"
 #include "Model/PickResult.h"
@@ -184,7 +186,7 @@ namespace TrenchBroom {
             m_flyModeHelper->resetKeys();
         }
 
-        PickRequest MapView3D::doGetPickRequest(const int x, const int y) const {
+        PickRequest MapView3D::doGetPickRequest(const float x, const float y) const {
             return PickRequest(vm::ray3(m_camera->pickRay(x, y)), *m_camera);
         }
 
@@ -209,22 +211,20 @@ namespace TrenchBroom {
             const auto clientCoords = mapFromGlobal(pos);
 
             if (QRect(0, 0, width(), height()).contains(clientCoords)) {
-                const auto pickRay = vm::ray3(m_camera->pickRay(clientCoords.x(), clientCoords.y()));
+                const auto pickRay = vm::ray3(m_camera->pickRay(static_cast<float>(clientCoords.x()), static_cast<float>(clientCoords.y())));
 
                 const auto& editorContext = document->editorContext();
                 auto pickResult = Model::PickResult::byDistance(editorContext);
 
                 document->pick(pickRay, pickResult);
-                const auto& hit = pickResult.query().pickable().type(Model::Brush::BrushHit).occluded().first();
-
-                if (hit.isMatch()) {
-                    const auto* face = Model::hitToFace(hit);
-                    const auto dragPlane = vm::aligned_orthogonal_plane(hit.hitPoint(), face->boundary().normal);
-                    return grid.moveDeltaForBounds(dragPlane, bounds, document->worldBounds(), pickRay);
+                const auto& hit = pickResult.query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+                if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                    const auto& face = faceHandle->face();
+                    return grid.moveDeltaForBounds(face.boundary(), bounds, document->worldBounds(), pickRay);
                 } else {
                     const auto point = vm::vec3(grid.snap(m_camera->defaultPoint(pickRay)));
-                    const auto dragPlane = vm::aligned_orthogonal_plane(point, -vm::vec3(vm::get_abs_max_component_axis(m_camera->direction())));
-                    return grid.moveDeltaForBounds(dragPlane, bounds, document->worldBounds(), pickRay);
+                    const auto targetPlane = vm::plane3(point, -vm::vec3(m_camera->direction()));
+                    return grid.moveDeltaForBounds(targetPlane, bounds, document->worldBounds(), pickRay);
                 }
             } else {
                 const auto oldMin = bounds.min;
@@ -250,120 +250,87 @@ namespace TrenchBroom {
             }
         }
 
-        class MapView3D::ComputeCameraCenterPositionVisitor : public Model::ConstNodeVisitor {
-        private:
-            const vm::vec3 m_cameraPosition;
-            const vm::vec3 m_cameraDirection;
-            FloatType m_minDist;
-            vm::vec3 m_center;
-            size_t m_count;
-        public:
-            ComputeCameraCenterPositionVisitor(const vm::vec3& cameraPosition, const vm::vec3& cameraDirection) :
-            m_cameraPosition(cameraPosition),
-            m_cameraDirection(cameraDirection),
-            m_minDist(std::numeric_limits<FloatType>::max()),
-            m_count(0) {}
+        static vm::vec3 computeCameraTargetPosition(const std::vector<Model::Node*>& nodes) {
+            auto center = vm::vec3();
+            size_t count = 0u;
 
-            vm::vec3 position() const {
-                return m_center / static_cast<FloatType>(m_count);
-            }
-        private:
-            void doVisit(const Model::World*) override   {}
-            void doVisit(const Model::Layer*) override   {}
-            void doVisit(const Model::Group*) override   {}
+            const auto handlePoint = [&](const vm::vec3& point) {
+                center = center + point;
+                ++count;
+            };
 
-            void doVisit(const Model::Entity* entity) override {
-                if (!entity->hasChildren()) {
-                    const auto& bounds = entity->logicalBounds();
-                    bounds.for_each_vertex([&](const vm::vec3& v) { addPoint(v); });
-                }
-            }
-
-            void doVisit(const Model::Brush* brush) override   {
-                for (const Model::BrushVertex* vertex : brush->vertices()) {
-                    addPoint(vertex->position());
-                }
-            }
-
-            void addPoint(const vm::vec3& point) {
-                const vm::vec3 toPosition = point - m_cameraPosition;
-                m_minDist = vm::min(m_minDist, dot(toPosition, m_cameraDirection));
-                m_center = m_center + point;
-                ++m_count;
-            }
-        };
-
-        class MapView3D::ComputeCameraCenterOffsetVisitor : public Model::ConstNodeVisitor {
-        private:
-            const vm::vec3f m_cameraPosition;
-            const vm::vec3f m_cameraDirection;
-            vm::plane3f m_frustumPlanes[4];
-            float m_offset;
-        public:
-            ComputeCameraCenterOffsetVisitor(const vm::vec3f& cameraPosition, const vm::vec3f& cameraDirection, const vm::plane3f frustumPlanes[4]) :
-            m_cameraPosition(cameraPosition),
-            m_cameraDirection(cameraDirection),
-            m_offset(std::numeric_limits<float>::min()) {
-                for (size_t i = 0; i < 4; ++i)
-                    m_frustumPlanes[i] = frustumPlanes[i];
-            }
-
-            float offset() const {
-                return m_offset;
-            }
-        private:
-            void doVisit(const Model::World*) override   {}
-            void doVisit(const Model::Layer*) override   {}
-            void doVisit(const Model::Group*) override   {}
-
-            void doVisit(const Model::Entity* entity) override {
-                if (!entity->hasChildren()) {
-                    const auto& bounds = entity->logicalBounds();
-                    bounds.for_each_vertex([&](const vm::vec3& v) {
-                        for (size_t j = 0; j < 4; ++j) {
-                            addPoint(vm::vec3f(v), m_frustumPlanes[j]);
-                        }
-                    });
-                }
-            }
-
-            void doVisit(const Model::Brush* brush) override   {
-                for (const auto* vertex : brush->vertices()) {
-                    for (size_t j = 0; j < 4; ++j) {
-                        addPoint(vm::vec3f(vertex->position()), m_frustumPlanes[j]);
+            Model::Node::visitAll(nodes, kdl::overload(
+                [] (auto&& thisLambda, Model::WorldNode* world)   { world->visitChildren(thisLambda); },
+                [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
+                [] (auto&& thisLambda, Model::GroupNode* group)   { group->visitChildren(thisLambda); },
+                [&](auto&& thisLambda, Model::EntityNode* entity) { 
+                    if (!entity->hasChildren()) {
+                        entity->logicalBounds().for_each_vertex(handlePoint);
+                    } else {
+                        entity->visitChildren(thisLambda);
+                    }
+                },
+                [&](Model::BrushNode* brush) {
+                    for (const auto* vertex : brush->brush().vertices()) {
+                        handlePoint(vertex->position());
                     }
                 }
-            }
+            ));
 
-            void addPoint(const vm::vec3f& point, const vm::plane3f& plane) {
-                const auto ray = vm::ray3f(m_cameraPosition, -m_cameraDirection);
-                const auto newPlane = vm::plane3f(point + 64.0f * plane.normal, plane.normal);
+            return center / static_cast<FloatType>(count);
+        }
+
+        static FloatType computeCameraOffset(const Renderer::Camera& camera, const std::vector<Model::Node*>& nodes) {
+            vm::plane3f frustumPlanes[4];
+            camera.frustumPlanes(frustumPlanes[0], frustumPlanes[1], frustumPlanes[2], frustumPlanes[3]);
+
+            float offset = std::numeric_limits<float>::min();
+            const auto handlePoint = [&](const vm::vec3& point, const vm::plane3f& plane) {
+                const auto ray = vm::ray3f(camera.position(), -camera.direction());
+                const auto newPlane = vm::plane3f(vm::vec3f(point) + 64.0f * plane.normal, plane.normal);
                 const auto dist = vm::intersect_ray_plane(ray, newPlane);
                 if (!vm::is_nan(dist) && dist > 0.0f) {
-                    m_offset = std::max(m_offset, dist);
+                    offset = std::max(offset, dist);
                 }
-            }
-        };
+            };
+
+            Model::Node::visitAll(nodes, kdl::overload(
+                [] (auto&& thisLambda, Model::WorldNode* world)   { world->visitChildren(thisLambda); },
+                [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
+                [] (auto&& thisLambda, Model::GroupNode* group)   { group->visitChildren(thisLambda); },
+                [&](auto&& thisLambda, Model::EntityNode* entity) { 
+                    if (!entity->hasChildren()) {
+                        for (size_t i = 0u; i < 4u; ++i) {
+                            entity->logicalBounds().for_each_vertex([&](const auto& point) { handlePoint(point, frustumPlanes[i]); });
+                        }
+                    } else {
+                        entity->visitChildren(thisLambda);
+                    }
+                },
+                [&](Model::BrushNode* brush) {
+                    for (const auto* vertex : brush->brush().vertices()) {
+                        for (size_t i = 0u; i < 4u; ++i) {
+                            handlePoint(vertex->position(), frustumPlanes[i]);
+                        }
+                    }
+                }
+            ));
+
+            return static_cast<FloatType>(offset);
+        }
 
         vm::vec3 MapView3D::focusCameraOnObjectsPosition(const std::vector<Model::Node*>& nodes) {
-            ComputeCameraCenterPositionVisitor center(vm::vec3(m_camera->position()), vm::vec3(m_camera->direction()));
-            Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), center);
-
-            const auto newPosition = center.position();
+            const auto newPosition = computeCameraTargetPosition(nodes);
 
             // act as if the camera were there already:
             const auto oldPosition = m_camera->position();
             m_camera->moveTo(vm::vec3f(newPosition));
 
-            vm::plane3f frustumPlanes[4];
-            m_camera->frustumPlanes(frustumPlanes[0], frustumPlanes[1], frustumPlanes[2], frustumPlanes[3]);
-
-            ComputeCameraCenterOffsetVisitor offset(m_camera->position(), m_camera->direction(), frustumPlanes);
-            Model::Node::acceptAndRecurse(std::begin(nodes), std::end(nodes), offset);
+            const auto offset = computeCameraOffset(*m_camera, nodes);
 
             // jump back
             m_camera->moveTo(oldPosition);
-            return newPosition - vm::vec3(m_camera->direction() * offset.offset());
+            return newPosition - vm::vec3(m_camera->direction()) * offset;
         }
 
         void MapView3D::doMoveCameraToPosition(const vm::vec3& position, const bool animate) {
@@ -435,10 +402,10 @@ namespace TrenchBroom {
             auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::Brush::BrushHit).occluded().first();
-            if (hit.isMatch()) {
-                const auto* face = Model::hitToFace(hit);
-                return grid.moveDeltaForBounds(face->boundary(), bounds, worldBounds, pickRay());
+            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
+                const auto& face = faceHandle->face();
+                return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());
             } else {
                 const auto newPosition = Renderer::Camera::defaultPoint(pickRay());
                 const auto defCenter = bounds.center();
@@ -491,6 +458,10 @@ namespace TrenchBroom {
 
         void MapView3D::doRenderTools(MapViewToolBox& /* toolBox */, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
             renderTools(renderContext, renderBatch);
+        }
+
+        void MapView3D::doRenderSoftWorldBounds(Renderer::RenderContext&, Renderer::RenderBatch&) {
+            // the bounds rect itself is only rendered in MapView2D, it just clutters the 3D view
         }
 
         bool MapView3D::doBeforePopupMenu() {

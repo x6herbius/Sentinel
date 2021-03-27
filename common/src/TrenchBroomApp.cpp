@@ -19,8 +19,11 @@
 
 #include "TrenchBroomApp.h"
 
+#include "PreferenceManager.h"
+#include "Preferences.h"
 #include "RecoverableExceptions.h"
 #include "TrenchBroomStackWalker.h"
+#include "IO/IOUtils.h"
 #include "IO/Path.h"
 #include "IO/PathQt.h"
 #include "IO/DiskIO.h"
@@ -68,6 +71,8 @@
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
+#include <QColor>
+#include <QPalette>
 #include <QProxyStyle>
 
 namespace TrenchBroom {
@@ -90,6 +95,9 @@ namespace TrenchBroom {
         m_welcomeWindow(nullptr) {
             // When this flag is enabled, font and palette changes propagate as though the user had manually called the corresponding QWidget methods.
             setAttribute(Qt::AA_UseStyleSheetPropagationInWidgetStyles);
+            
+            // Don't show icons in menus, they are scaled down and don't look very good.
+            setAttribute(Qt::AA_DontShowIconsInMenus);
 
 #if defined(_WIN32) && defined(_MSC_VER)
             // with MSVC, set our own handler for segfaults so we can access the context
@@ -149,10 +157,6 @@ namespace TrenchBroom {
             }
 
 #endif
-
-            connect(this, &QCoreApplication::aboutToQuit, this, []() {
-                Model::GameFactory::instance().saveAllConfigs();
-            });
         }
 
         // must be implemented in cpp file in order to use std::unique_ptr with forward declared type as members
@@ -166,6 +170,48 @@ namespace TrenchBroom {
 
         FrameManager* TrenchBroomApp::frameManager() {
             return m_frameManager.get();
+        }
+
+        QPalette TrenchBroomApp::darkPalette() {
+            const auto button = QColor(35, 35, 35);
+            const auto text = QColor(207, 207, 207);
+            const auto highlight = QColor(62, 112, 205);
+
+            // Build an initial palette based on the button color
+            QPalette palette = QPalette(button);
+
+            // Window colors
+            palette.setColor(QPalette::Active,   QPalette::Window, QColor(50, 50, 50));
+            palette.setColor(QPalette::Inactive, QPalette::Window, QColor(40, 40, 40));
+            palette.setColor(QPalette::Disabled, QPalette::Window, QColor(50, 50, 50).darker(200));
+
+            // List box backgrounds, text entry backgrounds, menu backgrounds
+            palette.setColor(QPalette::Base, button.darker(130));
+
+            // Button text
+            palette.setColor(QPalette::Active,   QPalette::ButtonText, text);
+            palette.setColor(QPalette::Inactive, QPalette::ButtonText, text);
+            palette.setColor(QPalette::Disabled, QPalette::ButtonText, text.darker(200));
+
+            // WindowText is supposed to be against QPalette::Window
+            palette.setColor(QPalette::Active,   QPalette::WindowText, text);
+            palette.setColor(QPalette::Inactive, QPalette::WindowText, text);
+            palette.setColor(QPalette::Disabled, QPalette::WindowText, text.darker(200));
+
+            // Menu text, text edit text, table cell text
+            palette.setColor(QPalette::Active,   QPalette::Text,  text.darker(115));
+            palette.setColor(QPalette::Inactive, QPalette::Text,  text.darker(115)); 
+            palette.setColor(QPalette::Disabled, QPalette::Text,  QColor(102, 102, 102)); // Disabled menu item text color
+
+            // Disabled menu item text shadow
+            palette.setColor(QPalette::Disabled, QPalette::Light, button.darker(200));
+
+            // Highlight (selected list box row, selected grid cell background, selected tab text
+            palette.setColor(QPalette::Active,   QPalette::Highlight, highlight);
+            palette.setColor(QPalette::Inactive, QPalette::Highlight, highlight);
+            palette.setColor(QPalette::Disabled, QPalette::Highlight, highlight);            
+
+            return palette;
         }
 
         bool TrenchBroomApp::loadStyleSheets() {
@@ -192,7 +238,7 @@ namespace TrenchBroom {
             //
             // Previously were calling `qt_set_sequence_auto_mnemonic(false);` in main(), but it turns out we
             // also need to suppress an Alt press followed by release from focusing the menu bar
-            // (https://github.com/kduske/TrenchBroom/issues/3140), so the following QProxyStyle disables
+            // (https://github.com/TrenchBroom/TrenchBroom/issues/3140), so the following QProxyStyle disables
             // that completely.
             
             class TrenchBroomProxyStyle : public QProxyStyle {
@@ -211,7 +257,14 @@ namespace TrenchBroom {
                 }
             };
 
-            setStyle(new TrenchBroomProxyStyle());
+            // Apply either the Fusion style + dark palette, or the system style
+            if (pref(Preferences::Theme) == Preferences::darkTheme()) {
+                setStyle(new TrenchBroomProxyStyle("Fusion"));
+                setPalette(darkPalette());
+            } else {
+                // System
+                setStyle(new TrenchBroomProxyStyle());    
+            }
         }
 
         const std::vector<IO::Path>& TrenchBroomApp::recentDocuments() const {
@@ -433,7 +486,7 @@ namespace TrenchBroom {
             IO::Path mapPath = basePath.addExtension("map");
             IO::Path logPath = basePath.addExtension("log");
 
-            std::ofstream reportStream(reportPath.asString().c_str());
+            std::ofstream reportStream = openPathAsOutputStream(reportPath);
             reportStream << report;
             reportStream.close();
             std::cerr << "wrote crash log to " << reportPath.asString() << std::endl;
@@ -470,7 +523,7 @@ namespace TrenchBroom {
 
 #if defined(_WIN32) && defined(_MSC_VER)
         LONG WINAPI TrenchBroomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPtrs) {
-            reportCrashAndExit(TrenchBroomStackWalker::getStackTraceFromContext(pExceptionPtrs->ContextRecord), "TrenchBroomUnhandledExceptionFilter");
+            reportCrashAndExit(TrenchBroomStackWalker::getStackTraceFromContext(pExceptionPtrs->ContextRecord), std::to_string(pExceptionPtrs->ExceptionRecord->ExceptionCode));
             // return EXCEPTION_EXECUTE_HANDLER; unreachable
         }
 #else
@@ -551,12 +604,24 @@ namespace TrenchBroom {
          * and catch exceptions there instead.
          */
         bool TrenchBroomApp::notify(QObject* receiver, QEvent* event) {
+#ifdef _MSC_VER
+            __try {
+                return QApplication::notify(receiver, event);
+
+                // We have to choose between capturing the stack trace (using __try/__except) and
+                // getting the C++ exception object (using C++ try/catch) - take the stack trace.
+            } __except (TrenchBroomUnhandledExceptionFilter(GetExceptionInformation())) {
+                // Unreachable, see TrenchBroomUnhandledExceptionFilter
+                return false;
+            }
+#else
             try {
                 return QApplication::notify(receiver, event);
             } catch (const std::exception& e) {
                 // Unfortunately we can't portably get the stack trace of the exception itself
                 TrenchBroom::View::reportCrashAndExit("<uncaught exception>", e.what());
             }
+#endif
         }
 
 #ifdef __APPLE__

@@ -17,15 +17,14 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_EXPORTFORMAT_H
-#define TRENCHBROOM_EXPORTFORMAT_H
+#pragma once
 
 namespace TrenchBroom {
     namespace Model {
         enum class ExportFormat {
-            WavefrontObj
+            WavefrontObj,
+            Map
         };
     }
 }
 
-#endif //TRENCHBROOM_EXPORTFORMAT_H

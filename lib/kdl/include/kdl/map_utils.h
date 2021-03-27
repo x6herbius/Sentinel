@@ -15,8 +15,7 @@
  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef KDL_MAP_UTILS_H
-#define KDL_MAP_UTILS_H
+#pragma once
 
 #include "collection_utils.h"
 
@@ -37,8 +36,8 @@ namespace kdl {
     std::vector<K> map_keys(const std::map<K, V>& m) {
         std::vector<K> result;
         result.reserve(m.size());
-        for (const auto& e : m) {
-            result.push_back(e.first);
+        for (const auto& [key, value] : m) {
+            result.push_back(key);
         }
         return result;
     }
@@ -56,8 +55,8 @@ namespace kdl {
     std::vector<V> map_values(const std::map<K, V>& m) {
         std::vector<V> result;
         result.reserve(m.size());
-        for (const auto& e : m) {
-            result.push_back(e.second);
+        for (const auto& [key, value] : m) {
+            result.push_back(value);
         }
         return result;
     }
@@ -209,11 +208,10 @@ namespace kdl {
      */
     template<typename K, typename V, typename D = deleter<V*>>
     void map_clear_and_delete(std::map<K, std::vector<V*>>& m, const D& deleter = D()) {
-        for (auto& e : m) {
-            kdl::col_delete_all(e.second, deleter);
+        for (auto& [key, value] : m) {
+            kdl::col_delete_all(value, deleter);
         }
         m.clear();
     }
 }
 
-#endif //KDL_MAP_UTILS_H

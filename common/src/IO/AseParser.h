@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_ASEPARSER_H
-#define TRENCHBROOM_ASEPARSER_H
+#pragma once
 
 #include "IO/EntityModelParser.h"
 #include "IO/Parser.h"
@@ -29,6 +28,7 @@
 #include <array>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace TrenchBroom {
@@ -61,8 +61,7 @@ namespace TrenchBroom {
         private:
             static const std::string WordDelims;
         public:
-            AseTokenizer(const char* begin, const char* end);
-            explicit AseTokenizer(const std::string& str);
+            explicit AseTokenizer(std::string_view str);
         private:
             Token emitToken() override;
         };
@@ -107,11 +106,10 @@ namespace TrenchBroom {
              * Creates a new parser for ASE models.
              *
              * @param name the name of the model
-             * @param begin the start of the text to parse
-             * @param end the end of the text to parse
+             * @param str the text to parse
              * @param fs the file system used to load texture files
              */
-            AseParser(const std::string& name, const char* begin, const char* end, const FileSystem& fs);
+            AseParser(const std::string& name, std::string_view str, const FileSystem& fs);
         private:
             std::unique_ptr<Assets::EntityModel> doInitializeModel(Logger& logger) override;
         private: // parsing
@@ -161,11 +159,10 @@ namespace TrenchBroom {
             std::unique_ptr<Assets::EntityModel> buildModel(Logger& logger, const Scene& scene) const;
             bool checkIndices(Logger& logger, const MeshFace& face, const Mesh& mesh) const;
 
-            std::unique_ptr<Assets::Texture> loadTexture(Logger& logger, const Path& path) const;
+            Assets::Texture loadTexture(Logger& logger, const Path& path) const;
             Path fixTexturePath(Logger& logger, Path path) const;
         };
     }
 }
 
 
-#endif //TRENCHBROOM_ASEPARSER_H

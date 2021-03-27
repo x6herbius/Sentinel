@@ -19,12 +19,11 @@
 
 #include "BrushFaceReader.h"
 
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
-#include "Model/Entity.h"
-#include "Model/Layer.h"
-#include "Model/ModelFactory.h"
-#include "Model/World.h"
+#include "Model/EntityNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 
 #include <kdl/vector_utils.h>
 
@@ -32,34 +31,24 @@
 
 namespace TrenchBroom {
     namespace IO {
-        BrushFaceReader::BrushFaceReader(const std::string& str, Model::ModelFactory& factory) :
-        MapReader(str),
-        m_factory(factory) {}
+        BrushFaceReader::BrushFaceReader(const std::string& str, const Model::MapFormat sourceAndTargetMapFormat) :
+        MapReader(str, sourceAndTargetMapFormat, sourceAndTargetMapFormat) {}
 
-        const std::vector<Model::BrushFace*>& BrushFaceReader::read(const vm::bbox3& worldBounds, ParserStatus& status) {
+        std::vector<Model::BrushFace> BrushFaceReader::read(const vm::bbox3& worldBounds, ParserStatus& status) {
             try {
-                readBrushFaces(m_factory.format(), worldBounds, status);
-                return m_brushFaces;
+                readBrushFaces(worldBounds, status);
+                return std::move(m_brushFaces);
             } catch (const ParserException&) {
-                kdl::vec_clear_and_delete(m_brushFaces);
                 throw;
             }
         }
 
-        Model::ModelFactory& BrushFaceReader::initialize([[maybe_unused]] const Model::MapFormat format) {
-            assert(format == m_factory.format());
-            return m_factory;
-        }
+            Model::Node* BrushFaceReader::onWorldNode(std::unique_ptr<Model::WorldNode>, ParserStatus&) { return nullptr; }
+            void BrushFaceReader::onLayerNode(std::unique_ptr<Model::Node>, ParserStatus&) {}
+            void BrushFaceReader::onNode(Model::Node*, std::unique_ptr<Model::Node>, ParserStatus&) {}
 
-        Model::Node* BrushFaceReader::onWorldspawn(const std::vector<Model::EntityAttribute>& /* attributes */, const ExtraAttributes& /* extraAttributes */, ParserStatus& /* status */) { return nullptr; }
-        void BrushFaceReader::onWorldspawnFilePosition(const size_t /* lineNumber */, const size_t /* lineCount */, ParserStatus& /* status */) {}
-        void BrushFaceReader::onLayer(Model::Layer* /* layer */, ParserStatus& /* status */) {}
-        void BrushFaceReader::onNode(Model::Node* /* parent */, Model::Node* /* node */, ParserStatus& /* status */) {}
-        void BrushFaceReader::onUnresolvedNode(const ParentInfo& /* parentInfo */, Model::Node* /* node */, ParserStatus& /* status */) {}
-        void BrushFaceReader::onBrush(Model::Node* /* parent */, Model::Brush* /* brush */, ParserStatus& /* status */) {}
-
-        void BrushFaceReader::onBrushFace(Model::BrushFace* face, ParserStatus& /* status */) {
-            m_brushFaces.push_back(face);
+        void BrushFaceReader::onBrushFace(Model::BrushFace face, ParserStatus& /* status */) {
+            m_brushFaces.push_back(std::move(face));
         }
     }
 }

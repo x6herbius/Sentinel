@@ -17,18 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "TestLogger.h"
-
 #include "Assets/Texture.h"
 #include "IO/DiskFileSystem.h"
 #include "IO/DiskIO.h"
 #include "IO/ResourceUtils.h"
 
 #include <memory>
+
+#include "Catch2.h"
+#include "TestLogger.h"
 
 namespace TrenchBroom {
     namespace IO {
@@ -37,8 +34,7 @@ namespace TrenchBroom {
             NullLogger logger;
             
             auto texture = loadDefaultTexture(*fs, logger, "some_name");
-            ASSERT_NE(nullptr, texture);
-            ASSERT_EQ("some_name", texture->name());
+            CHECK(texture.name() == "some_name");
         }
     }
 }

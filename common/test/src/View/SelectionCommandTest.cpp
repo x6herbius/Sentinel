@@ -17,57 +17,61 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "Model/Brush.h"
 #include "Model/BrushBuilder.h"
-#include "Model/Entity.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/BrushFaceHandle.h"
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
+
+#include "TestUtils.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace View {
         class SelectionCommandTest : public MapDocumentTest {};
 
         TEST_CASE_METHOD(SelectionCommandTest, "SelectionCommandTest.faceSelectionUndoAfterTranslationUndo") {
-            Model::Brush* brush = createBrush();
-            ASSERT_EQ(vm::vec3::zero(), brush->logicalBounds().center());
+            Model::BrushNode* brushNode = createBrushNode();
+            CHECK(brushNode->logicalBounds().center() == vm::vec3::zero());
 
-            document->addNode(brush, document->currentParent());
+            addNode(*document, document->parentForNodes(), brushNode);
+
+            const auto topFaceIndex = brushNode->brush().findFace(vm::vec3::pos_z());
+            REQUIRE(topFaceIndex);
 
             // select the top face
-            document->select(brush->findFace(vm::vec3::pos_z()));
-            ASSERT_EQ(std::vector<Model::BrushFace*>({ brush->findFace(vm::vec3::pos_z()) }), document->selectedBrushFaces());
+            document->select({ brushNode, *topFaceIndex });
+            CHECK_THAT(document->selectedBrushFaces(), Catch::Equals(std::vector<Model::BrushFaceHandle>{{ brushNode, *topFaceIndex }}));
 
             // deselect it
-            document->deselect(brush->findFace(vm::vec3::pos_z()));
-            ASSERT_EQ(std::vector<Model::BrushFace*>({}), document->selectedBrushFaces());
+            document->deselect({ brushNode, *topFaceIndex });
+            CHECK_THAT(document->selectedBrushFaces(), Catch::Equals(std::vector<Model::BrushFaceHandle>{}));
 
             // select the brush
-            document->select(brush);
-            ASSERT_EQ(std::vector<Model::Brush*>({ brush }), document->selectedNodes().brushes());
+            document->select(brushNode);
+            CHECK_THAT(document->selectedNodes().brushes(), Catch::Equals(std::vector<Model::BrushNode*>{ brushNode }));
 
             // translate the brush
             document->translateObjects(vm::vec3(10.0, 0.0, 0.0));
-            ASSERT_EQ(vm::vec3(10.0, 0.0, 0.0), brush->logicalBounds().center());
+            CHECK(brushNode->logicalBounds().center() == vm::vec3(10.0, 0.0, 0.0));
 
             // Start undoing changes
 
             document->undoCommand();
-            ASSERT_EQ(vm::vec3::zero(), brush->logicalBounds().center());
-            ASSERT_EQ(std::vector<Model::Brush*>({ brush }), document->selectedNodes().brushes());
-            ASSERT_EQ(std::vector<Model::BrushFace*>({}), document->selectedBrushFaces());
+            CHECK(brushNode->logicalBounds().center() == vm::vec3::zero());
+            CHECK_THAT(document->selectedNodes().brushes(), Catch::Equals(std::vector<Model::BrushNode*>{ brushNode }));
+            CHECK_THAT(document->selectedBrushFaces(), Catch::Equals(std::vector<Model::BrushFaceHandle>{}));
 
             document->undoCommand();
-            ASSERT_EQ(std::vector<Model::Brush*>({}), document->selectedNodes().brushes());
-            ASSERT_EQ(std::vector<Model::BrushFace*>({}), document->selectedBrushFaces());
+            CHECK_THAT(document->selectedNodes().brushes(), Catch::Equals(std::vector<Model::BrushNode*>{}));
+            CHECK_THAT(document->selectedBrushFaces(), Catch::Equals(std::vector<Model::BrushFaceHandle>{}));
 
             document->undoCommand();
-            ASSERT_EQ(std::vector<Model::BrushFace*>({ brush->findFace(vm::vec3::pos_z()) }), document->selectedBrushFaces());
+            CHECK_THAT(document->selectedBrushFaces(), Catch::Equals(std::vector<Model::BrushFaceHandle>{{ brushNode, *topFaceIndex }}));
         }
     }
 }

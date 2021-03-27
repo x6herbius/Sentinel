@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GameEngineProfileEditor_h
-#define GameEngineProfileEditor_h
+#pragma once
 
 #include <QWidget>
 
@@ -31,24 +30,24 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        /**
+         * Editor widget for a single game engine profile.
+         */
         class GameEngineProfileEditor : public QWidget {
+            Q_OBJECT
         private:
             Model::GameEngineProfile* m_profile;
             QStackedWidget* m_stackedWidget;
             QLineEdit* m_nameEdit;
             QLineEdit* m_pathEdit;
-            bool m_ignoreNotifications;
         public:
             explicit GameEngineProfileEditor(QWidget* parent = nullptr);
-            ~GameEngineProfileEditor() override;
         private:
             QWidget* createEditorPage();
             void updatePath(const QString& str);
         public:
             void setProfile(Model::GameEngineProfile* profile);
         private:
-            void profileWillBeRemoved();
-            void profileDidChange();
             void refresh();
 
             bool isValidEnginePath(const QString& str) const;
@@ -56,8 +55,12 @@ namespace TrenchBroom {
             void nameChanged(const QString& text);
             void pathChanged();
             void changePathClicked();
+        signals:
+            /**
+             * Emitted after m_profile is changed in response to a UI action.
+             */
+            void profileChanged();
         };
     }
 }
 
-#endif /* GameEngineProfileEditor_h */

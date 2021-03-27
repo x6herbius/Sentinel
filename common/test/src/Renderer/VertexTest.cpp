@@ -17,10 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Renderer/GLVertex.h"
 #include "Renderer/GLVertexType.h"
 
@@ -28,6 +24,8 @@
 #include <vecmath/vec.h>
 
 #include <cstring>
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Renderer {
@@ -47,8 +45,8 @@ namespace TrenchBroom {
             const auto expected = TestVertex{ pos, uv, color };
             const auto actual   = Vertex(pos, uv, color);
 
-            ASSERT_EQ(sizeof(TestVertex), sizeof(Vertex));
-            ASSERT_EQ(0, std::memcmp(&expected, &actual, sizeof(expected)));
+            REQUIRE(sizeof(Vertex) == sizeof(TestVertex));
+            REQUIRE(std::memcmp(&expected, &actual, sizeof(expected)) == 0);
         }
 
         TEST_CASE("VertexTest.memoryLayoutVertexList", "[VertexTest]") {
@@ -67,9 +65,9 @@ namespace TrenchBroom {
                 actual.emplace_back(pos, uv, color);
             }
 
-            ASSERT_EQ(sizeof(TestVertex), sizeof(Vertex));
-            ASSERT_EQ(expected.size(), actual.size());
-            ASSERT_EQ(0, std::memcmp(expected.data(), actual.data(), sizeof(TestVertex) * 3));
+            REQUIRE(sizeof(Vertex) == sizeof(TestVertex));
+            REQUIRE(actual.size() == expected.size());
+            REQUIRE(std::memcmp(expected.data(), actual.data(), sizeof(TestVertex) * 3) == 0);
         }
     }
 }

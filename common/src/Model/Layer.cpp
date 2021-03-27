@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010-2017 Kristian Duske
+ Copyright (C) 2020 Kristian Duske
 
  This file is part of TrenchBroom.
 
@@ -19,127 +19,63 @@
 
 #include "Layer.h"
 
-#include "Model/Brush.h"
-#include "Model/ComputeNodeBoundsVisitor.h"
-#include "Model/Group.h"
-#include "Model/Entity.h"
-#include "Model/IssueGenerator.h"
-#include "Model/NodeVisitor.h"
-#include "Model/TagVisitor.h"
-
-#include <string>
-
 namespace TrenchBroom {
     namespace Model {
-        Layer::Layer(const std::string& name) :
-        m_name(name),
-        m_boundsValid(false) {}
+        Layer::Layer(std::string name, const bool defaultLayer) :
+        m_defaultLayer(defaultLayer),
+        m_name(std::move(name)),
+        m_omitFromExport(false) {}
 
-        void Layer::setName(const std::string& name) {
-            m_name = name;
+        bool Layer::defaultLayer() const {
+            return m_defaultLayer;
         }
 
-        const std::string& Layer::doGetName() const {
+        const std::string& Layer::name() const {
             return m_name;
         }
 
-        const vm::bbox3& Layer::doGetLogicalBounds() const {
-            if (!m_boundsValid) {
-                validateBounds();
+        void Layer::setName(std::string name) {
+            m_name = std::move(name);
+        }
+
+        bool Layer::hasSortIndex() const {
+            return m_sortIndex.has_value();
+        }
+
+        int Layer::sortIndex() const {
+            if (defaultLayer()) {
+                return defaultLayerSortIndex();
             }
-            return m_logicalBounds;
+
+            return m_sortIndex.value_or(invalidSortIndex());
+        }
+        
+        void Layer::setSortIndex(const int sortIndex) {
+            m_sortIndex = sortIndex;
         }
 
-        const vm::bbox3& Layer::doGetPhysicalBounds() const {
-            if (!m_boundsValid) {
-                validateBounds();
-            }
-            return m_physicalBounds;
+        const std::optional<Color>& Layer::color() const {
+            return m_color;
         }
 
-        Node* Layer::doClone(const vm::bbox3& worldBounds) const {
-            Layer* layer = new Layer(m_name);
-            cloneAttributes(layer);
-            layer->addChildren(clone(worldBounds, children()));
-            return layer;
+        void Layer::setColor(const Color& color) {
+            m_color = color;
         }
 
-        class CanAddChildToLayer : public ConstNodeVisitor, public NodeQuery<bool> {
-        private:
-            void doVisit(const World*)  override { setResult(false); }
-            void doVisit(const Layer*)  override { setResult(false); }
-            void doVisit(const Group*)  override { setResult(true); }
-            void doVisit(const Entity*) override { setResult(true); }
-            void doVisit(const Brush*)  override { setResult(true); }
-        };
-
-        bool Layer::doCanAddChild(const Node* child) const {
-            CanAddChildToLayer visitor;
-            child->accept(visitor);
-            return visitor.result();
+        bool Layer::omitFromExport() const {
+            return m_omitFromExport;
         }
 
-        bool Layer::doCanRemoveChild(const Node* /* child */) const {
-            return true;
+        void Layer::setOmitFromExport(const bool omitFromExport) {
+            m_omitFromExport = omitFromExport;
         }
 
-        bool Layer::doRemoveIfEmpty() const {
-            return false;
+        int Layer::invalidSortIndex() {
+            return std::numeric_limits<int>::max();
         }
 
-        bool Layer::doShouldAddToSpacialIndex() const {
-            return false;
-        }
-
-        void Layer::doNodePhysicalBoundsDidChange() {
-            invalidateBounds();
-        }
-
-        bool Layer::doSelectable() const {
-            return false;
-        }
-
-        void Layer::doPick(const vm::ray3& /* ray */, PickResult&) {}
-
-        void Layer::doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) {
-            for (Node* child : Node::children())
-                child->findNodesContaining(point, result);
-        }
-
-        void Layer::doGenerateIssues(const IssueGenerator* generator, std::vector<Issue*>& issues) {
-            generator->generate(this, issues);
-        }
-
-        void Layer::doAccept(NodeVisitor& visitor) {
-            visitor.visit(this);
-        }
-
-        void Layer::doAccept(ConstNodeVisitor& visitor) const {
-            visitor.visit(this);
-        }
-
-        void Layer::invalidateBounds() {
-            m_boundsValid = false;
-        }
-
-        void Layer::validateBounds() const {
-            ComputeNodeBoundsVisitor visitor(BoundsType::Logical, vm::bbox3(0.0));
-            iterate(visitor);
-            m_logicalBounds = visitor.bounds();
-
-            ComputeNodeBoundsVisitor physicalBoundsVisitor(BoundsType::Physical, vm::bbox3(0.0));
-            iterate(physicalBoundsVisitor);
-            m_physicalBounds = physicalBoundsVisitor.bounds();
-
-            m_boundsValid = true;
-        }
-
-        void Layer::doAcceptTagVisitor(TagVisitor& visitor) {
-            visitor.visit(*this);
-        }
-
-        void Layer::doAcceptTagVisitor(ConstTagVisitor& visitor) const {
-            visitor.visit(*this);
+        int Layer::defaultLayerSortIndex() {
+            return -1;
         }
     }
 }

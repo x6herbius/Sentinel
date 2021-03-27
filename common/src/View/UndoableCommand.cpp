@@ -20,20 +20,35 @@
 #include "UndoableCommand.h"
 
 #include "Exceptions.h"
+#include "View/MapDocumentCommandFacade.h"
 
 #include <string>
 
 namespace TrenchBroom {
     namespace View {
-        UndoableCommand::UndoableCommand(const CommandType type, const std::string& name) :
-        Command(type, name) {}
+        UndoableCommand::UndoableCommand(const CommandType type, const std::string& name, const bool updateModificationCount) :
+        Command(type, name),
+        m_modificationCount(updateModificationCount ? 1u : 0u) {}
 
         UndoableCommand::~UndoableCommand() {}
+
+        std::unique_ptr<CommandResult> UndoableCommand::performDo(MapDocumentCommandFacade* document) {
+            auto result = Command::performDo(document);
+            if (result->success() && m_modificationCount) {
+                if (document) {
+                    document->incModificationCount(m_modificationCount);
+                }
+            }
+            return result;
+        }
 
         std::unique_ptr<CommandResult> UndoableCommand::performUndo(MapDocumentCommandFacade* document) {
             m_state = CommandState::Undoing;
             auto result = doPerformUndo(document);
             if (result->success()) {
+                if (document) {
+                    document->decModificationCount(m_modificationCount);
+                }
                 m_state = CommandState::Default;
             } else {
                 m_state = CommandState::Done;
@@ -41,35 +56,13 @@ namespace TrenchBroom {
             return result;
         }
 
-        bool UndoableCommand::isRepeatDelimiter() const {
-            return doIsRepeatDelimiter();
-        }
-
-        bool UndoableCommand::isRepeatable(MapDocumentCommandFacade* document) const {
-            return doIsRepeatable(document);
-        }
-
-        std::unique_ptr<UndoableCommand> UndoableCommand::repeat(MapDocumentCommandFacade* document) const {
-            return doRepeat(document);
-        }
-
         bool UndoableCommand::collateWith(UndoableCommand* command) {
             assert(command != this);
-            if (command->type() != m_type)
-                return false;
-            return doCollateWith(command);
-        }
-
-        bool UndoableCommand::doIsRepeatDelimiter() const {
+            if (command->type() == m_type && doCollateWith(command)) {
+                m_modificationCount += command->m_modificationCount;
+                return true;
+            }
             return false;
-        }
-
-        std::unique_ptr<UndoableCommand> UndoableCommand::doRepeat(MapDocumentCommandFacade*) const {
-            throw CommandProcessorException("Command is not repeatable");
-        }
-
-        size_t UndoableCommand::documentModificationCount() const {
-            throw CommandProcessorException("Command does not modify the document");
         }
     }
 }

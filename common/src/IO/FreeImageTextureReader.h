@@ -18,8 +18,7 @@
  */
 
 
-#ifndef FREEIMAGETEXTUREREADER_H
-#define FREEIMAGETEXTUREREADER_H
+#pragma once
 
 #include "IO/TextureReader.h"
 
@@ -36,9 +35,7 @@ namespace TrenchBroom {
         public:
             explicit FreeImageTextureReader(const NameStrategy& nameStrategy, const FileSystem& fs, Logger& logger);
         private:
-            Assets::Texture* doReadTexture(std::shared_ptr<File> file) const override;
+            Assets::Texture doReadTexture(std::shared_ptr<File> file) const override;
         };
     }
 }
-
-#endif // FREEIMAGETEXTUREREADER_H

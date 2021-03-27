@@ -66,7 +66,7 @@ namespace TrenchBroom {
                 enabledCollections.push_back(availableCollections[index]);
             }
 
-            kdl::vec_sort_and_remove_duplicates(enabledCollections);
+            enabledCollections = kdl::vec_sort_and_remove_duplicates(std::move(enabledCollections));
 
             auto document = kdl::mem_lock(m_document);
             document->setEnabledTextureCollections(enabledCollections);
@@ -83,7 +83,7 @@ namespace TrenchBroom {
             // erase back to front
             for (auto sIt = std::rbegin(selections), sEnd = std::rend(selections); sIt != sEnd; ++sIt) {
                 const auto index = static_cast<size_t>(*sIt);
-                kdl::vec_erase_at(enabledCollections, index);
+                enabledCollections = kdl::vec_erase_at(std::move(enabledCollections), index);
             }
 
             auto document = kdl::mem_lock(m_document);
@@ -119,7 +119,9 @@ namespace TrenchBroom {
          * See ModEditor::createGui
          */
         void DirectoryTextureCollectionEditor::createGui() {
-            auto* availableCollectionsContainer = new TitledPanel("Available", false, false);
+            auto* availableCollectionsContainer = new TitledPanel("Available", false, true);
+            availableCollectionsContainer->setBackgroundRole(QPalette::Base);
+            availableCollectionsContainer->setAutoFillBackground(true);
 
             m_availableCollectionsList = new QListWidget();
             m_availableCollectionsList->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -130,7 +132,10 @@ namespace TrenchBroom {
             availableCollectionsContainerLayout->addWidget(m_availableCollectionsList);
             availableCollectionsContainer->getPanel()->setLayout(availableCollectionsContainerLayout);
 
-            auto* enabledCollectionsContainer = new TitledPanel("Enabled", false, false);
+            auto* enabledCollectionsContainer = new TitledPanel("Enabled", false, true);
+            enabledCollectionsContainer->setBackgroundRole(QPalette::Base);
+            enabledCollectionsContainer->setAutoFillBackground(true);
+
             m_enabledCollectionsList = new QListWidget();
             m_enabledCollectionsList->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
@@ -140,9 +145,9 @@ namespace TrenchBroom {
             enabledCollectionsContainerLayout->addWidget(m_enabledCollectionsList);
             enabledCollectionsContainer->getPanel()->setLayout(enabledCollectionsContainerLayout);
 
-            m_addCollectionsButton = createBitmapButton("Add.png", tr("Enable the selected texture collections"), this);
-            m_removeCollectionsButton = createBitmapButton("Remove.png", tr("Disable the selected texture collections"), this);
-            m_reloadCollectionsButton = createBitmapButton("Refresh.png", tr("Reload all enabled texture collections"), this);
+            m_addCollectionsButton = createBitmapButton("Add.svg", tr("Enable the selected texture collections"), this);
+            m_removeCollectionsButton = createBitmapButton("Remove.svg", tr("Disable the selected texture collections"), this);
+            m_reloadCollectionsButton = createBitmapButton("Refresh.svg", tr("Reload all enabled texture collections"), this);
 
             auto* toolBar = createMiniToolBarLayout(
                 m_addCollectionsButton,
@@ -250,7 +255,7 @@ namespace TrenchBroom {
         std::vector<IO::Path> DirectoryTextureCollectionEditor::availableTextureCollections() const {
             auto document = kdl::mem_lock(m_document);
             auto availableCollections = document->availableTextureCollections();
-            kdl::vec_erase_all(availableCollections, document->enabledTextureCollections());
+            availableCollections = kdl::vec_erase_all(std::move(availableCollections), document->enabledTextureCollections());
             return availableCollections;
         }
 

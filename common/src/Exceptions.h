@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Exceptions_h
-#define TrenchBroom_Exceptions_h
+#pragma once
 
 #include <exception>
 #include <string>
@@ -34,7 +33,7 @@ namespace TrenchBroom {
         const char* what() const noexcept override;
     };
 
-    class GeometryException : public Exception {
+    class BrushFaceReferenceException : public Exception {
     public:
         using Exception::Exception;
     };
@@ -102,15 +101,8 @@ namespace TrenchBroom {
         using Exception::Exception;
     };
 
-    class ResourceNotFoundException : public Exception {
-    public:
-        using Exception::Exception;
-    };
-
     class FileFormatException : public Exception {
     public:
         using Exception::Exception;
     };
 }
-
-#endif

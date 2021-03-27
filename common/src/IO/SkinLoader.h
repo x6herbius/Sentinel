@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_SKINLOADER_H
-#define TRENCHBROOM_SKINLOADER_H
+#pragma once
 
 #include <memory>
 
@@ -34,11 +33,10 @@ namespace TrenchBroom {
         class FileSystem;
         class Path;
 
-        std::unique_ptr<Assets::Texture> loadSkin(const Path& path, const FileSystem& fs, Logger& logger);
-        std::unique_ptr<Assets::Texture> loadSkin(const Path& path, const FileSystem& fs, Logger& logger, const Assets::Palette& palette);
+        Assets::Texture loadSkin(const Path& path, const FileSystem& fs, Logger& logger);
+        Assets::Texture loadSkin(const Path& path, const FileSystem& fs, Logger& logger, const Assets::Palette& palette);
         
-        std::unique_ptr<Assets::Texture> loadShader(const Path& path, const FileSystem& fs, Logger& logger);
+        Assets::Texture loadShader(const Path& path, const FileSystem& fs, Logger& logger);
     }
 }
 
-#endif //TRENCHBROOM_SKINLOADER_H

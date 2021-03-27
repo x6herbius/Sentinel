@@ -37,7 +37,9 @@ namespace TrenchBroom {
 
         ControlListBoxItemRenderer::ControlListBoxItemRenderer(QWidget* parent) :
         QWidget(parent),
-        m_index(0) {}
+        m_index(0) {
+            setBaseWindowColor(this);
+        }
 
         ControlListBoxItemRenderer::~ControlListBoxItemRenderer() = default;
 
@@ -55,6 +57,21 @@ namespace TrenchBroom {
         void ControlListBoxItemRenderer::updateItem() {}
 
         void ControlListBoxItemRenderer::setSelected(const bool selected, const QListWidget* listWidget) {
+            QPalette backgroundPalette;
+            backgroundPalette.setColor(QPalette::Active,   QPalette::Highlight, listWidget->palette().color(QPalette::Active,   QPalette::Highlight));
+            backgroundPalette.setColor(QPalette::Inactive, QPalette::Highlight, listWidget->palette().color(QPalette::Inactive, QPalette::Highlight));
+            backgroundPalette.setColor(QPalette::Disabled, QPalette::Highlight, listWidget->palette().color(QPalette::Disabled, QPalette::Highlight));
+
+            backgroundPalette.setColor(QPalette::Active,   QPalette::Base,      listWidget->palette().color(QPalette::Active,   QPalette::Base));
+            backgroundPalette.setColor(QPalette::Inactive, QPalette::Base,      listWidget->palette().color(QPalette::Inactive, QPalette::Base));
+            backgroundPalette.setColor(QPalette::Disabled, QPalette::Base,      listWidget->palette().color(QPalette::Disabled, QPalette::Base));
+            setPalette(backgroundPalette);
+            // macOS: we'd prefer setPalette(listWidget->palette()); but this doesn't work, whereas the above does.
+            // FIXME: the above setPalette call should be removed once we stop using QListWidget and make ControlListBox
+            // a standalone widget.
+
+            setBackgroundRole(selected ? QPalette::Highlight : QPalette::Base);
+
             // by default, we just change the appearance of all labels
             auto children = findChildren<QLabel*>();
             for (auto* child : children) {
@@ -62,11 +79,23 @@ namespace TrenchBroom {
                 if (dontUpdate.isValid() && dontUpdate.canConvert(QMetaType::Bool) && dontUpdate.toBool()) {
                     continue;
                 }
-                if (selected) {
-                    makeSelected(child, listWidget->palette());
-                } else {
-                    makeUnselected(child, listWidget->palette());
-                }
+
+                // The label colorRole automatically updates from QPalette::Text to QPalette::HighlightedText.
+                // However the macOS palette is different on listWidget and the app default QPalette, so
+                // we need to transfer the listWidget palette to the QLabel for good contrast.
+
+                QPalette labelPalette;
+                labelPalette.setColor(QPalette::Active,   QPalette::HighlightedText, listWidget->palette().color(QPalette::Active,   QPalette::HighlightedText));
+                labelPalette.setColor(QPalette::Inactive, QPalette::HighlightedText, listWidget->palette().color(QPalette::Inactive, QPalette::HighlightedText));
+                labelPalette.setColor(QPalette::Disabled, QPalette::HighlightedText, listWidget->palette().color(QPalette::Disabled, QPalette::HighlightedText));
+
+                labelPalette.setColor(QPalette::Active,   QPalette::Text,            listWidget->palette().color(QPalette::Active,   QPalette::Text));
+                labelPalette.setColor(QPalette::Inactive, QPalette::Text,            listWidget->palette().color(QPalette::Inactive, QPalette::Text));
+                labelPalette.setColor(QPalette::Disabled, QPalette::Text,            listWidget->palette().color(QPalette::Disabled, QPalette::Text));
+                child->setPalette(labelPalette);
+                // macOS: we'd prefer child->setPalette(listWidget->palette()); but this doesn't work, whereas the above does.
+                // FIXME: the above setPalette call should be removed once we stop using QListWidget and make ControlListBox
+                // a standalone widget.
             }
         }
 
@@ -254,7 +283,7 @@ namespace TrenchBroom {
                 auto* renderer = this->renderer(row);
                 // FIXME: this uses QListWidgetItem::isSelected() but addItemRenderer() is doing
                 // it based on QListWidget::currentItem() - should be consistent.
-                // (see: https://github.com/kduske/TrenchBroom/issues/3104)
+                // (see: https://github.com/TrenchBroom/TrenchBroom/issues/3104)
                 renderer->setSelected(listItem->isSelected(), m_listWidget);
                 if (listItem->isSelected()) {
                     selectedRowChanged(row);

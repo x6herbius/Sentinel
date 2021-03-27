@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_TESTENVIRONMENT_H
-#define TRENCHBROOM_TESTENVIRONMENT_H
+#pragma once
 
 #include "IO/Path.h"
 
@@ -28,6 +27,7 @@ namespace TrenchBroom {
     namespace IO {
         class TestEnvironment {
         private:
+            Path m_sandboxPath;
             Path m_dir;
         public:
             explicit TestEnvironment(const std::string& dir);
@@ -51,4 +51,3 @@ namespace TrenchBroom {
 }
 
 
-#endif //TRENCHBROOM_TESTENVIRONMENT_H

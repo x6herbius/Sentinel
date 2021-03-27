@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ToolBox
-#define TrenchBroom_ToolBox
+#pragma once
 
 #include "Notifier.h"
 
@@ -57,7 +56,7 @@ namespace TrenchBroom {
 
             using ToolList = std::vector<Tool*>;
             using ToolMap = std::map<Tool*, ToolList>;
-            ToolMap m_deactivateWhen;
+            ToolMap m_suppressedTools;
 
             bool m_enabled;
         public:
@@ -94,7 +93,13 @@ namespace TrenchBroom {
 
             bool cancel(ToolChain* chain);
         public: // tool management
-            void deactivateWhen(Tool* master, Tool* slave);
+            /**
+             * Suppress a tool when another becomes active. The suppressed tool becomes temporarily deactivated.
+             *
+             * @param suppressedTool the tool that becomes supressed while the other is active
+             * @param primaryTool the tool that controls when the suppressed tool is deactivated
+             */
+            void suppressWhileActive(Tool* suppressedTool, Tool* primaryTool);
 
             bool anyToolActive() const;
             bool toolActive(const Tool* tool) const;
@@ -114,4 +119,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ToolBox) */

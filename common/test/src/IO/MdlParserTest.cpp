@@ -17,19 +17,17 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Logger.h"
 #include "IO/DiskFileSystem.h"
 #include "IO/DiskIO.h"
 #include "IO/File.h"
 #include "IO/MdlParser.h"
 #include "IO/Reader.h"
-#include "Model/Entity.h"
+#include "Model/EntityNode.h"
 #include "Assets/EntityModel.h"
 #include "Assets/Palette.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace IO {
@@ -41,21 +39,21 @@ namespace TrenchBroom {
 
             const auto mdlPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/test/IO/Mdl/armor.mdl");
             const auto mdlFile = Disk::openFile(mdlPath);
-            ASSERT_NE(nullptr, mdlFile);
+            REQUIRE(mdlFile != nullptr);
 
             auto reader = mdlFile->reader().buffer();
             auto parser = MdlParser("armor", std::begin(reader), std::end(reader), palette);
             auto model = parser.initializeModel(logger);
             parser.loadFrame(0, *model, logger);
 
-            EXPECT_NE(nullptr, model);
-            EXPECT_EQ(1u, model->surfaceCount());
-            EXPECT_EQ(1u, model->frameCount());
+            CHECK(model != nullptr);
+            CHECK(model->surfaceCount() == 1u);
+            CHECK(model->frameCount() == 1u);
 
             const auto surfaces = model->surfaces();
             const auto& surface = *surfaces.front();
-            EXPECT_EQ(3u, surface.skinCount());
-            EXPECT_EQ(1u, surface.frameCount());
+            CHECK(surface.skinCount() == 3u);
+            CHECK(surface.frameCount() == 1u);
         }
 
         TEST_CASE("MdlParserTest.loadInvalidMdl", "[MdlParserTest]") {
@@ -66,11 +64,11 @@ namespace TrenchBroom {
 
             const auto mdlPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/test/IO/Mdl/invalid.mdl");
             const auto mdlFile = Disk::openFile(mdlPath);
-            ASSERT_NE(nullptr, mdlFile);
+            REQUIRE(mdlFile != nullptr);
 
             auto reader = mdlFile->reader().buffer();
             auto parser = MdlParser("armor", std::begin(reader), std::end(reader), palette);
-            EXPECT_THROW(parser.initializeModel(logger), AssetException);
+            CHECK_THROWS_AS(parser.initializeModel(logger), AssetException);
         }
     }
 }

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_GroupRenderer
-#define TrenchBroom_GroupRenderer
+#pragma once
 
 #include "AttrString.h"
 #include "Color.h"
@@ -29,7 +28,7 @@
 namespace TrenchBroom {
     namespace Model {
         class EditorContext;
-        class Group;
+        class GroupNode;
     }
 
     namespace Renderer {
@@ -41,23 +40,23 @@ namespace TrenchBroom {
             class GroupNameAnchor;
 
             const Model::EditorContext& m_editorContext;
-            std::vector<Model::Group*> m_groups;
+            std::vector<Model::GroupNode*> m_groups;
 
             DirectEdgeRenderer m_boundsRenderer;
             bool m_boundsValid;
 
+            bool m_overrideColors;
             bool m_showOverlays;
             Color m_overlayTextColor;
             Color m_overlayBackgroundColor;
             bool m_showOccludedOverlays;
-            bool m_overrideBoundsColor;
             Color m_boundsColor;
             bool m_showOccludedBounds;
             Color m_occludedBoundsColor;
         public:
             GroupRenderer(const Model::EditorContext& editorContext);
 
-            void setGroups(const std::vector<Model::Group*>& groups);
+            void setGroups(const std::vector<Model::GroupNode*>& groups);
             void invalidate();
             void clear();
 
@@ -84,12 +83,13 @@ namespace TrenchBroom {
                 }
             }
 
+            void setOverrideColors(bool overrideColors);
+
             void setShowOverlays(bool showOverlays);
             void setOverlayTextColor(const Color& overlayTextColor);
             void setOverlayBackgroundColor(const Color& overlayBackgroundColor);
             void setShowOccludedOverlays(bool showOccludedOverlays);
 
-            void setOverrideBoundsColor(bool overrideBoundsColor);
             void setBoundsColor(const Color& boundsColor);
 
             void setShowOccludedBounds(bool showOccludedBounds);
@@ -100,18 +100,14 @@ namespace TrenchBroom {
             void renderBounds(RenderContext& renderContext, RenderBatch& renderBatch);
             void renderNames(RenderContext& renderContext, RenderBatch& renderBatch);
 
-            struct BuildColoredBoundsVertices;
-            struct BuildBoundsVertices;
-
             void invalidateBounds();
             void validateBounds();
 
-            bool shouldRenderGroup(const Model::Group* group) const;
+            bool shouldRenderGroup(const Model::GroupNode* group) const;
 
-            AttrString groupString(const Model::Group* group) const;
-            const Color& boundsColor(const Model::Group* group) const;
+            AttrString groupString(const Model::GroupNode* group) const;
+            Color groupColor(const Model::GroupNode* group) const;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_GroupRenderer) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ConfigParserBase_h
-#define ConfigParserBase_h
+#pragma once
 
 #include "EL/EL_Forward.h"
 #include "IO/ELParser.h"
@@ -34,8 +33,7 @@ namespace TrenchBroom {
         protected:
             Path m_path;
         protected:
-            ConfigParserBase(const char* begin, const char* end, const Path& path);
-            ConfigParserBase(const std::string& str, const Path& path = Path(""));
+            explicit ConfigParserBase(std::string_view str, const Path& path = Path(""));
         public:
             virtual ~ConfigParserBase();
         protected:
@@ -48,4 +46,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* ConfigParserBase_h */

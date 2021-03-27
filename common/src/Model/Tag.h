@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_TAG_H
-#define TRENCHBROOM_TAG_H
+#pragma once
 
 #include "Macros.h"
 #include "Model/TagType.h"
@@ -150,7 +149,7 @@ namespace TrenchBroom {
              */
             explicit TagReference(const Tag& tag);
 
-            defineMove(TagReference)
+            defineCopyAndMove(TagReference)
 
             /**
              * Returns the referenced tag.
@@ -174,6 +173,9 @@ namespace TrenchBroom {
              * Creates a new instance.
              */
             Taggable();
+            defineCopyAndMove(Taggable)
+
+            friend void swap(Taggable& lhs, Taggable& rhs) noexcept;
 
             virtual ~Taggable();
 
@@ -402,4 +404,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif //TRENCHBROOM_TAG_H

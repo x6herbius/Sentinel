@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_Q3SHADERPARSER_H
-#define TRENCHBROOM_Q3SHADERPARSER_H
+#pragma once
 
 #include "IO/Parser.h"
 #include "IO/Tokenizer.h"
@@ -48,8 +47,7 @@ namespace TrenchBroom {
 
         class Quake3ShaderTokenizer : public Tokenizer<Quake3ShaderToken::Type> {
         public:
-            Quake3ShaderTokenizer(const char* begin, const char* end);
-            explicit Quake3ShaderTokenizer(const std::string& str);
+            explicit Quake3ShaderTokenizer(std::string_view str);
         private:
             Token emitToken() override;
         };
@@ -58,8 +56,7 @@ namespace TrenchBroom {
         private:
             Quake3ShaderTokenizer m_tokenizer;
         public:
-            Quake3ShaderParser(const char* begin, const char* end);
-            explicit Quake3ShaderParser(const std::string& str);
+            explicit Quake3ShaderParser(std::string_view str);
 
             /**
              * Parses a Quake 3 shader and returns the value of the qer_editorimage entry.
@@ -82,4 +79,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif //TRENCHBROOM_Q3SHADERPARSER_H

@@ -25,7 +25,7 @@ namespace TrenchBroom {
     namespace View {
         const Command::CommandType CurrentGroupCommand::Type = Command::freeType();
 
-        std::unique_ptr<CurrentGroupCommand> CurrentGroupCommand::push(Model::Group* group) {
+        std::unique_ptr<CurrentGroupCommand> CurrentGroupCommand::push(Model::GroupNode* group) {
             return std::make_unique<CurrentGroupCommand>(group);
         }
 
@@ -33,8 +33,8 @@ namespace TrenchBroom {
             return std::make_unique<CurrentGroupCommand>(nullptr);
         }
 
-        CurrentGroupCommand::CurrentGroupCommand(Model::Group* group) :
-        UndoableCommand(Type, group != nullptr ? "Push Group" : "Pop Group"),
+        CurrentGroupCommand::CurrentGroupCommand(Model::GroupNode* group) :
+        UndoableCommand(Type, group != nullptr ? "Push Group" : "Pop Group", false),
         m_group(group) {}
 
         std::unique_ptr<CommandResult> CurrentGroupCommand::doPerformDo(MapDocumentCommandFacade* document) {
@@ -60,10 +60,6 @@ namespace TrenchBroom {
         }
 
         bool CurrentGroupCommand::doCollateWith(UndoableCommand*) {
-            return false;
-        }
-
-        bool CurrentGroupCommand::doIsRepeatable(MapDocumentCommandFacade*) const {
             return false;
         }
     }

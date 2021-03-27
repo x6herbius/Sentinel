@@ -78,23 +78,27 @@ namespace TrenchBroom {
             CompilationVariables variables(document, buildWorkDir(profile, document));
 
             auto compilationContext = std::make_unique<CompilationContext>(document, variables, TextOutputAdapter(currentOutput), test);
-            m_currentRun = std::make_unique<CompilationRunner>(std::move(compilationContext), profile);
-            connect(m_currentRun.get(), &CompilationRunner::compilationStarted, this, &CompilationRun::compilationStarted);
-            connect(m_currentRun.get(), &CompilationRunner::compilationEnded, this, &CompilationRun::compilationEnded);
+            m_currentRun = new CompilationRunner(std::move(compilationContext), profile, this);
+            connect(m_currentRun, &CompilationRunner::compilationStarted, this, &CompilationRun::compilationStarted);
+            connect(m_currentRun, &CompilationRunner::compilationEnded, this, [&]() { cleanup(); emit compilationEnded(); });
             m_currentRun->execute();
         }
 
         std::string CompilationRun::buildWorkDir(const Model::CompilationProfile* profile, std::shared_ptr<MapDocument> document) {
-            return EL::interpolate(profile->workDirSpec(), EL::EvaluationContext(CompilationWorkDirVariables(document)));
+            try {
+                return EL::interpolate(profile->workDirSpec(),
+                                       EL::EvaluationContext(CompilationWorkDirVariables(document)));
+            } catch (const Exception&) {
+                return "";
+            }
         }
 
         void CompilationRun::cleanup() {
-            m_currentRun.reset();
-        }
-
-        void CompilationRun::_compilationEnded() {
-            cleanup();
-            emit compilationEnded();
+            if (m_currentRun != nullptr) {
+                // It's not safe to delete a CompilationRunner during execution of one of its signals, so use deleteLater()
+                m_currentRun->deleteLater();
+                m_currentRun = nullptr;
+            }
         }
     }
 }

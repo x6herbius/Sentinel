@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_UVShearTool
-#define TrenchBroom_UVShearTool
+#pragma once
 
 #include "Model/HitType.h"
 #include "View/Tool.h"
@@ -33,8 +32,8 @@ namespace TrenchBroom {
 
         class UVShearTool : public ToolControllerBase<PickingPolicy, NoKeyPolicy, NoMousePolicy, MouseDragPolicy, NoRenderPolicy, NoDropPolicy>, public Tool {
         private:
-            static const Model::HitType::Type XHandleHit;
-            static const Model::HitType::Type YHandleHit;
+            static const Model::HitType::Type XHandleHitType;
+            static const Model::HitType::Type YHandleHitType;
         private:
             std::weak_ptr<MapDocument> m_document;
             UVViewHelper& m_helper;
@@ -64,4 +63,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_UVShearTool) */

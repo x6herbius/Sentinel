@@ -23,8 +23,10 @@
 #include "IO/DiskIO.h"
 #include "IO/FileMatcher.h"
 #include "IO/Path.h"
+#include "IO/PathQt.h"
 #include "Model/CompilationProfile.h"
 #include "Model/CompilationTask.h"
+#include "Model/ExportFormat.h"
 #include "View/CompilationContext.h"
 #include "View/CompilationVariables.h"
 #include "View/MapDocument.h"
@@ -32,6 +34,8 @@
 #include <string>
 
 #include <QtGlobal>
+#include <QDir>
+#include <QMetaEnum>
 #include <QProcess>
 
 namespace TrenchBroom {
@@ -53,7 +57,7 @@ namespace TrenchBroom {
             try {
                 return m_context.interpolate(spec);
             } catch (const Exception& e) {
-                m_context << "#### Could not interpolate expression '" << spec << "': " << e.what() << "\n";
+                m_context << "#### Could not interpolate expression '" << QString::fromStdString(spec) << "': " << e.what() << "\n";
                 throw;
             }
         }
@@ -70,7 +74,7 @@ namespace TrenchBroom {
             try {
                 const IO::Path targetPath(interpolate(m_task->targetSpec()));
                 try {
-                    m_context << "#### Exporting map file '" << targetPath.asString() << "'\n";
+                    m_context << "#### Exporting map file '" << IO::pathAsQString(targetPath) << "'\n";
 
                     if (!m_context.test()) {
                         const IO::Path directoryPath = targetPath.deleteLastComponent();
@@ -79,11 +83,11 @@ namespace TrenchBroom {
                         }
 
                         const auto document = m_context.document();
-                        document->saveDocumentTo(targetPath);
+                        document->exportDocumentAs(Model::ExportFormat::Map, targetPath);
                     }
                     emit end();
                 } catch (const Exception& e) {
-                    m_context << "#### Could not export map file '" << targetPath.asString() << "': " << e.what() << "\n";
+                    m_context << "#### Could not export map file '" << IO::pathAsQString(targetPath) << "': " << e.what() << "\n";
                     throw;
                 }
             } catch (const Exception&) {
@@ -111,13 +115,13 @@ namespace TrenchBroom {
                 const std::string sourcePattern = sourcePath.lastComponent().asString();
 
                 try {
-                    m_context << "#### Copying '" << sourcePath.asString() << "' to '" << targetPath.asString() << "'\n";
+                    m_context << "#### Copying '" << IO::pathAsQString(sourcePath) << "' to '" << IO::pathAsQString(targetPath) << "'\n";
                     if (!m_context.test()) {
                         IO::Disk::copyFiles(sourceDirPath, IO::FileNameMatcher(sourcePattern), targetPath, true);
                     }
                     emit end();
                 } catch (const Exception& e) {
-                    m_context << "#### Could not copy '" << sourcePath.asString() << "' to '" << targetPath.asString() << "': " << e.what() << "\n";
+                    m_context << "#### Could not copy '" << IO::pathAsQString(sourcePath) << "' to '" << IO::pathAsQString(targetPath) << "': " << e.what() << "\n";
                     throw;
                 }
             } catch (const Exception&) {
@@ -156,7 +160,7 @@ namespace TrenchBroom {
                 const auto workDir = m_context.variableValue(CompilationVariableNames::WORK_DIR_PATH);
                 const auto cmd = this->cmd();
 
-                m_context << "#### Executing '" << cmd << "'\n";
+                m_context << "#### Executing '" << QString::fromStdString(cmd) << "'\n";
 
                 if (!m_context.test()) {
                     m_process = new QProcess(this);
@@ -191,7 +195,9 @@ namespace TrenchBroom {
         }
 
         void CompilationRunToolTaskRunner::processErrorOccurred(const QProcess::ProcessError processError) {
-            m_context << "#### Error " << processError << " occurred when communicating with process\n\n";
+            m_context << "#### Error '"
+                      << QMetaEnum::fromType<QProcess::ProcessError>().valueToKey(processError)
+                      << "' occurred when communicating with process\n\n";
             emit error();
         }
 
@@ -202,19 +208,20 @@ namespace TrenchBroom {
 
         void CompilationRunToolTaskRunner::processReadyReadStandardError() {
             if (m_process != nullptr) {
-                const auto str = QString::fromLocal8Bit(m_process->readAllStandardError());
-                m_context << str.toStdString();
+                const QByteArray bytes = m_process->readAllStandardError();
+                m_context << QString::fromLocal8Bit(bytes);
             }
         }
 
         void CompilationRunToolTaskRunner::processReadyReadStandardOutput() {
             if (m_process != nullptr) {
-                const auto str = QString::fromLocal8Bit(m_process->readAllStandardOutput());
-                m_context << str.toStdString();
+                const QByteArray bytes = m_process->readAllStandardOutput();
+                m_context << QString::fromLocal8Bit(bytes);
             }
         }
 
-        CompilationRunner::CompilationRunner(std::unique_ptr<CompilationContext> context, const Model::CompilationProfile* profile) :
+        CompilationRunner::CompilationRunner(std::unique_ptr<CompilationContext> context, const Model::CompilationProfile* profile, QObject* parent) :
+        QObject(parent),
         m_context(std::move(context)),
         m_taskRunners(createTaskRunners(*m_context, profile)),
         m_currentTask(std::end(m_taskRunners)) {}
@@ -234,15 +241,21 @@ namespace TrenchBroom {
             }
 
             void visit(const Model::CompilationExportMap& task) override {
-                appendRunner(std::make_unique<CompilationExportMapTaskRunner>(m_context, task));
+                if (task.enabled()) {
+                    appendRunner(std::make_unique<CompilationExportMapTaskRunner>(m_context, task));
+                }
             }
 
             void visit(const Model::CompilationCopyFiles& task) override {
-                appendRunner(std::make_unique<CompilationCopyFilesTaskRunner>(m_context, task));
+                if (task.enabled()) {
+                    appendRunner(std::make_unique<CompilationCopyFilesTaskRunner>(m_context, task));
+                }
             }
 
             void visit(const Model::CompilationRunTool& task) override {
-                appendRunner(std::make_unique<CompilationRunToolTaskRunner>(m_context, task));
+                if (task.enabled()) {
+                    appendRunner(std::make_unique<CompilationRunToolTaskRunner>(m_context, task));
+                }
             }
 
         private:
@@ -259,11 +272,23 @@ namespace TrenchBroom {
 
         void CompilationRunner::execute() {
             assert(!running());
+
             m_currentTask = std::begin(m_taskRunners);
+            if (m_currentTask == std::end(m_taskRunners)) {
+                emit compilationEnded();
+                return;
+            }
             bindEvents(m_currentTask->get());
-            m_currentTask->get()->execute();
 
             emit compilationStarted();
+
+            const auto workDir = QString::fromStdString(m_context->variableValue(CompilationVariableNames::WORK_DIR_PATH));
+            if (!QDir(workDir).exists()) {
+                *m_context << "#### Error: working directory '" << workDir << "' does not exist\n";
+            } else {
+                *m_context << "#### Using working directory '" << workDir << "'\n";
+            }
+            m_currentTask->get()->execute();
         }
 
         void CompilationRunner::terminate() {

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_SetVisibilityCommand
-#define TrenchBroom_SetVisibilityCommand
+#pragma once
 
 #include "Macros.h"
 #include "View/UndoableCommand.h"
@@ -63,11 +62,9 @@ namespace TrenchBroom {
             std::unique_ptr<CommandResult> doPerformUndo(MapDocumentCommandFacade* document) override;
 
             bool doCollateWith(UndoableCommand* command) override;
-            bool doIsRepeatable(MapDocumentCommandFacade* document) const override;
 
             deleteCopyAndMove(SetVisibilityCommand)
         };
     }
 }
 
-#endif /* defined(TrenchBroom_SetVisibilityCommand) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_IssueBrowser
-#define TrenchBroom_IssueBrowser
+#pragma once
 
 #include "View/TabBook.h"
 
@@ -31,7 +30,7 @@ class QWidget;
 
 namespace TrenchBroom {
     namespace Model {
-        class BrushFace;
+        class BrushFaceHandle;
         class Issue;
         class Node;
     }
@@ -66,15 +65,14 @@ namespace TrenchBroom {
             void nodesWereAdded(const std::vector<Model::Node*>& nodes);
             void nodesWereRemoved(const std::vector<Model::Node*>& nodes);
             void nodesDidChange(const std::vector<Model::Node*>& nodes);
-            void brushFacesDidChange(const std::vector<Model::BrushFace*>& faces);
+            void brushFacesDidChange(const std::vector<Model::BrushFaceHandle>& faces);
             void issueIgnoreChanged(Model::Issue* issue);
 
             void updateFilterFlags();
 
             void showHiddenIssuesChanged();
-            void filterChanged(size_t index, int setFlag, int mixedFlag);
+            void filterChanged(size_t index, int value, int setFlag, int mixedFlag);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_IssueBrowser) */

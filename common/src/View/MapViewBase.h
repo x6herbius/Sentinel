@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapViewBase
-#define TrenchBroom_MapViewBase
+#pragma once
 
 #include "View/ActionContext.h"
 #include "View/CameraLinkHelper.h"
@@ -50,7 +49,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
-        class Group;
+        class GroupNode;
         class Node;
         class NodeCollection;
         class SmartTag;
@@ -133,7 +132,6 @@ namespace TrenchBroom {
             void entityDefinitionsDidChange();
             void modsDidChange();
             void editorContextDidChange();
-            void mapViewConfigDidChange();
             void gridDidChange();
             void pointFileDidChange();
             void portalFileDidChange();
@@ -173,6 +171,9 @@ namespace TrenchBroom {
             float moveTextureDistance(TextureActionMode mode) const;
             void rotateTextures(bool clockwise, TextureActionMode mode);
             float rotateTextureAngle(bool clockwise, TextureActionMode mode) const;
+            void flipTextures(vm::direction direction);
+            void resetTextures();
+            void resetTexturesToWorld();
         public: // tool mode actions
             void createComplexBrush();
 
@@ -188,7 +189,7 @@ namespace TrenchBroom {
             Model::Node* findNewGroupForObjects(const std::vector<Model::Node*>& nodes) const;
 
             void mergeSelectedGroups();
-            Model::Group* findGroupToMergeGroupsInto(const Model::NodeCollection& selectedNodes) const;
+            Model::GroupNode* findGroupToMergeGroupsInto(const Model::NodeCollection& selectedNodes) const;
 
             /**
              * Checks whether the given node can be reparented under the given new parent.
@@ -271,6 +272,7 @@ namespace TrenchBroom {
 
             void setupGL(Renderer::RenderContext& renderContext);
             void renderCoordinateSystem(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
+            void renderSoftMapBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
             void renderPointFile(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
 
             void renderPortalFile(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
@@ -313,6 +315,7 @@ namespace TrenchBroom {
             virtual void doRenderMap(Renderer::MapRenderer& renderer, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) = 0;
             virtual void doRenderTools(MapViewToolBox& toolBox, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) = 0;
             virtual void doRenderExtras(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
+            virtual void doRenderSoftWorldBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) = 0;
 
             virtual bool doBeforePopupMenu();
             virtual void doAfterPopupMenu();
@@ -320,4 +323,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_MapViewBase) */

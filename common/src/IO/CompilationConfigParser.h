@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationConfigParser_h
-#define CompilationConfigParser_h
+#pragma once
 
 #include "Macros.h"
 #include "EL/EL_Forward.h"
@@ -40,8 +39,7 @@ namespace TrenchBroom {
 
         class CompilationConfigParser : public ConfigParserBase {
         public:
-            CompilationConfigParser(const char* begin, const char* end, const Path& path);
-            explicit CompilationConfigParser(const std::string& str, const Path& path = Path(""));
+            explicit CompilationConfigParser(std::string_view str, const Path& path = Path(""));
 
             Model::CompilationConfig parse();
         private:
@@ -59,4 +57,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* CompilationConfigParser_h */

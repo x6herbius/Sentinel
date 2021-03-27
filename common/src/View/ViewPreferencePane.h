@@ -17,8 +17,7 @@
  along with TrenchBroom.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ViewPreferencePane
-#define TrenchBroom_ViewPreferencePane
+#pragma once
 
 #include "View/PreferencePane.h"
 
@@ -27,7 +26,6 @@ class QComboBox;
 
 namespace TrenchBroom {
     namespace View {
-        class ColorButton;
         class SliderWithLabel;
 
         class ViewPreferencePane : public PreferencePane {
@@ -39,9 +37,8 @@ namespace TrenchBroom {
             SliderWithLabel* m_fovSlider;
             QCheckBox* m_showAxes;
             QComboBox* m_textureModeCombo;
-            ColorButton* m_backgroundColorButton;
-            ColorButton* m_gridColorButton;
-            ColorButton* m_edgeColorButton;
+            QCheckBox* m_enableMsaa;
+            QComboBox* m_themeCombo;
             QComboBox* m_textureBrowserIconSizeCombo;
             QComboBox* m_rendererFontSizeCombo;
         public:
@@ -58,20 +55,19 @@ namespace TrenchBroom {
             bool doValidate() override;
 
             size_t findTextureMode(int minFilter, int magFilter) const;
+            int findThemeIndex(const QString& theme);
         private slots:
             void layoutChanged(int index);
             void brightnessChanged(int value);
             void gridAlphaChanged(int value);
             void fovChanged(int value);
             void showAxesChanged(int state);
+            void enableMsaaChanged(int state);
             void textureModeChanged(int index);
-            void backgroundColorChanged(const QColor& color);
-            void gridColorChanged(const QColor& color);
-            void edgeColorChanged(const QColor& color);
+            void themeChanged(int index);
             void textureBrowserIconSizeChanged(int index);
             void rendererFontSizeChanged(const QString& text);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_ViewPreferencePane) */

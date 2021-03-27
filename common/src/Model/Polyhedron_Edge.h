@@ -17,10 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Polyhedron_Edge_h
-#define TrenchBroom_Polyhedron_Edge_h
+#pragma once
 
 #include "Polyhedron.h"
+#include "Macros.h"
 
 #include <vecmath/vec.h>
 #include <vecmath/plane.h>
@@ -167,7 +167,10 @@ m_link(this)
         }
 
         template <typename T, typename FP, typename VP>
-        Polyhedron_Edge<T,FP,VP>* Polyhedron_Edge<T,FP,VP>::split(const vm::plane<T,3>& plane) {
+        Polyhedron_Edge<T,FP,VP>* Polyhedron_Edge<T,FP,VP>::split(const vm::plane<T,3>& plane, const T epsilon) {
+            unused(epsilon);
+            assert(epsilon >= static_cast<T>(0));
+            
             // Assumes that the start and the end vertex of this edge are on opposite sides of
             // the given plane (precondition).
             // Ts.
@@ -179,8 +182,8 @@ m_link(this)
             const T endDist = plane.point_distance(endPos);
 
             // Check what's implied by the precondition:
-            assert(vm::abs(startDist) > vm::constants<T>::point_status_epsilon());
-            assert(vm::abs(endDist)   > vm::constants<T>::point_status_epsilon());
+            assert(vm::abs(startDist) > epsilon);
+            assert(vm::abs(endDist)   > epsilon);
             assert(vm::sign(startDist) != vm::sign(endDist));
             assert(startDist != endDist); // implied by the above
 
@@ -289,5 +292,3 @@ m_link(this)
         }
     }
 }
-
-#endif

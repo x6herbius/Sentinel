@@ -55,23 +55,20 @@ namespace TrenchBroom {
         }
 
         std::unique_ptr<TextureReader> TextureLoader::createTextureReader(const FileSystem& gameFS, const Model::TextureConfig& textureConfig, Logger& logger) {
+            const auto prefixLength = textureConfig.package.rootDirectory.length();
+            const TextureReader::PathSuffixNameStrategy nameStrategy(prefixLength);
+            
             if (textureConfig.format.format == "idmip") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(1, true);
                 return std::make_unique<IdMipTextureReader>(nameStrategy, gameFS, logger, loadPalette(gameFS, textureConfig, logger));
             } else if (textureConfig.format.format == "hlmip") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(1, true);
                 return std::make_unique<HlMipTextureReader>(nameStrategy, gameFS, logger);
             } else if (textureConfig.format.format == "wal") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
                 return std::make_unique<WalTextureReader>(nameStrategy, gameFS, logger, loadPalette(gameFS, textureConfig, logger));
             } else if (textureConfig.format.format == "image") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
                 return std::make_unique<FreeImageTextureReader>(nameStrategy, gameFS, logger);
             } else if (textureConfig.format.format == "q3shader") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
                 return std::make_unique<Quake3ShaderTextureReader>(nameStrategy, gameFS, logger);
             } else if (textureConfig.format.format == "m8") {
-                TextureReader::PathSuffixNameStrategy nameStrategy(2, true);
                 return std::make_unique<M8TextureReader>(nameStrategy, gameFS, logger);
             } else {
                 throw GameException("Unknown texture format '" + textureConfig.format.format + "'");
@@ -106,7 +103,7 @@ namespace TrenchBroom {
             }
         }
 
-        std::unique_ptr<Assets::TextureCollection> TextureLoader::loadTextureCollection(const Path& path) {
+        Assets::TextureCollection TextureLoader::loadTextureCollection(const Path& path) {
             return m_textureCollectionLoader->loadTextureCollection(path, m_textureExtensions, *m_textureReader);
         }
 

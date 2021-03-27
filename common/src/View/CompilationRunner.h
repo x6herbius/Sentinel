@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationRunner_h
-#define CompilationRunner_h
+#pragma once
 
 #include "Macros.h"
 
@@ -125,7 +124,7 @@ namespace TrenchBroom {
             TaskRunnerList m_taskRunners;
             TaskRunnerList::iterator m_currentTask;
         public:
-            CompilationRunner(std::unique_ptr<CompilationContext> context, const Model::CompilationProfile* profile);
+            CompilationRunner(std::unique_ptr<CompilationContext> context, const Model::CompilationProfile* profile, QObject* parent = nullptr);
             ~CompilationRunner() override;
         private:
             class CreateTaskRunnerVisitor;
@@ -149,4 +148,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* CompilationRunner_h */

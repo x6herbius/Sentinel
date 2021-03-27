@@ -17,12 +17,10 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Renderer/Camera.h"
 #include "Renderer/PerspectiveCamera.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Renderer {
@@ -30,9 +28,9 @@ namespace TrenchBroom {
             PerspectiveCamera c;
             c.setDirection(vm::vec3f(0,0,1), vm::vec3f(0,0,1));
 
-            ASSERT_FALSE(vm::is_nan(c.direction()));
-            ASSERT_FALSE(vm::is_nan(c.right()));
-            ASSERT_FALSE(vm::is_nan(c.up()));
+            CHECK_FALSE(vm::is_nan(c.direction()));
+            CHECK_FALSE(vm::is_nan(c.right()));
+            CHECK_FALSE(vm::is_nan(c.up()));
         }
 
         TEST_CASE("CameraTest.testOrbitDown", "[CameraTest]") {
@@ -41,9 +39,9 @@ namespace TrenchBroom {
 
             c.orbit(vm::vec3f::zero(), 0.0f, vm::constants<float>::pi());
 
-            ASSERT_FALSE(vm::is_nan(c.direction()));
-            ASSERT_FALSE(vm::is_nan(c.right()));
-            ASSERT_FALSE(vm::is_nan(c.up()));
+            CHECK_FALSE(vm::is_nan(c.direction()));
+            CHECK_FALSE(vm::is_nan(c.right()));
+            CHECK_FALSE(vm::is_nan(c.up()));
         }
 
         TEST_CASE("CameraTest.testOrbitWhileInverted", "[CameraTest]") {
@@ -52,9 +50,9 @@ namespace TrenchBroom {
 
             c.orbit(vm::vec3f::zero(), vm::constants<float>::pi(), 0.0f);
 
-            ASSERT_FALSE(vm::is_nan(c.direction()));
-            ASSERT_FALSE(vm::is_nan(c.right()));
-            ASSERT_FALSE(vm::is_nan(c.up()));
+            CHECK_FALSE(vm::is_nan(c.direction()));
+            CHECK_FALSE(vm::is_nan(c.right()));
+            CHECK_FALSE(vm::is_nan(c.up()));
         }
 
         TEST_CASE("CameraTest.testYawWhenPitchedDown", "[CameraTest]") {
@@ -63,9 +61,9 @@ namespace TrenchBroom {
 
             c.rotate(0.1f, 0.0f);
 
-            ASSERT_FALSE(vm::is_nan(c.direction()));
-            ASSERT_FALSE(vm::is_nan(c.right()));
-            ASSERT_FALSE(vm::is_nan(c.up()));
+            CHECK_FALSE(vm::is_nan(c.direction()));
+            CHECK_FALSE(vm::is_nan(c.right()));
+            CHECK_FALSE(vm::is_nan(c.up()));
         }
     }
 }

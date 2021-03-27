@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_FaceInspector
-#define TrenchBroom_FaceInspector
+#pragma once
 
 #include "View/TabBook.h"
 
@@ -33,6 +32,7 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class CollapsibleTitledPanel;
         class FaceAttribsEditor;
         class GLContextManager;
         class MapDocument;
@@ -45,20 +45,21 @@ namespace TrenchBroom {
             QSplitter* m_splitter;
             FaceAttribsEditor* m_faceAttribsEditor;
             TextureBrowser* m_textureBrowser;
+            CollapsibleTitledPanel* m_textureCollectionsEditor;
         public:
             FaceInspector(std::weak_ptr<MapDocument> document, GLContextManager& contextManager, QWidget* parent = nullptr);
             ~FaceInspector() override;
 
             bool cancelMouseDrag();
+            void revealTexture(const Assets::Texture* texture);
         private:
             void createGui(std::weak_ptr<MapDocument> document, GLContextManager& contextManager);
             QWidget* createFaceAttribsEditor(QWidget* parent, std::weak_ptr<MapDocument> document, GLContextManager& contextManager);
             QWidget* createTextureBrowser(QWidget* parent, std::weak_ptr<MapDocument> document, GLContextManager& contextManager);
-            QWidget* createTextureCollectionEditor(QWidget* parent, std::weak_ptr<MapDocument> document);
+            CollapsibleTitledPanel* createTextureCollectionEditor(QWidget* parent, std::weak_ptr<MapDocument> document);
 
-            void textureSelected(Assets::Texture* texture);
+            void textureSelected(const Assets::Texture* texture);
         };
     }
 }
 
-#endif /* defined(TrenchBroom_FaceInspector) */

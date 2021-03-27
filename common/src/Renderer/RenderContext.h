@@ -17,11 +17,12 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_RenderContext
-#define TrenchBroom_RenderContext
+#pragma once
 
 #include "FloatType.h"
 #include "Renderer/Transformation.h"
+
+#include <vecmath/bbox.h>
 
 namespace TrenchBroom {
     namespace Renderer {
@@ -74,6 +75,7 @@ namespace TrenchBroom {
             bool m_tintSelection;
 
             ShowSelectionGuide m_showSelectionGuide;
+            vm::bbox3f m_sofMapBounds;
         public:
             RenderContext(RenderMode renderMode, const Camera& camera, FontManager& fontManager, ShaderManager& shaderManager);
 
@@ -121,6 +123,9 @@ namespace TrenchBroom {
             bool showGrid() const;
             void setShowGrid(bool showGrid);
 
+            const vm::bbox3f& softMapBounds() const;
+            void setSoftMapBounds(const vm::bbox3f& softMapBounds);
+
             FloatType gridSize() const;
             void setGridSize(FloatType gridSize);
 
@@ -144,4 +149,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_RenderContext) */

@@ -17,16 +17,12 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MapDocumentTest_h
-#define MapDocumentTest_h
-
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
+#pragma once
 
 #include "Model/MapFormat.h"
 #include "View/MapDocument.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -37,6 +33,7 @@ namespace TrenchBroom {
     }
 
     namespace Model {
+        class Brush;
         class TestGame;
     }
 
@@ -58,7 +55,7 @@ namespace TrenchBroom {
         protected:
             virtual ~MapDocumentTest();
 
-            Model::Brush* createBrush(const std::string& textureName = "texture");
+            Model::BrushNode* createBrushNode(const std::string& textureName = "texture", const std::function<void(Model::Brush&)>& brushFunc = [](Model::Brush&) {});
         };
 
         class ValveMapDocumentTest : public MapDocumentTest {
@@ -68,4 +65,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* MapDocumentTest_h */

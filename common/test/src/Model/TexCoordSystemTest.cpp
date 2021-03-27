@@ -17,18 +17,15 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "FloatType.h"
+#include "Assets/Texture.h"
 #include "Model/BrushFaceAttributes.h"
 #include "Model/ParaxialTexCoordSystem.h"
 #include "Model/ParallelTexCoordSystem.h"
 
 #include <vecmath/vec.h>
 
-#include "Assets/Texture.h"
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace Model {
@@ -42,11 +39,11 @@ namespace TrenchBroom {
             BrushFaceAttributes attribs("");
 
             ParaxialTexCoordSystem paraxial(vm::vec3::pos_z(), attribs);
-            ASSERT_EQ(nullptr, paraxial.takeSnapshot());
+            CHECK(paraxial.takeSnapshot() == nullptr);
 
             ParallelTexCoordSystem parallel(vm::vec3::pos_y(), vm::vec3::pos_x());
             auto parallelSnapshot = parallel.takeSnapshot();
-            ASSERT_NE(nullptr, parallelSnapshot);
+            CHECK(parallelSnapshot != nullptr);
 
 #if 0 // not supported with Catch2
             ASSERT_DEATH(parallelSnapshot->restore(paraxial), "");

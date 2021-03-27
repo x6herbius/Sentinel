@@ -28,7 +28,6 @@
 namespace TrenchBroom {
     namespace Assets {
         Texture::Texture(const std::string& name, const size_t width, const size_t height, const Color& averageColor, Buffer&& buffer, const GLenum format, const TextureType type) :
-        m_collection(nullptr),
         m_name(name),
         m_width(width),
         m_height(height),
@@ -47,7 +46,6 @@ namespace TrenchBroom {
         }
 
         Texture::Texture(const std::string& name, const size_t width, const size_t height, const Color& averageColor, BufferList&& buffers, const GLenum format, const TextureType type) :
-        m_collection(nullptr),
         m_name(name),
         m_width(width),
         m_height(height),
@@ -73,7 +71,6 @@ namespace TrenchBroom {
         }
 
         Texture::Texture(const std::string& name, const size_t width, const size_t height, const GLenum format, const TextureType type) :
-        m_collection(nullptr),
         m_name(name),
         m_width(width),
         m_height(height),
@@ -86,12 +83,7 @@ namespace TrenchBroom {
         m_blendFunc{TextureBlendFunc::Enable::UseDefault, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA},
         m_textureId(0) {}
 
-        Texture::~Texture() {
-            if (m_collection == nullptr && m_textureId != 0) {
-                glAssert(glDeleteTextures(1, &m_textureId));
-            }
-            m_textureId = 0;
-        }
+        Texture::~Texture() = default;
 
         TextureType Texture::selectTextureType(const bool masked) {
             if (masked) {
@@ -101,12 +93,24 @@ namespace TrenchBroom {
             }
         }
 
-        TextureCollection* Texture::collection() const {
-            return m_collection;
-        }
-
         const std::string& Texture::name() const {
             return m_name;
+        }
+
+        const IO::Path& Texture::absolutePath() const {
+            return m_absolutePath;
+        }
+
+        void Texture::setAbsolutePath(const IO::Path& absolutePath) {
+            m_absolutePath = absolutePath;
+        }
+
+        const IO::Path& Texture::relativePath() const {
+            return m_relativePath;
+        }
+
+        void Texture::setRelativePath(const IO::Path& relativePath) {
+            m_relativePath = relativePath;
         }
 
         size_t Texture::width() const {
@@ -161,17 +165,11 @@ namespace TrenchBroom {
 
         void Texture::incUsageCount() {
             ++m_usageCount;
-            if (m_collection != nullptr) {
-                m_collection->incUsageCount();
-            }
         }
 
         void Texture::decUsageCount() {
             assert(m_usageCount > 0);
             --m_usageCount;
-            if (m_collection != nullptr) {
-                m_collection->decUsageCount();
-            }
         }
 
         bool Texture::overridden() const {
@@ -316,10 +314,6 @@ namespace TrenchBroom {
 
         TextureType Texture::type() const {
             return m_type;
-        }
-
-        void Texture::setCollection(TextureCollection* collection) {
-            m_collection = collection;
         }
     }
 }

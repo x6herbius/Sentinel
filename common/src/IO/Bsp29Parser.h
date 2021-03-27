@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Bsp29Parser
-#define TrenchBroom_Bsp29Parser
+#pragma once
 
 #include "Assets/TextureCollection.h"
 #include "IO/EntityModelParser.h"
@@ -76,7 +75,7 @@ namespace TrenchBroom {
             std::unique_ptr<Assets::EntityModel> doInitializeModel(Logger& logger) override;
             void doLoadFrame(size_t frameIndex, Assets::EntityModel& model, Logger& logger) override;
 
-            std::vector<Assets::Texture*> parseTextures(Reader reader, Logger& logger);
+            std::vector<Assets::Texture> parseTextures(Reader reader, Logger& logger);
             TextureInfoList parseTextureInfos(Reader reader, size_t textureInfoCount);
             std::vector<vm::vec3f> parseVertices(Reader reader, size_t vertexCount);
             EdgeInfoList parseEdgeInfos(Reader reader, size_t edgeInfoCount);
@@ -89,4 +88,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_Bsp29Parser) */

@@ -17,11 +17,9 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationProfile_h
-#define CompilationProfile_h
+#pragma once
 
 #include "Macros.h"
-#include "Notifier.h"
 
 #include <memory>
 #include <string>
@@ -36,9 +34,6 @@ namespace TrenchBroom {
         class ConstCompilationTaskConstVisitor;
 
         class CompilationProfile {
-        public:
-            Notifier<> profileWillBeRemoved;
-            Notifier<> profileDidChange;
         private:
             std::string m_name;
             std::string m_workDirSpec;
@@ -49,6 +44,8 @@ namespace TrenchBroom {
             ~CompilationProfile();
 
             std::unique_ptr<CompilationProfile> clone() const;
+            bool operator==(const CompilationProfile& other) const;
+            bool operator!=(const CompilationProfile& other) const;
 
             const std::string& name() const;
             void setName(const std::string& name);
@@ -58,6 +55,7 @@ namespace TrenchBroom {
 
             size_t taskCount() const;
             CompilationTask* task(size_t index) const;
+            size_t indexOfTask(CompilationTask* task) const;
 
             void addTask(std::unique_ptr<CompilationTask> task);
             void insertTask(size_t index, std::unique_ptr<CompilationTask> task);
@@ -76,4 +74,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* CompilationProfile_h */

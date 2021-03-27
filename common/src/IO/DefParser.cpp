@@ -20,13 +20,13 @@
 #include "DefParser.h"
 
 #include "Exceptions.h"
-#include "Assets/EntityDefinition.h"
-#include "Assets/AttributeDefinition.h"
 #include "Assets/ModelDefinition.h"
+#include "Assets/PropertyDefinition.h"
 #include "IO/ELParser.h"
+#include "IO/EntityDefinitionClassInfo.h"
 #include "IO/LegacyModelDefinitionParser.h"
 #include "IO/ParserStatus.h"
-#include "Model/EntityAttributes.h"
+#include "Model/EntityProperties.h"
 
 #include <kdl/string_format.h>
 #include <kdl/vector_utils.h>
@@ -37,11 +37,8 @@
 
 namespace TrenchBroom {
     namespace IO {
-        DefTokenizer::DefTokenizer(const char* begin, const char* end) :
-        Tokenizer(begin, end, "", 0) {}
-
-        DefTokenizer::DefTokenizer(const std::string& str) :
-        Tokenizer(str, "", 0) {}
+        DefTokenizer::DefTokenizer(std::string_view str) :
+        Tokenizer(std::move(str), "", 0) {}
 
         const std::string DefTokenizer::WordDelims = " \t\n\r()[]{};,=";
 
@@ -136,13 +133,9 @@ namespace TrenchBroom {
             return Token(DefToken::Eof, nullptr, nullptr, length(), line(), column());
         }
 
-        DefParser::DefParser(const char* begin, const char* end, const Color& defaultEntityColor) :
-        m_defaultEntityColor(defaultEntityColor),
-        m_tokenizer(DefTokenizer(begin, end)) {}
-
-        DefParser::DefParser(const std::string& str, const Color& defaultEntityColor) :
-        m_defaultEntityColor(defaultEntityColor),
-        m_tokenizer(DefTokenizer(str)) {}
+        DefParser::DefParser(std::string_view str, const Color& defaultEntityColor) :
+        EntityDefinitionParser(defaultEntityColor),
+        m_tokenizer(DefTokenizer(std::move(str))) {}
 
         DefParser::TokenNameMap DefParser::tokenNames() const {
             using namespace DefToken;
@@ -167,137 +160,133 @@ namespace TrenchBroom {
             return names;
         }
 
-        DefParser::EntityDefinitionList DefParser::doParseDefinitions(ParserStatus& status) {
-            EntityDefinitionList definitions;
-            try {
-                Assets::EntityDefinition* definition = parseDefinition(status);
+        std::vector<EntityDefinitionClassInfo> DefParser::parseClassInfos(ParserStatus& status) {
+            std::vector<EntityDefinitionClassInfo> result;
+
+            auto classInfo = parseClassInfo(status);
+            status.progress(m_tokenizer.progress());
+            
+            while (classInfo) {
+                result.push_back(std::move(*classInfo));
+                classInfo = parseClassInfo(status);
                 status.progress(m_tokenizer.progress());
-                while (definition != nullptr) {
-                    definitions.push_back(definition);
-                    definition = parseDefinition(status);
-                    status.progress(m_tokenizer.progress());
-                }
-                return definitions;
-            } catch (...) {
-                kdl::vec_clear_and_delete(definitions);
-                throw;
             }
+            
+            return result;
         }
 
-        Assets::EntityDefinition* DefParser::parseDefinition(ParserStatus& status) {
+        std::optional<EntityDefinitionClassInfo> DefParser::parseClassInfo(ParserStatus& status) {
             Token token = m_tokenizer.nextToken();
             while (token.type() != DefToken::Eof && token.type() != DefToken::ODefinition) {
                 token = m_tokenizer.nextToken();
             }
             if (token.type() == DefToken::Eof) {
-                return nullptr;
+                return std::nullopt;
             }
 
             expect(status, DefToken::ODefinition, token);
-
+            
             EntityDefinitionClassInfo classInfo;
+            classInfo.type = EntityDefinitionClassType::BaseClass;
+            classInfo.line = token.line();
+            classInfo.column = token.column();
 
             token = expect(status, DefToken::Word, m_tokenizer.nextToken());
-            classInfo.setName(token.data());
+            classInfo.name = token.data();
 
             token = expect(status, DefToken::OParenthesis | DefToken::Newline, m_tokenizer.peekToken());
             if (token.type() == DefToken::OParenthesis) {
-                classInfo.setColor(parseColor(status));
+                classInfo.type = EntityDefinitionClassType::BrushClass;
+                classInfo.color = parseColor(status);
 
                 token = expect(status, DefToken::OParenthesis | DefToken::Word, m_tokenizer.peekToken());
                 if (token.hasType(DefToken::OParenthesis)) {
-                    classInfo.setSize(parseBounds(status));
+                    classInfo.size = parseBounds(status);
+                    classInfo.type = EntityDefinitionClassType::PointClass;
                 } else if (token.data() == "?") {
                     m_tokenizer.nextToken();
                 }
 
                 token = m_tokenizer.peekToken();
                 if (token.hasType(DefToken::Word | DefToken::Minus)) {
-                    classInfo.addAttributeDefinition(parseSpawnflags(status));
+                    if (!addPropertyDefinition(classInfo.propertyDefinitions, parseSpawnflags(status))) {
+                        status.warn(token.line(), token.column(), "Skipping duplicate spawnflags property definition");
+                    }
                 }
             }
 
             expect(status, DefToken::Newline, m_tokenizer.nextToken());
 
-            std::vector<std::string> superClasses;
-            parseAttributes(status, classInfo, superClasses);
+            parseProperties(status, classInfo);
+            classInfo.description = kdl::str_trim(parseDescription());
 
-            classInfo.setDescription(kdl::str_trim(parseDescription()));
             expect(status, DefToken::CDefinition, m_tokenizer.nextToken());
 
-            if (classInfo.hasColor()) {
-                classInfo.resolveBaseClasses(m_baseClasses, superClasses);
-                if (classInfo.hasSize()) // point definition
-                    return new Assets::PointEntityDefinition(classInfo.name(), classInfo.color(), classInfo.size(), classInfo.description(), classInfo.attributeList(), classInfo.modelDefinition());
-                return new Assets::BrushEntityDefinition(classInfo.name(), classInfo.hasColor() ? classInfo.color() : m_defaultEntityColor, classInfo.description(), classInfo.attributeList());
-            }
-
-            // base definition
-            m_baseClasses[classInfo.name()] = classInfo;
-            return parseDefinition(status);
+            return classInfo;
         }
 
-        DefParser::AttributeDefinitionPtr DefParser::parseSpawnflags(ParserStatus& /* status */) {
-            Assets::FlagsAttributeDefinition* definition = new Assets::FlagsAttributeDefinition(Model::AttributeNames::Spawnflags);
+        DefParser::PropertyDefinitionPtr DefParser::parseSpawnflags(ParserStatus& /* status */) {
+            auto definition = std::make_shared<Assets::FlagsPropertyDefinition>(Model::PropertyKeys::Spawnflags);
             size_t numOptions = 0;
 
-            try {
-                Token token = m_tokenizer.peekToken();
-                while (token.hasType(DefToken::Word | DefToken::Minus)) {
-                    token = m_tokenizer.nextToken();
-                    const auto name = token.hasType(DefToken::Word) ? token.data() : "";
-                    const auto value = 1 << numOptions++;
-                    definition->addOption(value, name, "", false);
-                    token = m_tokenizer.peekToken();
-                }
-            } catch (...) {
-                delete definition;
-                throw;
+            Token token = m_tokenizer.peekToken();
+            while (token.hasType(DefToken::Word | DefToken::Minus)) {
+                token = m_tokenizer.nextToken();
+                const auto name = token.hasType(DefToken::Word) ? token.data() : "";
+                const auto value = 1 << numOptions++;
+                definition->addOption(value, name, "", false);
+                token = m_tokenizer.peekToken();
             }
-
-            return DefParser::AttributeDefinitionPtr(definition);
+            
+            return definition;
         }
 
-        void DefParser::parseAttributes(ParserStatus& status, EntityDefinitionClassInfo& classInfo, std::vector<std::string>& superClasses) {
+        void DefParser::parseProperties(ParserStatus& status, EntityDefinitionClassInfo& classInfo) {
             if (m_tokenizer.peekToken().type() == DefToken::OBrace) {
                 m_tokenizer.nextToken();
-                while (parseAttribute(status, classInfo, superClasses));
+                while (parseProperty(status, classInfo));
             }
         }
 
-        bool DefParser::parseAttribute(ParserStatus& status, EntityDefinitionClassInfo& classInfo, std::vector<std::string>& superClasses) {
+        bool DefParser::parseProperty(ParserStatus& status, EntityDefinitionClassInfo& classInfo) {
             Token token = expect(status, DefToken::Word | DefToken::CBrace, nextTokenIgnoringNewlines());
             if (token.type() != DefToken::Word)
                 return false;
 
+            const auto line = token.line();
+            const auto column = token.column();
+
             std::string typeName = token.data();
             if (typeName == "default") {
-                // ignore these attributes
-                parseDefaultAttribute(status);
+                // ignore these properties
+                parseDefaultProperty(status);
             } else if (typeName == "base") {
-                superClasses.push_back(parseBaseAttribute(status));
+                classInfo.superClasses.push_back(parseBaseProperty(status));
             } else if (typeName == "choice") {
-                classInfo.addAttributeDefinition(parseChoiceAttribute(status));
+                auto propertyDefinition = parseChoicePropertyDefinition(status);
+                if (!addPropertyDefinition(classInfo.propertyDefinitions, propertyDefinition)) {
+                    status.warn(line, column, "Skipping duplicate property definition: " + propertyDefinition->key());
+                }
             } else if (typeName == "model") {
-                classInfo.setModelDefinition(parseModel(status));
+                classInfo.modelDefinition = parseModelDefinition(status);
             }
 
             expect(status, DefToken::Semicolon, nextTokenIgnoringNewlines());
             return true;
         }
 
-        void DefParser::parseDefaultAttribute(ParserStatus& status) {
+        void DefParser::parseDefaultProperty(ParserStatus& status) {
             // Token token;
             expect(status, DefToken::OParenthesis, nextTokenIgnoringNewlines());
             expect(status, DefToken::QuotedString, nextTokenIgnoringNewlines());
-            // const std::string attributeName = token.data();
+            // const std::string propertyName = token.data();
             expect(status, DefToken::Comma, nextTokenIgnoringNewlines());
             expect(status, DefToken::QuotedString, nextTokenIgnoringNewlines());
-            // const std::string attributeValue = token.data();
+            // const std::string propertyValue = token.data();
             expect(status, DefToken::CParenthesis, nextTokenIgnoringNewlines());
         }
 
-        std::string DefParser::parseBaseAttribute(ParserStatus& status) {
+        std::string DefParser::parseBaseProperty(ParserStatus& status) {
             expect(status, DefToken::OParenthesis, nextTokenIgnoringNewlines());
             Token token = expect(status, DefToken::QuotedString, nextTokenIgnoringNewlines());
             const std::string basename = token.data();
@@ -306,11 +295,11 @@ namespace TrenchBroom {
             return basename;
         }
 
-        DefParser::AttributeDefinitionPtr DefParser::parseChoiceAttribute(ParserStatus& status) {
+        DefParser::PropertyDefinitionPtr DefParser::parseChoicePropertyDefinition(ParserStatus& status) {
             Token token = expect(status, DefToken::QuotedString, m_tokenizer.nextToken());
-            const std::string attributeName = token.data();
+            const std::string propertyKey = token.data();
 
-            Assets::ChoiceAttributeOption::List options;
+            Assets::ChoicePropertyOption::List options;
             expect(status, DefToken::OParenthesis, nextTokenIgnoringNewlines());
             token = nextTokenIgnoringNewlines();
             while (token.type() == DefToken::OParenthesis) {
@@ -320,7 +309,7 @@ namespace TrenchBroom {
                 expect(status, DefToken::Comma, nextTokenIgnoringNewlines());
                 token = expect(status, DefToken::QuotedString, nextTokenIgnoringNewlines());
                 const std::string value = token.data();
-                options.push_back(Assets::ChoiceAttributeOption(name, value));
+                options.push_back(Assets::ChoicePropertyOption(name, value));
 
                 expect(status, DefToken::CParenthesis, nextTokenIgnoringNewlines());
                 token = nextTokenIgnoringNewlines();
@@ -328,10 +317,10 @@ namespace TrenchBroom {
 
             expect(status, DefToken::CParenthesis, token);
 
-            return DefParser::AttributeDefinitionPtr(new Assets::ChoiceAttributeDefinition(attributeName, "", "", options, false));
+            return DefParser::PropertyDefinitionPtr(new Assets::ChoicePropertyDefinition(propertyKey, "", "", options, false));
         }
 
-        Assets::ModelDefinition DefParser::parseModel(ParserStatus& status) {
+        Assets::ModelDefinition DefParser::parseModelDefinition(ParserStatus& status) {
             expect(status, DefToken::OParenthesis, m_tokenizer.nextToken());
 
             const auto snapshot = m_tokenizer.snapshot();
@@ -339,8 +328,11 @@ namespace TrenchBroom {
             const auto column = m_tokenizer.column();
 
             try {
-                ELParser parser(m_tokenizer);
+                ELParser parser(ELParser::Mode::Lenient, m_tokenizer.remainder());
                 auto expression = parser.parse();
+
+                // advance our tokenizer by the amount that the `parser` parsed
+                m_tokenizer.adoptState(parser.tokenizerState());
                 expect(status, DefToken::CParenthesis, m_tokenizer.nextToken());
 
                 expression.optimize();
@@ -349,8 +341,11 @@ namespace TrenchBroom {
                 try {
                     m_tokenizer.restore(snapshot);
 
-                    LegacyModelDefinitionParser parser(m_tokenizer);
+                    LegacyModelDefinitionParser parser(m_tokenizer.remainder());
                     auto expression = parser.parse(status);
+
+                    // advance our tokenizer by the amount that `parser` parsed
+                    m_tokenizer.adoptState(parser.tokenizerState());
                     expect(status, DefToken::CParenthesis, m_tokenizer.nextToken());
 
                     expression.optimize();
@@ -368,7 +363,7 @@ namespace TrenchBroom {
             if (token.type() == DefToken::CDefinition) {
                 return "";
             }
-            return m_tokenizer.readRemainder(DefToken::CDefinition);
+            return std::string(m_tokenizer.readRemainder(DefToken::CDefinition));
         }
 
         vm::vec3 DefParser::parseVector(ParserStatus& status) {

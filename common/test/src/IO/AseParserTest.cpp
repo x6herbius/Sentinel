@@ -17,10 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
 #include "Logger.h"
 #include "Assets/EntityModel.h"
 #include "Assets/Texture.h"
@@ -31,6 +27,8 @@
 #include "IO/Quake3ShaderFileSystem.h"
 #include "IO/Reader.h"
 #include "IO/TextureReader.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace IO {
@@ -49,13 +47,13 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("models/mapobjects/wedges/wedge_45.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
         }
         
         TEST_CASE("AseParserTest.fallbackToMaterialName", "[AseParserTest]") {
@@ -73,16 +71,17 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("models/wedge_45.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
             
-            ASSERT_EQ(1u, model->surface(0).skinCount());
-            ASSERT_EQ("textures/bigtile", model->surface(0).skin(0)->name());
+            // account for the default texture
+            CHECK(model->surface(0).skinCount() == 2u);
+            CHECK(model->surface(0).skin(0)->name() == "textures/bigtile");
         }
         
         TEST_CASE("AseParserTest.loadDefaultMaterial", "[AseParserTest]") {
@@ -100,21 +99,22 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("models/wedge_45.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
             
-            ASSERT_EQ(1u, model->surface(0).skinCount());
+            // account for the default texture
+            CHECK(model->surface(0).skinCount() == 2u);
             // shader name is correct, but we loaded the default material
             
             const auto* texture = model->surface(0).skin(0);
-            ASSERT_EQ("textures/bigtile", texture->name());
-            ASSERT_EQ(32u, texture->width());
-            ASSERT_EQ(32u, texture->height());
+            CHECK(texture->name() == "textures/bigtile");
+            CHECK(texture->width() == 32u);
+            CHECK(texture->height() == 32u);
         }
 
         TEST_CASE("AseParserTest.parseFailure_2657", "[AseParserTest]") {
@@ -132,13 +132,13 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("player.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("player", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("player", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
         }
 
         TEST_CASE("AseParserTest.parseFailure_2679", "[AseParserTest]") {
@@ -156,13 +156,13 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("wedge_45.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
         }
     
         TEST_CASE("AseParserTest.parseFailure_2898_vertex_index", "[AseParserTest]") {
@@ -180,13 +180,13 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("wedge_45.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
         }
         
         TEST_CASE("AseParserTest.parseFailure_2898_no_uv", "[AseParserTest]") {
@@ -204,13 +204,13 @@ namespace TrenchBroom {
 
             const auto aseFile = fs->openFile(Path("wedge_45_no_uv.ase"));
             auto reader = aseFile->reader().buffer();
-            AseParser parser("wedge", std::begin(reader), std::end(reader), *fs);
+            AseParser parser("wedge", reader.stringView(), *fs);
 
             auto model = parser.initializeModel(logger);
-            ASSERT_NE(nullptr, model);
+            CHECK(model != nullptr);
 
-            ASSERT_NO_THROW(parser.loadFrame(0, *model, logger));
-            ASSERT_TRUE(model->frame(0)->loaded());
+            CHECK_NOTHROW(parser.loadFrame(0, *model, logger));
+            CHECK(model->frame(0)->loaded());
         }
     }
 }

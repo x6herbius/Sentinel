@@ -50,7 +50,22 @@ namespace TrenchBroom {
         void swap(CompilationConfig& lhs, CompilationConfig& rhs) {
             using std::swap;
             swap(lhs.m_profiles, rhs.m_profiles);
-            swap(lhs.profilesDidChange, rhs.profilesDidChange);
+        }
+
+        bool CompilationConfig::operator==(const CompilationConfig& other) const {
+            if (m_profiles.size() != other.m_profiles.size()) {
+                return false;
+            }
+            for (size_t i = 0; i < m_profiles.size(); ++i) {
+                if (*m_profiles[i] != *other.m_profiles[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool CompilationConfig::operator!=(const CompilationConfig& other) const {
+            return !(*this == other);
         }
 
         size_t CompilationConfig::profileCount() const {
@@ -62,17 +77,22 @@ namespace TrenchBroom {
             return m_profiles[index].get();
         }
 
+        size_t CompilationConfig::indexOfProfile(CompilationProfile* profile) const {
+            auto result = kdl::vec_index_of(m_profiles, [=](const auto& ptr){
+                return ptr.get() == profile;
+            });
+            assert(result.has_value());
+            return result.value();
+        }
+
         void CompilationConfig::addProfile(std::unique_ptr<CompilationProfile> profile) {
             ensure(profile != nullptr, "profile is null");
             m_profiles.push_back(std::move(profile));
-            profilesDidChange();
         }
 
         void CompilationConfig::removeProfile(const size_t index) {
             assert(index < profileCount());
-            m_profiles[index]->profileWillBeRemoved();
-            kdl::vec_erase_at(m_profiles, index);
-            profilesDidChange();
+            m_profiles = kdl::vec_erase_at(std::move(m_profiles), index);
         }
     }
 }

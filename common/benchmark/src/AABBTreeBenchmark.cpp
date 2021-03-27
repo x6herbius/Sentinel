@@ -17,12 +17,6 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "../../test/src/GTestCompat.h"
-
-#include "BenchmarkUtils.h"
-
 #include "AABBTree.h"
 #include "IO/DiskIO.h"
 #include "IO/File.h"
@@ -30,38 +24,23 @@
 #include "IO/Reader.h"
 #include "IO/TestParserStatus.h"
 #include "IO/WorldReader.h"
-#include "Model/Brush.h"
+#include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
-#include "Model/Entity.h"
-#include "Model/NodeVisitor.h"
-#include "Model/World.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
+
+#include <kdl/overload.h>
 
 #include <vecmath/bbox.h>
+
+#include "BenchmarkUtils.h"
+#include "../../test/src/Catch2.h"
 
 namespace TrenchBroom {
     using AABB = AABBTree<double, 3, Model::Node*>;
     using BOX = AABB::Box;
-
-    class TreeBuilder : public Model::NodeVisitor {
-    private:
-        AABB& m_tree;
-    public:
-        explicit TreeBuilder(AABB& tree) : m_tree(tree) {}
-    private:
-        void doVisit(Model::World*) override {}
-        void doVisit(Model::Layer*) override {}
-        void doVisit(Model::Group*) override {}
-        void doVisit(Model::Entity* entity) override {
-            doInsert(entity);
-        }
-        void doVisit(Model::Brush* brush) override {
-            doInsert(brush);
-        }
-
-        void doInsert(Model::Node* node) {
-            m_tree.insert(node->physicalBounds(), node);
-        }
-    };
 
     TEST_CASE("AABBTreeBenchmark.benchBuildTree", "[AABBTreeBenchmark]") {
         const auto mapPath = IO::Disk::getCurrentWorkingDir() + IO::Path("fixture/benchmark/AABBTree/ne_ruins.map");
@@ -69,16 +48,21 @@ namespace TrenchBroom {
         auto fileReader = file->reader().buffer();
 
         IO::TestParserStatus status;
-        IO::WorldReader worldReader(std::begin(fileReader), std::end(fileReader));
+        IO::WorldReader worldReader(fileReader.stringView(), Model::MapFormat::Standard);
 
         const vm::bbox3 worldBounds(8192.0);
-        auto world = worldReader.read(Model::MapFormat::Standard, worldBounds, status);
+        auto world = worldReader.read(worldBounds, status);
 
         std::vector<AABB> trees(100);
         timeLambda([&world, &trees]() {
             for (auto& tree : trees) {
-                TreeBuilder builder(tree);
-                world->acceptAndRecurse(builder);
+                world->accept(kdl::overload(
+                    [] (auto&& thisLambda, Model::WorldNode* world_)  { world_->visitChildren(thisLambda); },
+                    [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
+                    [] (auto&& thisLambda, Model::GroupNode* group)   { group->visitChildren(thisLambda); },
+                    [&](auto&& thisLambda, Model::EntityNode* entity) { entity->visitChildren(thisLambda); tree.insert(entity->physicalBounds(), entity); },
+                    [&](Model::BrushNode* brush)                      { tree.insert(brush->physicalBounds(), brush); }
+                ));
             }
         }, "Add objects to AABB tree");
     }

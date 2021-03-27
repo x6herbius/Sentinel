@@ -2,14 +2,6 @@
 # 3.12.4 is the maximum version supported on travis / linux out of the box
 cmake_minimum_required(VERSION 3.12)
 
-# Configure CCache if available
-find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
-    message(STATUS "Using CCache")
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif(CCACHE_FOUND)
-
 # Fix warning with Ninja and cotire (see https://github.com/sakra/cotire/issues/81)
 if(POLICY CMP0058)
     cmake_policy(SET CMP0058 NEW)
@@ -28,6 +20,33 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT T
 
 # Using C and CXX because GLEW is C
 project(TrenchBroom C CXX)
+
+# Configure CCache if available and requested
+if(TB_ENABLE_CCACHE)
+    find_program(CCACHE_PATH ccache)
+    if(CCACHE_PATH)
+        message(STATUS "Found ccache: ${CCACHE_PATH}")
+
+        # Set up wrapper scripts, see https://crascit.com/2016/04/09/using-ccache-with-cmake/
+        set(C_LAUNCHER   "${CCACHE_PATH}")
+        set(CXX_LAUNCHER "${CCACHE_PATH}")
+        configure_file(cmake/launch-c.in   launch-c)
+        configure_file(cmake/launch-cxx.in launch-cxx)
+
+        if(CMAKE_GENERATOR STREQUAL "Xcode")
+            # Set Xcode project attributes to route compilation and linking
+            # through our scripts
+            set(CMAKE_XCODE_ATTRIBUTE_CC         "${CMAKE_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_CXX        "${CMAKE_BINARY_DIR}/launch-cxx")
+            set(CMAKE_XCODE_ATTRIBUTE_LD         "${CMAKE_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
+        else()
+            # Support Unix Makefiles and Ninja
+            set(CMAKE_C_COMPILER_LAUNCHER   "${CMAKE_BINARY_DIR}/launch-c")
+            set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-cxx")
+        endif()
+    endif(CCACHE_PATH)
+endif(TB_ENABLE_CCACHE)
 
 # Mac OS X specific configuration. In theory must be done before the PROJECT directive, but that doesn't actually work.
 # These settings are ignored on other platforms
@@ -50,7 +69,7 @@ else()
 endif()
 
 # Request 8MB stack on Windows. (NOTE: /STACK should be used on .exe targets only.)
-# Default is 1MB and we need more for our current AABB builder on large maps (https://github.com/kduske/TrenchBroom/issues/2803)
+# Default is 1MB and we need more for our current AABB builder on large maps (https://github.com/TrenchBroom/TrenchBroom/issues/2803)
 if(COMPILER_IS_MSVC)
     set(TB_STACK_SIZE 8388608)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${TB_STACK_SIZE}")
@@ -97,7 +116,11 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 
 # Find Qt and OpenGL
 find_package(OpenGL REQUIRED)
-find_package(Qt5Widgets REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets Svg REQUIRED)
+# Qt will warn about API's that were deprecated after 5.9.5.
+# Since we're not raising our minimum Qt version, and can't use the replacement
+# API's, disable these warnings.
+add_compile_definitions(QT_NO_DEPRECATED_WARNINGS=1)
 
 # Find threads lib, needed to work around a gtest bug, see: https://stackoverflow.com/questions/21116622/undefined-reference-to-pthread-key-create-linker-error
 # The googletest target links to this
@@ -116,6 +139,3 @@ add_subdirectory(lib)
 add_subdirectory(common)
 add_subdirectory(dump-shortcuts)
 add_subdirectory(app)
-
-# Hack: gmock does not support unity builds but doesn't opt out itself
-set_target_properties(gmock PROPERTIES UNITY_BUILD OFF)

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_MapView2D
-#define TrenchBroom_MapView2D
+#pragma once
 
 #include "View/MapViewBase.h"
 
@@ -64,7 +63,7 @@ namespace TrenchBroom {
             void unbindObservers();
             void cameraDidChange(const Renderer::Camera* camera);
         private: // implement ToolBoxConnector interface
-            PickRequest doGetPickRequest(int x, int y) const override;
+            PickRequest doGetPickRequest(float x, float y) const override;
             Model::PickResult doPick(const vm::ray3& pickRay) const override;
         protected: // QOpenGLWidget overrides
             void initializeGL() override;
@@ -95,10 +94,10 @@ namespace TrenchBroom {
             void doRenderMap(Renderer::MapRenderer& renderer, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
             void doRenderTools(MapViewToolBox& toolBox, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
             void doRenderExtras(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
+            void doRenderSoftWorldBounds(Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
         private: // implement CameraLinkableView interface
             void doLinkCamera(CameraLinkHelper& linkHelper) override;
         };
     }
 }
 
-#endif /* defined(TrenchBroom_MapView2D) */

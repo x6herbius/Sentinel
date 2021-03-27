@@ -28,6 +28,8 @@
 #include "IO/File.h"
 #include "IO/ImageLoaderImpl.h"
 
+#include <stdexcept>
+
 namespace TrenchBroom {
     namespace IO {
         FreeImageTextureReader::FreeImageTextureReader(const NameStrategy& nameStrategy, const FileSystem& fs, Logger& logger) :
@@ -74,7 +76,7 @@ namespace TrenchBroom {
             return average;
         }
 
-        Assets::Texture* FreeImageTextureReader::doReadTexture(std::shared_ptr<File> file) const {
+        Assets::Texture FreeImageTextureReader::doReadTexture(std::shared_ptr<File> file) const {
             auto reader = file->reader().buffer();
 
             InitFreeImage::initialize();
@@ -118,6 +120,11 @@ namespace TrenchBroom {
                 image = tempImage;
             }
 
+            if (image == nullptr) {
+                FreeImage_CloseMemory(imageMemory);
+                throw AssetException("Unsupported pixel format");
+            }
+
             const auto bytesPerPixel = FreeImage_GetLine(image) / FreeImage_GetWidth(image);
             ensure(bytesPerPixel == 4, "expected to have converted image to 32-bit");
 
@@ -132,7 +139,7 @@ namespace TrenchBroom {
             const auto textureType = Assets::Texture::selectTextureType(masked);
             const Color averageColor = getAverageColor(buffers.at(0), format);
 
-            return new Assets::Texture(textureName(path), imageWidth, imageHeight, averageColor, std::move(buffers), format, textureType);
+            return Assets::Texture(textureName(path), imageWidth, imageHeight, averageColor, std::move(buffers), format, textureType);
         }
     }
 }

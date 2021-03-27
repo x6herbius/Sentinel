@@ -17,11 +17,9 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GameEngineProfile_h
-#define GameEngineProfile_h
+#pragma once
 
 #include "Macros.h"
-#include "Notifier.h"
 #include "IO/Path.h"
 
 #include <memory>
@@ -35,9 +33,6 @@ namespace TrenchBroom {
             IO::Path m_path;
             std::string m_parameterSpec;
         public:
-            Notifier<> profileWillBeRemoved;
-            Notifier<> profileDidChange;
-        public:
             GameEngineProfile(const std::string& name, const IO::Path& path, const std::string& parameterSpec);
 
             std::unique_ptr<GameEngineProfile> clone() const;
@@ -50,9 +45,11 @@ namespace TrenchBroom {
             void setPath(const IO::Path& path);
             void setParameterSpec(const std::string& parameterSpec);
 
+            friend bool operator==(const GameEngineProfile& lhs, const GameEngineProfile& rhs);
+            friend bool operator!=(const GameEngineProfile& lhs, const GameEngineProfile& rhs);
+
             deleteCopyAndMove(GameEngineProfile)
         };
     }
 }
 
-#endif /* GameEngineProfile_h */

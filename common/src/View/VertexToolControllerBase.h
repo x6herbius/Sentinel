@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VertexToolControllerBase_h
-#define VertexToolControllerBase_h
+#pragma once
 
 #include "Model/HitQuery.h"
 #include "Model/HitType.h"
@@ -35,7 +34,7 @@
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
+        class BrushNode;
     }
 
     namespace View {
@@ -207,7 +206,7 @@ namespace TrenchBroom {
             protected:
                 std::vector<Model::Hit> firstHits(const Model::PickResult& pickResult) const {
                     std::vector<Model::Hit> result;
-                    std::unordered_set<Model::Brush*> visitedBrushes;
+                    std::unordered_set<Model::BrushNode*> visitedBrushes;
 
                     const Model::Hit& first = pickResult.query().type(m_hitType).occluded().first();
                     if (first.isMatch()) {
@@ -228,7 +227,7 @@ namespace TrenchBroom {
                     return result;
                 }
 
-                bool allIncidentBrushesVisited(const H& handle, std::unordered_set<Model::Brush*>& visitedBrushes) const {
+                bool allIncidentBrushesVisited(const H& handle, std::unordered_set<Model::BrushNode*>& visitedBrushes) const {
                     bool result = true;
                     for (auto brush : m_tool->findIncidentBrushes(handle)) {
                         const bool unvisited = visitedBrushes.insert(brush).second;
@@ -343,4 +342,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* VertexToolControllerBase_h */

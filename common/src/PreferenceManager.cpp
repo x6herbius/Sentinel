@@ -66,14 +66,13 @@ namespace TrenchBroom {
         if (!in.isString()) {
             return false;
         }
-        const std::string inStdString = in.toString().toStdString();
 
-        if (!Color::canParse(inStdString)) {
-            return false;
+        if (const auto color = Color::parse(in.toString().toStdString())) {
+            *out = *color;
+            return true;
         }
 
-        *out = Color::parse(inStdString);
-        return true;
+        return false;
     }
 
     bool PreferenceSerializerV1::readFromJSON(const QJsonValue& in, float* out) const {
@@ -243,13 +242,19 @@ namespace TrenchBroom {
 
     // PreferenceManager
 
-    void PreferenceManager::markAsUnsaved(PreferenceBase* preference) {
-        m_unsavedPreferences.insert(preference);
+    std::unique_ptr<PreferenceManager> PreferenceManager::m_instance;
+    bool PreferenceManager::m_initialized = false;
+
+    PreferenceManager& PreferenceManager::instance() {
+        ensure(m_instance != nullptr, "Preference manager is set");
+        if (!m_initialized) {
+            m_instance->initialize();
+            m_initialized = true;
+        }
+        return *m_instance;
     }
 
-    PreferenceManager::PreferenceManager()
-    : QObject(),
-    m_preferencesFilePath(v2SettingsPath()),
+    AppPreferenceManager::AppPreferenceManager() :
     m_fileSystemWatcher(nullptr),
     m_fileReadWriteDisabled(false) {
 #if defined __APPLE__
@@ -257,6 +262,10 @@ namespace TrenchBroom {
 #else
         m_saveInstantly = false;
 #endif
+    }
+
+    void AppPreferenceManager::initialize() {
+        m_preferencesFilePath = v2SettingsPath();
 
         if (!migrateSettingsFromV1IfPathDoesNotExist(m_preferencesFilePath)) {
             showErrorAndDisableFileReadWrite(tr("An error occurrend while attempting to migrate the preferences to:"), tr("ensure the directory is writable"));
@@ -272,20 +281,17 @@ namespace TrenchBroom {
         }
     }
 
-    PreferenceManager& PreferenceManager::instance() {
-        ensure(qApp->thread() == QThread::currentThread(), "PreferenceManager can only be used on the main thread");
-
-        static PreferenceManager prefs;
-        return prefs;
-    }
-
-    bool PreferenceManager::saveInstantly() const {
+    bool AppPreferenceManager::saveInstantly() const {
         return m_saveInstantly;
     }
 
-    void PreferenceManager::saveChanges() {
+    void AppPreferenceManager::saveChanges() {
+        if (m_unsavedPreferences.empty()) {
+            return;
+        }
+
         for (auto* pref : m_unsavedPreferences) {
-            savePreferenceToCache(pref);
+            savePreferenceToCache(*pref);
             preferenceDidChangeNotifier(pref->path());
         }
         m_unsavedPreferences.clear();
@@ -299,9 +305,13 @@ namespace TrenchBroom {
         }
     }
 
-    void PreferenceManager::discardChanges() {
+    void AppPreferenceManager::discardChanges() {
         m_unsavedPreferences.clear();
         invalidatePreferences();
+    }
+
+    void AppPreferenceManager::markAsUnsaved(PreferenceBase& preference) {
+        m_unsavedPreferences.insert(&preference);
     }
 
     static std::vector<IO::Path>
@@ -335,7 +345,7 @@ namespace TrenchBroom {
         return result.release_data();
     }
 
-    void PreferenceManager::showErrorAndDisableFileReadWrite(const QString& reason, const QString& suggestion) {
+    void AppPreferenceManager::showErrorAndDisableFileReadWrite(const QString& reason, const QString& suggestion) {
         m_fileReadWriteDisabled = true;
 
         const QString message = tr("%1\n\n"
@@ -356,7 +366,7 @@ namespace TrenchBroom {
      * marks all Preference<T> objects as needing deserialization next time they're accessed, and emits
      * preferenceDidChangeNotifier as needed.
      */
-    void PreferenceManager::loadCacheFromDisk() {
+    void AppPreferenceManager::loadCacheFromDisk() {
         if (m_fileReadWriteDisabled) {
             return;
         }
@@ -364,22 +374,21 @@ namespace TrenchBroom {
         const std::map<IO::Path, QJsonValue> oldPrefs = m_cache;
 
         // Reload m_cache
-        const PreferencesResult result = readV2SettingsFromPath(m_preferencesFilePath);
-        kdl::visit_result(kdl::overload {
-            [&](const std::map<IO::Path, QJsonValue>& prefs) {
-                m_cache = prefs;
-            },
-            [&] (const PreferenceErrors::FileReadError&) {
-                // This happens e.g. if you don't have read permissions for m_preferencesFilePath
-                showErrorAndDisableFileReadWrite(tr("A file IO error occurred while attempting to read the preference file:"), tr("ensure the file is readable"));
-            },
-            [&] (const PreferenceErrors::JsonParseError&) {
-                showErrorAndDisableFileReadWrite(tr("A JSON parsing error occurred while reading the preference file:"), tr("fix the JSON, or backup and delete the file"));
-            },
-            [&] (const PreferenceErrors::NoFilePresent&) {
-                m_cache = {};
-            }
-        }, result);
+        readV2SettingsFromPath(m_preferencesFilePath)
+            .and_then([&](std::map<IO::Path, QJsonValue>&& prefs) {
+                    m_cache = std::move(prefs);
+            }).handle_errors(kdl::overload(
+                [&] (const PreferenceErrors::FileReadError&) {
+                    // This happens e.g. if you don't have read permissions for m_preferencesFilePath
+                    showErrorAndDisableFileReadWrite(tr("A file IO error occurred while attempting to read the preference file:"), tr("ensure the file is readable"));
+                },
+                [&] (const PreferenceErrors::JsonParseError&) {
+                    showErrorAndDisableFileReadWrite(tr("A JSON parsing error occurred while reading the preference file:"), tr("fix the JSON, or backup and delete the file"));
+                },
+                [&] (const PreferenceErrors::NoFilePresent&) {
+                    m_cache = {};
+                }
+            ));
 
         invalidatePreferences();
 
@@ -390,7 +399,7 @@ namespace TrenchBroom {
         }
     }
 
-    void PreferenceManager::invalidatePreferences() {
+    void AppPreferenceManager::invalidatePreferences() {
         // Force all currently known Preference<T> objects to deserialize from m_cache next time they are accessed
         // Note, because new Preference<T> objects can be created at runtime,
         // we need this sort of lazy loading system.
@@ -406,38 +415,38 @@ namespace TrenchBroom {
     /**
      * Updates the given PreferenceBase from m_cache.
      */
-    void PreferenceManager::loadPreferenceFromCache(PreferenceBase* pref) {
+    void AppPreferenceManager::loadPreferenceFromCache(PreferenceBase& pref) {
         PreferenceSerializerV2 format;
 
-        auto it = m_cache.find(pref->path());
+        auto it = m_cache.find(pref.path());
         if (it == m_cache.end()) {
             // no value set, use the default value
-            pref->resetToDefault();
-            pref->setValid(true);
+            pref.resetToDefault();
+            pref.setValid(true);
             return;
         }
 
         const QJsonValue jsonValue = it->second;
-        if (!pref->loadFromJSON(format, jsonValue)) {
+        if (!pref.loadFromJSON(format, jsonValue)) {
             // FIXME: Log to TB console
             const QVariant variantValue = jsonValue.toVariant();
-            qDebug() << "Failed to load preference " << IO::pathAsQString(pref->path(), "/")
+            qDebug() << "Failed to load preference " << IO::pathAsQString(pref.path(), "/")
                      << " from JSON value: " << variantValue.toString() << " (" << variantValue.typeName() << ")";
 
-            pref->resetToDefault();
+            pref.resetToDefault();
 
             // Replace the invalid value in the cache with the default
             savePreferenceToCache(pref);
 
             // FIXME: trigger writing to disk
         }
-        pref->setValid(true);
+        pref.setValid(true);
     }
 
-    void PreferenceManager::savePreferenceToCache(PreferenceBase* pref) {
-        if (pref->isDefault()) {
+    void AppPreferenceManager::savePreferenceToCache(PreferenceBase& pref) {
+        if (pref.isDefault()) {
             // Just remove the key/value from the cache if it's already at the default value
-            auto it = m_cache.find(pref->path());
+            auto it = m_cache.find(pref.path());
             if (it != m_cache.end()) {
                 m_cache.erase(it);
             }
@@ -445,9 +454,35 @@ namespace TrenchBroom {
         }
 
         PreferenceSerializerV2 format;
-        const QJsonValue jsonValue = pref->writeToJSON(format);
+        const QJsonValue jsonValue = pref.writeToJSON(format);
 
-        m_cache[pref->path()] = jsonValue;
+        m_cache[pref.path()] = jsonValue;
+    }
+
+    void AppPreferenceManager::validatePreference(PreferenceBase& preference) {
+        ensure(qApp->thread() == QThread::currentThread(), "PreferenceManager can only be used on the main thread");
+
+        if (!preference.valid()) {
+            loadPreferenceFromCache(preference);
+        }
+    }
+
+    void AppPreferenceManager::savePreference(PreferenceBase& preference) {
+        ensure(qApp->thread() == QThread::currentThread(), "PreferenceManager can only be used on the main thread");
+
+        markAsUnsaved(preference);
+
+        if (saveInstantly()) {
+            saveChanges();
+        }
+    }
+
+    // helpers
+
+    void togglePref(Preference<bool>& preference) {
+        PreferenceManager& prefs = PreferenceManager::instance();
+        prefs.set(preference, !prefs.get(preference));
+        prefs.saveChanges();
     }
 
     // V1 settings
@@ -651,10 +686,10 @@ namespace TrenchBroom {
     PreferencesResult readV2SettingsFromPath(const QString& path) {
         QFile file(path);
         if (!file.exists()) {
-            return PreferencesResult::error(PreferenceErrors::NoFilePresent{});
+            return PreferenceErrors::NoFilePresent{};
         }
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return PreferencesResult::error(PreferenceErrors::FileReadError{});
+            return PreferenceErrors::FileReadError{};
         }
 
         return parseV2SettingsFromJSON(file.readAll());
@@ -691,7 +726,7 @@ namespace TrenchBroom {
         const QJsonDocument document = QJsonDocument::fromJson(jsonData, &error);
 
         if (error.error != QJsonParseError::NoError || !document.isObject()) {
-            return PreferencesResult::error(PreferenceErrors::JsonParseError{error});
+            return PreferenceErrors::JsonParseError{error};
         }
 
         const QJsonObject object = document.object();
@@ -702,7 +737,7 @@ namespace TrenchBroom {
 
             result[IO::pathFromQString(key)] = value;
         }
-        return PreferencesResult::success(result);
+        return result;
     }
 
     QByteArray writeV2SettingsToJSON(const std::map<IO::Path, QJsonValue>& v2Prefs) {

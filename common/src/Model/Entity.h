@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010-2017 Kristian Duske
+ Copyright (C) 2020 Kristian Duske
 
  This file is part of TrenchBroom.
 
@@ -17,123 +17,153 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_Entity
-#define TrenchBroom_Entity
+#pragma once
 
 #include "FloatType.h"
-#include "Macros.h"
-#include "Model/AttributableNode.h"
-#include "Model/HitType.h"
-#include "Model/Object.h"
+#include "Assets/AssetReference.h"
+#include "Model/EntityProperties.h"
 
 #include <vecmath/forward.h>
-#include <vecmath/bbox.h>
-#include <vecmath/util.h>
+#include <vecmath/mat.h>
+#include <vecmath/vec.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace TrenchBroom {
     namespace Assets {
-        enum class PitchType;
+        class EntityDefinition;
         class EntityModelFrame;
         struct ModelSpecification;
     }
 
     namespace Model {
-        class Entity : public AttributableNode, public Object {
+        /**
+         * An entity is essentially a collection of key / value pairs called properties. Properties can be set, renamed
+         * or removed and accessed via the corresponding member functions.
+         *
+         * Some properties are numbered, e.g. "target1", "target2", and so on. These properties correspond to a multi valued
+         * property whose name is the common prefix, e.g. "target", and whose value the union of the values of the corresponding
+         * numbered properties. Note that any property counts as a numbered property even if it does not have a number as its
+         * suffix, so even an property named "target" is implicitly a numbered property.
+         *
+         * Entity properties can be protected, which protects them from being updated by a corresponding entity in a linked group.
+         * If an entity property is protected, any change to the same property from a corresponding entity in a linked group is
+         * ignored. This means that the entity value remains unchanged. Note that properties can be protected even if they don't
+         * exist; in this case, adding this property in a corresponding entity will not add the property here.
+         *
+         * Entities are geometric objects and as such can be transformed. Rotation is handled specially by a set of rules to make
+         * it easier for users to apply rotation to entities. Point entities are rotated by the center of their bounding box and
+         * not their origin property, which denotes their position. Furthermore, when a point entity is rotated, certain rules
+         * are applied to update directional properties such as "angle" or "mangle".
+         *
+         * Brush entities are not subject to any of these rules. They are rotated simply by applying rotation to their constituent
+         * brushes.
+         */
+        class Entity {
         public:
-            static const HitType::Type EntityHit;
             static const vm::bbox3 DefaultBounds;
         private:
-            mutable vm::bbox3 m_definitionBounds;
-            mutable vm::bbox3 m_modelBounds;
-            mutable vm::bbox3 m_logicalBounds;
-            mutable vm::bbox3 m_physicalBounds;
-            mutable bool m_boundsValid;
-            mutable vm::vec3 m_cachedOrigin;
-            mutable vm::mat4x4 m_cachedRotation;
+            std::vector<EntityProperty> m_properties;
+            std::vector<std::string> m_protectedProperties;
 
-            const Assets::EntityModelFrame* m_modelFrame;
+            /**
+             * Specifies whether this entity has children or not. This does not necessarily correspond to the
+             * entity definition type because point entities can contain brushes.
+             */
+            bool m_pointEntity;
+
+            Assets::AssetReference<Assets::EntityDefinition> m_definition;
+            const Assets::EntityModelFrame* m_model;
+
+            /**
+             * These properties are cached for performance reasons.
+             */
+            struct CachedProperties {
+                std::string classname;
+                vm::vec3 origin;
+                vm::mat4x4 rotation;
+            };
+
+            mutable std::optional<CachedProperties> m_cachedProperties;
         public:
             Entity();
+            explicit Entity(std::vector<EntityProperty> properties);
+            explicit Entity(std::initializer_list<EntityProperty> properties);
 
-            bool brushEntity() const;
+            Entity(const Entity& other);
+            Entity(Entity&& other);
+
+            Entity& operator=(const Entity& other);
+            Entity& operator=(Entity&& other);
+
+            ~Entity();
+
+            const std::vector<EntityProperty>& properties() const;
+            void setProperties(std::vector<EntityProperty> properties);
+
+            /**
+             * Sets the protected property keys of this entity.
+             *
+             * Protected entity properties are not propagated into linked groups and are not overwritten
+             * when a linked group updates this entity. See also GroupNode::updateLinkedGroups
+             */
+            const std::vector<std::string>& protectedProperties() const;
+            void setProtectedProperties(std::vector<std::string> protectedProperties);
+
             bool pointEntity() const;
-            bool hasEntityDefinition() const;
-            bool hasBrushEntityDefinition() const;
-            bool hasPointEntityDefinition() const;
-            bool hasPointEntityModel() const;
+            void setPointEntity(bool pointEntity);
 
+            Assets::EntityDefinition* definition();
+            const Assets::EntityDefinition* definition() const;
             const vm::bbox3& definitionBounds() const;
+            void setDefinition(Assets::EntityDefinition* definition);
+
+            const Assets::EntityModelFrame* model() const;
+            void setModel(const Assets::EntityModelFrame* model);
+
+            Assets::ModelSpecification modelSpecification() const;
+            const vm::mat4x4 modelTransformation() const;
+
+            void addOrUpdateProperty(std::string key, std::string value, bool defaultToProtected = false);
+            void renameProperty(const std::string& oldKey, std::string newKey);
+            void removeProperty(const std::string& key);
+            void removeNumberedProperty(const std::string& prefix);
+
+            bool hasProperty(const std::string& key) const;
+            bool hasProperty(const std::string& key, const std::string& value) const;
+
+            bool hasPropertyWithPrefix(const std::string& prefix, const std::string& value) const;
+            bool hasNumberedProperty(const std::string& prefix, const std::string& value) const;
+
+            const std::string* property(const std::string& key) const;
+            std::vector<std::string> propertyKeys() const;
+
+            const std::string& classname() const;
+            void setClassname(const std::string& classname);
 
             const vm::vec3& origin() const;
-            const vm::mat4x4& rotation() const;
-            const vm::mat4x4 modelTransformation() const;
-            Assets::PitchType pitchType() const;
-            FloatType area(vm::axis::type axis) const;
-        private:
-            void cacheAttributes();
             void setOrigin(const vm::vec3& origin);
-            void applyRotation(const vm::mat4x4& transformation);
-        public: // entity model
-            Assets::ModelSpecification modelSpecification() const;
-            const vm::bbox3& modelBounds() const;
-            const Assets::EntityModelFrame* modelFrame() const;
-            void setModelFrame(const Assets::EntityModelFrame* modelFrame);
-        private: // implement Node interface
-            const vm::bbox3& doGetLogicalBounds() const override;
-            const vm::bbox3& doGetPhysicalBounds() const override;
 
-            Node* doClone(const vm::bbox3& worldBounds) const override;
-            NodeSnapshot* doTakeSnapshot() override;
+            const vm::mat4x4& rotation() const;
 
-            bool doCanAddChild(const Node* child) const override;
-            bool doCanRemoveChild(const Node* child) const override;
-            bool doRemoveIfEmpty() const override;
+            std::vector<EntityProperty> propertiesWithKey(const std::string& property) const;
+            std::vector<EntityProperty> propertiesWithPrefix(const std::string& property) const;
+            std::vector<EntityProperty> numberedProperties(const std::string& property) const;
 
-            bool doShouldAddToSpacialIndex() const override;
-
-            void doChildWasAdded(Node* node) override;
-            void doChildWasRemoved(Node* node) override;
-
-            void doNodePhysicalBoundsDidChange() override;
-            void doChildPhysicalBoundsDidChange() override;
-
-            bool doSelectable() const override;
-
-            void doPick(const vm::ray3& ray, PickResult& pickResult) override;
-            void doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) override;
-
-            void doGenerateIssues(const IssueGenerator* generator, std::vector<Issue*>& issues) override;
-            void doAccept(NodeVisitor& visitor) override;
-            void doAccept(ConstNodeVisitor& visitor) const override;
-
-            std::vector<Node*> nodesRequiredForViewSelection() override;
-        private: // implement AttributableNode interface
-            void doAttributesDidChange(const vm::bbox3& oldBounds) override;
-            bool doIsAttributeNameMutable(const std::string& name) const override;
-            bool doIsAttributeValueMutable(const std::string& name) const override;
-            vm::vec3 doGetLinkSourceAnchor() const override;
-            vm::vec3 doGetLinkTargetAnchor() const override;
-        private: // implement Object interface
-            Node* doGetContainer() const override;
-            Layer* doGetLayer() const override;
-            Group* doGetGroup() const override;
-
-            void doTransform(const vm::mat4x4& transformation, bool lockTextures, const vm::bbox3& worldBounds) override;
-            bool doContains(const Node* node) const override;
-            bool doIntersects(const Node* node) const override;
+            void transform(const vm::mat4x4& transformation);
         private:
-            void invalidateBounds();
-            void validateBounds() const;
-        private: // implement Taggable interface
-            void doAcceptTagVisitor(TagVisitor& visitor) override;
-            void doAcceptTagVisitor(ConstTagVisitor& visitor) const override;
-        private:
-            deleteCopyAndMove(Entity)
+            void applyRotation(const vm::mat4x4& rotation);
+            
+            void invalidateCachedProperties();
+            void validateCachedProperties() const;
+
+            std::vector<EntityProperty>::const_iterator findProperty(const std::string& property) const;
+            std::vector<EntityProperty>::iterator findProperty(const std::string& property);
         };
-    }
-}
 
-#endif /* defined(TrenchBroom_Entity) */
+        bool operator==(const Entity& lhs, const Entity& rhs);
+        bool operator!=(const Entity& lhs, const Entity& rhs);
+    }
+ }

@@ -17,139 +17,237 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <catch2/catch.hpp>
-
-#include "GTestCompat.h"
-
-#include "Model/Brush.h"
-#include "Model/Entity.h"
-#include "Model/Group.h"
-#include "Model/Layer.h"
-#include "Model/World.h"
+#include "Model/BrushNode.h"
+#include "Model/EntityNode.h"
+#include "Model/GroupNode.h"
+#include "Model/LayerNode.h"
+#include "Model/WorldNode.h"
 #include "View/MapDocumentTest.h"
 #include "View/MapDocument.h"
+
+#include "TestUtils.h"
+
+#include "Catch2.h"
 
 namespace TrenchBroom {
     namespace View {
         class ReparentNodesTest : public MapDocumentTest {};
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentLayerToLayer") {
-            Model::Layer* layer1 = new Model::Layer("Layer 1");
-            document->addNode(layer1, document->world());
+            Model::LayerNode* layer1 = new Model::LayerNode(Model::Layer("Layer 1"));
+            addNode(*document, document->world(), layer1);
 
-            Model::Layer* layer2 = new Model::Layer("Layer 2");
-            document->addNode(layer2, document->world());
+            Model::LayerNode* layer2 = new Model::LayerNode(Model::Layer("Layer 2"));
+            addNode(*document, document->world(), layer2);
 
-            ASSERT_FALSE(document->reparentNodes(layer2, { layer1 }));
+            CHECK_FALSE(reparentNodes(*document, layer2, { layer1 }));
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentBetweenLayers") {
-            Model::Layer* oldParent = new Model::Layer("Layer 1");
-            document->addNode(oldParent, document->world());
+            Model::LayerNode* oldParent = new Model::LayerNode(Model::Layer("Layer 1"));
+            addNode(*document, document->world(), oldParent);
 
-            Model::Layer* newParent = new Model::Layer("Layer 2");
-            document->addNode(newParent, document->world());
+            Model::LayerNode* newParent = new Model::LayerNode(Model::Layer("Layer 2"));
+            addNode(*document, document->world(), newParent);
 
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, oldParent);
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, oldParent, entity);
 
             assert(entity->parent() == oldParent);
-            ASSERT_TRUE(document->reparentNodes(newParent, { entity }));
-            ASSERT_EQ(newParent, entity->parent());
+            CHECK(reparentNodes(*document, newParent, { entity }));
+            CHECK(entity->parent() == newParent);
 
             document->undoCommand();
-            ASSERT_EQ(oldParent, entity->parent());
+            CHECK(entity->parent() == oldParent);
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentGroupToItself") {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+            Model::GroupNode* group = new Model::GroupNode(Model::Group("Group"));
+            addNode(*document, document->parentForNodes(), group);
 
-            ASSERT_FALSE(document->reparentNodes(group, { group }));
+            CHECK_FALSE(reparentNodes(*document, group, { group }));
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.reparentGroupToChild") {
-            Model::Group* outer = new Model::Group("Outer");
-            document->addNode(outer, document->currentParent());
+            Model::GroupNode* outer = new Model::GroupNode(Model::Group("Outer"));
+            addNode(*document, document->parentForNodes(), outer);
 
-            Model::Group* inner = new Model::Group("Inner");
-            document->addNode(inner, outer);
+            Model::GroupNode* inner = new Model::GroupNode(Model::Group("Inner"));
+            addNode(*document, outer, inner);
 
-            ASSERT_FALSE(document->reparentNodes(inner, { outer }));
+            CHECK_FALSE(reparentNodes(*document, inner, { outer }));
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyGroup") {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+            Model::GroupNode* group = new Model::GroupNode(Model::Group("Group"));
+            addNode(*document, document->parentForNodes(), group);
 
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, group);
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, group, entity);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { entity }));
-            ASSERT_EQ(document->currentParent(), entity->parent());
-            ASSERT_TRUE(group->parent() == nullptr);
+            CHECK(reparentNodes(*document, document->parentForNodes(), { entity }));
+            CHECK(entity->parent() == document->parentForNodes());
+            CHECK(group->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), group->parent());
-            ASSERT_EQ(group, entity->parent());
+            CHECK(group->parent() == document->parentForNodes());
+            CHECK(entity->parent() == group);
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.recursivelyRemoveEmptyGroups") {
-            Model::Group* outer = new Model::Group("Outer");
-            document->addNode(outer, document->currentParent());
+            Model::GroupNode* outer = new Model::GroupNode(Model::Group("Outer"));
+            addNode(*document, document->parentForNodes(), outer);
 
-            Model::Group* inner = new Model::Group("Inner");
-            document->addNode(inner, outer);
+            Model::GroupNode* inner = new Model::GroupNode(Model::Group("Inner"));
+            addNode(*document, outer, inner);
 
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, inner);
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, inner, entity);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { entity }));
-            ASSERT_EQ(document->currentParent(), entity->parent());
-            ASSERT_TRUE(inner->parent() == nullptr);
-            ASSERT_TRUE(outer->parent() == nullptr);
+            CHECK(reparentNodes(*document, document->parentForNodes(), { entity }));
+            CHECK(entity->parent() == document->parentForNodes());
+            CHECK(inner->parent() == nullptr);
+            CHECK(outer->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), outer->parent());
-            ASSERT_EQ(outer, inner->parent());
-            ASSERT_EQ(inner, entity->parent());
+            CHECK(outer->parent() == document->parentForNodes());
+            CHECK(inner->parent() == outer);
+            CHECK(entity->parent() == inner);
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyEntity") {
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, document->currentParent());
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, document->parentForNodes(), entity);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, entity);
+            Model::BrushNode* brush = createBrushNode();
+            addNode(*document, entity, brush);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { brush }));
-            ASSERT_EQ(document->currentParent(), brush->parent());
-            ASSERT_TRUE(entity->parent() == nullptr);
+            CHECK(reparentNodes(*document, document->parentForNodes(), { brush }));
+            CHECK(brush->parent() == document->parentForNodes());
+            CHECK(entity->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), entity->parent());
-            ASSERT_EQ(entity, brush->parent());
+            CHECK(entity->parent() == document->parentForNodes());
+            CHECK(brush->parent() == entity);
         }
 
         TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.removeEmptyGroupAndEntity") {
-            Model::Group* group = new Model::Group("Group");
-            document->addNode(group, document->currentParent());
+            Model::GroupNode* group = new Model::GroupNode(Model::Group("Group"));
+            addNode(*document, document->parentForNodes(), group);
 
-            Model::Entity* entity = new Model::Entity();
-            document->addNode(entity, group);
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, group, entity);
 
-            Model::Brush* brush = createBrush();
-            document->addNode(brush, entity);
+            Model::BrushNode* brush = createBrushNode();
+            addNode(*document, entity, brush);
 
-            ASSERT_TRUE(document->reparentNodes(document->currentParent(), { brush }));
-            ASSERT_EQ(document->currentParent(), brush->parent());
-            ASSERT_TRUE(group->parent() == nullptr);
-            ASSERT_TRUE(entity->parent() == nullptr);
+            CHECK(reparentNodes(*document, document->parentForNodes(), { brush }));
+            CHECK(brush->parent() == document->parentForNodes());
+            CHECK(group->parent() == nullptr);
+            CHECK(entity->parent() == nullptr);
 
             document->undoCommand();
-            ASSERT_EQ(document->currentParent(), group->parent());
-            ASSERT_EQ(group, entity->parent());
-            ASSERT_EQ(entity, brush->parent());
+            CHECK(group->parent() == document->parentForNodes());
+            CHECK(entity->parent() == group);
+            CHECK(brush->parent() == entity);
+        }
+
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.updateLinkedGroups") {
+            auto* groupNode = new Model::GroupNode{Model::Group{"group"}};
+            auto* brushNode = createBrushNode();
+            groupNode->addChild(brushNode);
+            document->addNodes({{document->parentForNodes(), {groupNode}}});
+
+            document->select(groupNode);
+            auto* linkedGroupNode = document->createLinkedDuplicate();
+            document->deselectAll();
+
+            document->select(linkedGroupNode);
+            document->translateObjects(vm::vec3(32.0, 0.0, 0.0));
+            document->deselectAll();
+
+            SECTION("Move node into group node") {
+                auto* entityNode = new Model::EntityNode{Model::Entity{}};
+                document->addNodes({{document->parentForNodes(), {entityNode}}});
+
+                REQUIRE(groupNode->childCount() == 1u);
+                REQUIRE(linkedGroupNode->childCount() == 1u);
+
+                document->reparentNodes({{groupNode, {entityNode}}});
+
+                CHECK(groupNode->childCount() == 2u);
+                CHECK(linkedGroupNode->childCount() == 2u);
+
+                auto* linkedEntityNode = dynamic_cast<Model::EntityNode*>(linkedGroupNode->children().back());
+                CHECK(linkedEntityNode != nullptr);
+
+                CHECK(linkedEntityNode->physicalBounds() == entityNode->physicalBounds().transform(linkedGroupNode->group().transformation()));
+
+                document->undoCommand();
+
+                CHECK(entityNode->parent() == document->parentForNodes());
+                CHECK(groupNode->childCount() == 1u);
+                CHECK(linkedGroupNode->childCount() == 1u);
+            }
+
+            SECTION("Move node out of group node") {
+                auto* entityNode = new Model::EntityNode{Model::Entity{}};
+                document->addNodes({{groupNode, {entityNode}}});
+
+                REQUIRE(groupNode->childCount() == 2u);
+                REQUIRE(linkedGroupNode->childCount() == 2u);
+
+                document->reparentNodes({{document->parentForNodes(), {entityNode}}});
+
+                CHECK(entityNode->parent() == document->parentForNodes());
+                CHECK(groupNode->childCount() == 1u);
+                CHECK(linkedGroupNode->childCount() == 1u);
+
+                document->undoCommand();
+
+                CHECK(entityNode->parent() == groupNode);
+                CHECK(groupNode->childCount() == 2u);
+                CHECK(linkedGroupNode->childCount() == 2u);
+            }
+        }
+
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.updateLinkedGroupsFails") {
+            auto* groupNode = new Model::GroupNode{Model::Group{"group"}};
+            document->addNodes({{document->parentForNodes(), {groupNode}}});
+
+            document->select(groupNode);
+            auto* linkedGroupNode = document->createLinkedDuplicate();
+            document->deselectAll();
+
+            // adding a brush to the linked group node will fail because it will go out of world bounds
+            document->select(linkedGroupNode);
+            document->translateObjects(document->worldBounds().max);
+            document->deselectAll();
+
+            auto* brushNode = createBrushNode();
+            document->addNodes({{document->parentForNodes(), {brushNode}}});
+
+            CHECK_FALSE(document->reparentNodes({{groupNode, {brushNode}}}));
+
+            CHECK(groupNode->childCount() == 0u);
+            CHECK(linkedGroupNode->childCount() == 0u);
+        }
+
+        TEST_CASE_METHOD(ReparentNodesTest, "ReparentNodesTest.updateLinkedGroupsFailsAfterMovingNodeBetweenLinkedGroups") {
+            auto* groupNode = new Model::GroupNode{Model::Group{"group"}};
+            auto* brushNode = createBrushNode();
+            groupNode->addChild(brushNode);
+
+            document->addNodes({{document->parentForNodes(), {groupNode}}});
+
+            document->select(groupNode);
+            auto* linkedGroupNode = document->createLinkedDuplicate();
+            document->deselectAll();
+
+            CHECK_FALSE(document->reparentNodes({{linkedGroupNode, {brushNode}}}));
+
+            CHECK(groupNode->childCount() == 1u);
+            CHECK(linkedGroupNode->childCount() == 1u);
         }
     }
 }

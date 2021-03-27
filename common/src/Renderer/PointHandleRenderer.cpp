@@ -63,15 +63,23 @@ namespace TrenchBroom {
             const vm::mat4x4f view = vm::view_matrix(vm::vec3f::neg_z(), vm::vec3f::pos_y());
             ReplaceTransformation ortho(renderContext.transformation(), projection, view);
 
-            // Un-occluded handles: use depth test, draw fully opaque
-            renderHandles(renderContext, m_pointHandles, m_handle, 1.0f);
-            renderHandles(renderContext, m_highlights, m_highlight, 1.0f);
+            if (renderContext.render3D()) {
+                // Un-occluded handles: use depth test, draw fully opaque
+                renderHandles(renderContext, m_pointHandles, m_handle, 1.0f);
+                renderHandles(renderContext, m_highlights, m_highlight, 1.0f);
 
-            // Occluded handles: don't use depth test, but draw translucent
-            glAssert(glDisable(GL_DEPTH_TEST));
-            renderHandles(renderContext, m_pointHandles, m_handle, 0.33f);
-            renderHandles(renderContext, m_highlights, m_highlight, 0.33f);
-            glAssert(glEnable(GL_DEPTH_TEST));
+                // Occluded handles: don't use depth test, but draw translucent
+                glAssert(glDisable(GL_DEPTH_TEST));
+                renderHandles(renderContext, m_pointHandles, m_handle, 0.33f);
+                renderHandles(renderContext, m_highlights, m_highlight, 0.33f);
+                glAssert(glEnable(GL_DEPTH_TEST));
+            } else {
+                // In 2D views, render fully opaque without depth test
+                glAssert(glDisable(GL_DEPTH_TEST));
+                renderHandles(renderContext, m_pointHandles, m_handle, 1.0f);
+                renderHandles(renderContext, m_highlights, m_highlight, 1.0f);
+                glAssert(glEnable(GL_DEPTH_TEST));
+            }
 
             clear();
         }
@@ -80,13 +88,16 @@ namespace TrenchBroom {
             const Camera& camera = renderContext.camera();
             ActiveShader shader(renderContext.shaderManager(), Shaders::HandleShader);
 
-            for (const auto& entry : map) {
-                const Color color = mixAlpha(entry.first, opacity);
-                shader.set("Color", color);
+            for (const auto& [color, positions] : map) {
+                shader.set("Color", mixAlpha(color, opacity));
 
-                for (const vm::vec3f& position : entry.second) {
-                    // nudge  towards camera by the handle radius, to prevent lines (brush edges, etc.) from clipping into the handle
-                    const vm::vec3f nudgeTowardsCamera = vm::normalize(camera.position() - position) * pref(Preferences::HandleRadius);
+                for (const vm::vec3f& position : positions) {
+                    vm::vec3f nudgeTowardsCamera;
+
+                    // In 3D view, nudge towards camera by the handle radius, to prevent lines (brush edges, etc.) from clipping into the handle
+                    if (renderContext.render3D()) {
+                        nudgeTowardsCamera = vm::normalize(camera.position() - position) * pref(Preferences::HandleRadius);
+                    }
 
                     const vm::vec3f offset = camera.project(position + nudgeTowardsCamera) * vm::vec3f(1.0f, 1.0f, -1.0f);
                     MultiplyModelMatrix translate(renderContext.transformation(), vm::translation_matrix(offset));

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ClipToolController
-#define TrenchBroom_ClipToolController
+#pragma once
 
 #include "FloatType.h"
 #include "View/ToolController.h"
@@ -30,6 +29,7 @@
 namespace TrenchBroom {
     namespace Model {
         class BrushFace;
+        class BrushNode;
         class PickResult;
     }
 
@@ -128,8 +128,8 @@ namespace TrenchBroom {
 
         class ClipToolController3D : public ClipToolController {
         private:
-            static std::vector<vm::vec3> selectHelpVectors(Model::BrushFace* face, const vm::vec3& hitPoint);
-            static std::vector<Model::BrushFace*> selectIncidentFaces(Model::BrushFace* face, const vm::vec3& hitPoint);
+            static std::vector<vm::vec3> selectHelpVectors(const Model::BrushNode* brushNode, const Model::BrushFace& face, const vm::vec3& hitPoint);
+            static std::vector<const Model::BrushFace*> selectIncidentFaces(const Model::BrushNode* brushNode, const Model::BrushFace& face, const vm::vec3& hitPoint);
         private:
             class Callback3D;
         public:
@@ -138,4 +138,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ClipToolController) */

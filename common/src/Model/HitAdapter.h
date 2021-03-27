@@ -17,24 +17,22 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_HitAdapter
-#define TrenchBroom_HitAdapter
+#pragma once
+
+#include <optional>
 
 namespace TrenchBroom {
     namespace Model {
-        class Brush;
-        class BrushFace;
-        class Entity;
+        class BrushFaceHandle;
+        class EntityNode;
         class Hit;
         class Node;
         class Object;
 
         Node* hitToNode(const Hit& hit);
         Object* hitToObject(const Hit& hit);
-        Entity* hitToEntity(const Hit& hit);
-        Brush* hitToBrush(const Hit& hit);
-        BrushFace* hitToFace(const Hit& hit);
+        EntityNode* hitToEntity(const Hit& hit);
+        std::optional<BrushFaceHandle> hitToFaceHandle(const Hit& hit);
     }
 }
 
-#endif /* defined(TrenchBroom_HitAdapter) */

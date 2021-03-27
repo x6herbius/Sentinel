@@ -19,36 +19,44 @@
 
 #include "Object.h"
 
-#include "Model/Group.h"
+#include "Model/GroupNode.h"
 
 namespace TrenchBroom {
     namespace Model {
         Object::Object() {}
         Object::~Object() {}
 
-        Node* Object::container() const {
+        Node* Object::container() {
             return doGetContainer();
         }
 
-        Layer* Object::layer() const {
-            return doGetLayer();
+        const Node* Object::container() const {
+            return const_cast<Object*>(this)->container();
         }
 
-        Group* Object::group() const {
-            return doGetGroup();
+        LayerNode* Object::containingLayer() {
+            return doGetContainingLayer();
         }
 
-        bool Object::grouped() const {
-            return group() != nullptr;
+        const LayerNode* Object::containingLayer() const {
+            return const_cast<Object*>(this)->containingLayer();
         }
 
-        bool Object::groupOpened() const {
-            const auto* containingGroup = group();
-            return containingGroup == nullptr || containingGroup->opened();
+        GroupNode* Object::containingGroup() {
+            return doGetContainingGroup();
         }
 
-        void Object::transform(const vm::mat4x4& transformation, bool lockTextures, const vm::bbox3& worldBounds) {
-            doTransform(transformation, lockTextures, worldBounds);
+        const GroupNode* Object::containingGroup() const {
+            return const_cast<Object*>(this)->containingGroup();
+        }
+
+        bool Object::containedInGroup() const {
+            return containingGroup() != nullptr;
+        }
+
+        bool Object::containingGroupOpened() const {
+            const auto* group = containingGroup();
+            return group == nullptr || group->opened();
         }
 
         bool Object::contains(const Node* node) const {

@@ -17,15 +17,17 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CompilationTaskList_h
-#define CompilationTaskList_h
+#pragma once
 
 #include "View/ControlListBox.h"
 
 #include <memory>
 #include <vector>
 
+class QCheckBox;
 class QCompleter;
+class QHBoxLayout;
+class QLayout;
 class QLineEdit;
 class QWidget;
 
@@ -50,29 +52,20 @@ namespace TrenchBroom {
             std::weak_ptr<MapDocument> m_document;
             Model::CompilationProfile* m_profile;
             Model::CompilationTask* m_task;
-            TitledPanel* m_panel;
+            QCheckBox* m_enabledCheckbox;
+            QHBoxLayout* m_taskLayout;
 
             using Completers = std::vector<QCompleter*>;
             Completers m_completers;
         protected:
             CompilationTaskEditorBase(const QString& title, std::weak_ptr<MapDocument> document, Model::CompilationProfile& profile, Model::CompilationTask& task, QWidget* parent);
-        public:
-            ~CompilationTaskEditorBase() override;
         protected:
             void setupCompleter(MultiCompletionLineEdit* lineEdit);
+            void addMainLayout(QLayout* layout);
+        protected:
+            void updateItem() override;
         private:
             void updateCompleter(QCompleter* completer);
-        private:
-            void addProfileObservers();
-            void removeProfileObservers();
-            void addTaskObservers();
-            void removeTaskObservers();
-
-            void profileWillBeRemoved();
-            void profileDidChange();
-
-            void taskWillBeRemoved();
-            void taskDidChange();
         };
 
         class CompilationExportMapTaskEditor : public CompilationTaskEditorBase {
@@ -126,17 +119,17 @@ namespace TrenchBroom {
             Model::CompilationProfile* m_profile;
         public:
             explicit CompilationTaskListBox(std::weak_ptr<MapDocument> document, QWidget* parent = nullptr);
-            ~CompilationTaskListBox() override;
 
             void setProfile(Model::CompilationProfile* profile);
-        private:
-            void profileDidChange();
+        public:
+            void reloadTasks();
         private:
             class CompilationTaskEditorFactory;
             size_t itemCount() const override;
             ControlListBoxItemRenderer* createItemRenderer(QWidget* parent, size_t index) override;
+        signals:
+            void taskContextMenuRequested(const QPoint& globalPos, Model::CompilationTask* task);
         };
     }
 }
 
-#endif /* CompilationTaskList_h */

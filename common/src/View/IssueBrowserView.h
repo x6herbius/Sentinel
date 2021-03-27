@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_IssueBrowserView
-#define TrenchBroom_IssueBrowserView
+#pragma once
 
 #include "Model/IssueType.h"
 
@@ -46,7 +45,7 @@ namespace TrenchBroom {
         private:
             std::weak_ptr<MapDocument> m_document;
 
-            Model::IssueType m_hiddenGenerators;
+            int m_hiddenGenerators;
             bool m_showHiddenIssues;
 
             bool m_valid;
@@ -64,9 +63,6 @@ namespace TrenchBroom {
             void reload();
             void deselectAll();
         private:
-            class IssueVisible;
-            class IssueCmp;
-
             void updateIssues();
 
             std::vector<Model::Issue*> collectIssues(const QList<QModelIndex>& indices) const;
@@ -112,4 +108,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_IssueBrowserView) */

@@ -17,8 +17,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ResourceUtils
-#define TrenchBroom_ResourceUtils
+#pragma once
 
 #include <memory>
 #include <string>
@@ -45,13 +44,15 @@ namespace TrenchBroom {
          * @param name the name of the texture to be returned
          * @return the default texture
          */
-        std::unique_ptr<Assets::Texture> loadDefaultTexture(const FileSystem& fs, Logger& logger, const std::string& name);
+        Assets::Texture loadDefaultTexture(const FileSystem& fs, Logger& logger, const std::string& name);
         
         QPixmap loadPixmapResource(const std::string& name);
         QPixmap loadPixmapResource(const Path& imagePath);
 
-        QIcon loadIconResourceQt(const Path& imagePath);
+        /**
+         * Loads an SVG image into a QIcon
+         */
+        QIcon loadSVGIcon(const Path& imagePath);
     }
 }
 
-#endif /* defined(TrenchBroom_ResourceUtils) */

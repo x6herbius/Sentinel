@@ -17,18 +17,30 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRENCHBROOM_TEXTUREBUFFER_H
-#define TRENCHBROOM_TEXTUREBUFFER_H
+#pragma once
 
 #include "Renderer/GL.h"
 
 #include <vecmath/forward.h>
 
+#include <memory>
 #include <vector>
 
 namespace TrenchBroom {
     namespace Assets {
-        using TextureBuffer = std::vector<unsigned char>;
+        class TextureBuffer {
+        private:
+            std::unique_ptr<unsigned char[]> m_buffer;
+            size_t m_size;
+        public:
+            explicit TextureBuffer();
+            explicit TextureBuffer(size_t size);
+
+            const unsigned char* data() const;
+            unsigned char* data();
+
+            size_t size() const;
+        };
         using TextureBufferList = std::vector<TextureBuffer>;
 
         vm::vec2s sizeAtMipLevel(size_t width, size_t height, size_t level);
@@ -39,4 +51,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif //TRENCHBROOM_TEXTUREBUFFER_H

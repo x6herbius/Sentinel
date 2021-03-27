@@ -18,8 +18,7 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TrenchBroom_ScaleObjectsTool
-#define TrenchBroom_ScaleObjectsTool
+#pragma once
 
 #include "FloatType.h"
 #include "Model/Hit.h"
@@ -206,9 +205,9 @@ namespace TrenchBroom {
 
         class ScaleObjectsTool : public Tool {
         public:
-            static const Model::HitType::Type ScaleToolSideHit;
-            static const Model::HitType::Type ScaleToolEdgeHit;
-            static const Model::HitType::Type ScaleToolCornerHit;
+            static const Model::HitType::Type ScaleToolSideHitType;
+            static const Model::HitType::Type ScaleToolEdgeHitType;
+            static const Model::HitType::Type ScaleToolCornerHitType;
 
         private:
             std::weak_ptr<MapDocument> m_document;
@@ -277,4 +276,3 @@ namespace TrenchBroom {
     }
 }
 
-#endif /* defined(TrenchBroom_ScaleObjectsTool) */

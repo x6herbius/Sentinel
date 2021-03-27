@@ -6,14 +6,13 @@ To see how releases of TrenchBroom are packaged, consult our CI scripts instead.
 
 ## All Platforms
 
-First, clone the TrenchBroom repository. If you are using the official repository and not a fork, you can clone the
-repository by running
+First, clone the TrenchBroom repository. `--recursive` is needed because we use git submodules:
 
 ```bash
-git clone --recursive https://github.com/kduske/TrenchBroom.git
+git clone --recursive https://github.com/TrenchBroom/TrenchBroom.git
 ```
 
-If you have an existing git clone, you might need to update submodules using
+If you have an existing git clone, you can update submodules using:
 
 ```bash
 git submodule update --init --recursive
@@ -38,7 +37,7 @@ You'll also need to install these dependencies using Visual Studio Installer (in
   
 #### Project dependencies
 
-- Download and install [Qt](https://www.qt.io/download) for MSVC 2017 32-bit
+- Download and install [Qt](https://www.qt.io/download) for MSVC 2017 32-bit and/or 64-bit
   - **Important**: You have to create a personal account
   - Minimum required version is `5.9`
 - Download and install latest version of [CMake](http://www.cmake.org) for Windows
@@ -57,8 +56,14 @@ cd <path/to/TrenchBroom>/build
 
 Then, execute this command to configure the project:
 
+- For 32-bit:
 ```bash
 cmake .. -G "Visual Studio 16 2019" -T v142 -A Win32 -DCMAKE_PREFIX_PATH="C:\Qt\5.13.0\msvc2017"
+```
+
+- For 64-bit:
+```bash
+cmake .. -G "Visual Studio 16 2019" -T v142 -A x64 -DCMAKE_PREFIX_PATH="C:\Qt\5.13.0\msvc2017_64"
 ```
 
 > **Note**: Make sure to specify the correct Qt as `CMAKE_PREFIX_PATH` value.
@@ -88,7 +93,13 @@ TrenchBroom depends on:
 If you have a debian-based distribution, open a command prompt and execute this command to install required dependencies:
 
 ```bash
-sudo apt-get install g++-7 qt5-default freeglut3-dev libglew-dev mesa-common-dev build-essential libglm-dev libxxf86vm-dev libfreeimage-dev libfreetype6-dev pandoc cmake p7zip-full ninja-build
+sudo apt-get install g++-7 qt5-default libqt5svg5-dev freeglut3-dev libglew-dev mesa-common-dev build-essential libglm-dev libxxf86vm-dev libfreeimage-dev libfreetype6-dev pandoc cmake p7zip-full ninja-build
+```
+
+Or, on Fedora:
+
+```bash
+sudo dnf install g++ cmake qt5-qtbase-devel qt5-qtsvg-devel ninja-build freetype-devel freeimage-devel pandoc mesa-libGLU-devel
 ```
 
 ### Build TrenchBroom
