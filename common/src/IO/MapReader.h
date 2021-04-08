@@ -87,7 +87,7 @@ namespace TrenchBroom {
             vm::bbox3 m_worldBounds;
         private: // data populated in response to MapParser callbacks
             std::vector<ObjectInfo> m_objectInfos;
-            std::optional<size_t> m_currentEntityInfo;
+            std::vector<size_t> m_currentEntityInfo;
         protected:
             /**
              * Creates a new reader where the given string is expected to be formatted in the given source map format,
@@ -155,4 +155,3 @@ namespace TrenchBroom {
         };
     }
 }
-

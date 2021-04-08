@@ -75,23 +75,30 @@ namespace TrenchBroom {
         // implement MapParser interface
 
         void MapReader::onBeginEntity(const size_t /* line */, std::vector<Model::EntityProperty> properties, ParserStatus& /* status */) {
-            m_currentEntityInfo = m_objectInfos.size();
+            m_currentEntityInfo.push_back(m_objectInfos.size());
             m_objectInfos.push_back(EntityInfo{std::move(properties), 0, 0});
         }
 
         void MapReader::onEndEntity(const size_t startLine, const size_t lineCount, ParserStatus& /* status */) {
-            assert(m_currentEntityInfo != std::nullopt);
-            assert(std::holds_alternative<EntityInfo>(m_objectInfos[*m_currentEntityInfo]));
+            assert(m_currentEntityInfo.size() > 0);
+            const size_t entInfo = m_currentEntityInfo.back();
+            m_currentEntityInfo.pop_back();
 
-            EntityInfo& entity = std::get<EntityInfo>(m_objectInfos[*m_currentEntityInfo]);
+            assert(std::holds_alternative<EntityInfo>(m_objectInfos[entInfo]));
+
+            EntityInfo& entity = std::get<EntityInfo>(m_objectInfos[entInfo]);
             entity.startLine = startLine;
             entity.lineCount = lineCount;
-            
-            m_currentEntityInfo = std::nullopt;
         }
 
         void MapReader::onBeginBrush(const size_t /* line */, ParserStatus& /* status */) {
-            m_objectInfos.push_back(BrushInfo{{}, 0, 0, m_currentEntityInfo});
+            std::optional<size_t> parentEnt;
+
+            if (m_currentEntityInfo.size() > 0) {
+                parentEnt = m_currentEntityInfo.back();
+            }
+
+            m_objectInfos.push_back(BrushInfo{{}, 0, 0, parentEnt});
         }
 
         void MapReader::onEndBrush(const size_t startLine, const size_t lineCount, ParserStatus& /* status */) {
@@ -123,7 +130,7 @@ namespace TrenchBroom {
         }
 
         // helper methods
-        
+
         namespace {
             /** The type of a node's container. */
             enum class ContainerType {
@@ -137,8 +144,8 @@ namespace TrenchBroom {
                 Model::IdType id;
             };
 
-            /** 
-             * Represents the parent information stored in ObjectInfo, which is either the index of the object info for the parent, 
+            /**
+             * Represents the parent information stored in ObjectInfo, which is either the index of the object info for the parent,
              * or container info read from entity properties.
              */
             using ParentInfo = std::variant<size_t, ContainerInfo>;
@@ -459,7 +466,7 @@ namespace TrenchBroom {
         }
 
         /**
-         * Validates the given node infos. 
+         * Validates the given node infos.
          *
          * - Removes layer and group nodes with duplicate IDs.
          * - Logs issues that occured during node creation.
@@ -472,7 +479,7 @@ namespace TrenchBroom {
                 if (nodeInfo) {
                     const bool clearNode = nodeInfo->node->accept(kdl::overload(
                         [] (Model::WorldNode*) { return false; },
-                        [&](Model::LayerNode* layerNode)  { 
+                        [&](Model::LayerNode* layerNode)  {
                             const auto persistentId = *layerNode->persistentId();
                             if (!layerIds.emplace(persistentId).second) {
                                 status.error(layerNode->lineNumber(), kdl::str_to_string("Skipping duplicate layer with ID '", persistentId, "'"));
@@ -480,7 +487,7 @@ namespace TrenchBroom {
                             }
                             return false;
                         },
-                        [&](Model::GroupNode* groupNode) { 
+                        [&](Model::GroupNode* groupNode) {
                             const auto persistentId = *groupNode->persistentId();
                             if (!groupIds.emplace(persistentId).second) {
                                 status.error(groupNode->lineNumber(), kdl::str_to_string("Skipping duplicate group with ID '", persistentId, "'"));
@@ -516,10 +523,10 @@ namespace TrenchBroom {
         using NodeToParentMap = std::unordered_map<Model::Node*, Model::Node*>;
 
         /**
-         * Builds a map of nodes to their intended parents using the parent info stored in each node info object 
+         * Builds a map of nodes to their intended parents using the parent info stored in each node info object
          * (this either refers to a parent node by index or a parent layer or group by ID).
          *
-         * Not every node comes with parent information, so the returned map does not contain entries for each 
+         * Not every node comes with parent information, so the returned map does not contain entries for each
          * of the given nodes.
          */
         NodeToParentMap buildNodeToParentMap(std::vector<std::optional<NodeInfo>>& nodeInfos, ParserStatus& status) {
@@ -530,11 +537,11 @@ namespace TrenchBroom {
                 if (nodeInfo) {
                     nodeInfo->node->accept(kdl::overload(
                         [] (Model::WorldNode*) {},
-                        [&](Model::LayerNode* layerNode)  { 
+                        [&](Model::LayerNode* layerNode)  {
                             const auto persistentId = *layerNode->persistentId();
                             assertResult(layerIdMap.emplace(persistentId, layerNode).second);
                         },
-                        [&](Model::GroupNode* groupNode) { 
+                        [&](Model::GroupNode* groupNode) {
                             const auto persistentId = *groupNode->persistentId();
                             assertResult(groupIdMap.emplace(persistentId, groupNode).second);
                         },
@@ -578,7 +585,7 @@ namespace TrenchBroom {
                                     status.warn(nodeInfo->node->lineNumber(), kdl::str_to_string("Entity references missing layer '", containerInfo.id, "', adding to default layer"));
                                 } else {
                                     status.warn(nodeInfo->node->lineNumber(), kdl::str_to_string("Entity references missing group '", containerInfo.id, "', adding to default layer"));
-                                }                        
+                                }
                             }
                         }
                     ), *nodeInfo->parentInfo);
@@ -589,12 +596,12 @@ namespace TrenchBroom {
 
         /**
          * Creates nodes from the recorded object infos and resolves parent / child relationships.
-         * 
+         *
          * Brushes should be added to the node corresponding to the preceding recorded entity info. We stored the index of the preceding
          * entity info for each brush, so we can determine the parent node for a brush using that index.
          *
-         * Group and entity nodes can belong to the default layer, a custom layer or another group. If such a node belongs to a custom 
-         * layer or a group, the ID of the containing layer or group is stored in the entity properties of the entity info from which 
+         * Group and entity nodes can belong to the default layer, a custom layer or another group. If such a node belongs to a custom
+         * layer or a group, the ID of the containing layer or group is stored in the entity properties of the entity info from which
          * the node was created. Since the entity properties of these nodes are discarded when the node is created, we record this information
          * in a separate map before creating we create nodes. We later use it to find the parent layer or group of a group or entity node.
          *

@@ -569,17 +569,17 @@ namespace TrenchBroom {
             document->world()->accept(kdl::overload(
                 [](auto&& thisLambda, const Model::WorldNode* world) { world->visitChildren(thisLambda); },
                 [](auto&& thisLambda, const Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
-                [&](auto&& thisLambda, const Model::GroupNode* group) { 
+                [&](auto&& thisLambda, const Model::GroupNode* group) {
                     if (!editorContext.visible(group)) {
                         ++hiddenGroups;
                     }
-                    group->visitChildren(thisLambda); 
+                    group->visitChildren(thisLambda);
                 },
-                [&](auto&& thisLambda, const Model::EntityNode* entity) { 
+                [&](auto&& thisLambda, const Model::EntityNode* entity) {
                     if (!editorContext.visible(entity)) {
                         ++hiddenEntities;
                     }
-                    entity->visitChildren(thisLambda); 
+                    entity->visitChildren(thisLambda);
                 },
                 [&](const Model::BrushNode* brush) {
                     if (!editorContext.visible(brush)) {
@@ -947,7 +947,7 @@ namespace TrenchBroom {
                 defaultDir = IO::pathAsQString(m_document->path().deleteLastComponent());
             }
 
-            const QString fileName = QFileDialog::getOpenFileName(this, tr("Load Point File"), defaultDir, "Point files (*.pts);;Any files (*.*)");
+            const QString fileName = QFileDialog::getOpenFileName(this, tr("Load Point File"), defaultDir, "Point files (*.pts *.lin);;Any files (*.*)");
 
             if (!fileName.isEmpty()) {
                 m_document->loadPointFile(IO::pathFromQString(fileName));

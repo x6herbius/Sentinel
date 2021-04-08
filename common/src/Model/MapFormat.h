@@ -64,7 +64,11 @@ namespace TrenchBroom {
             /**
              * Quake 3 with brush primitives, also allows Quake 2 brushes
              */
-            Quake3
+            Quake3,
+            /**
+             * Afterburner map format - augmented Valve format
+             */
+            Afterburner
         };
 
         /**
@@ -93,4 +97,3 @@ namespace TrenchBroom {
         bool isParallelTexCoordSystem(MapFormat format);
     }
 }
-

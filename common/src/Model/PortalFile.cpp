@@ -78,6 +78,10 @@ namespace TrenchBroom {
                 std::getline(stream, line); // number of portals
                 numPortals = std::stoi(line);
                 std::getline(stream, line); // number of leafs (ignored)
+            } else if (formatCode == "PRT1-AB") {
+                std::getline(stream, line); // number of leafs (ignored)
+                std::getline(stream, line); // number of portals
+                numPortals = std::stoi(line);
             } else {
                 throw FileFormatException("Unknown portal format: " + formatCode);
             }

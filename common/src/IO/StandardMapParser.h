@@ -111,6 +111,7 @@ namespace TrenchBroom {
             void parseHexen2Face(ParserStatus& status);
             void parseDaikatanaFace(ParserStatus& status);
             void parseValveFace(ParserStatus& status);
+            void parseAfterburnerFace(ParserStatus& status);
             void parsePrimitiveFace(ParserStatus& status);
 
             void parsePatch(ParserStatus& status, size_t startLine);
@@ -138,4 +139,3 @@ namespace TrenchBroom {
         };
     }
 }
-

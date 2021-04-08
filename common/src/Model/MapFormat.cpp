@@ -44,6 +44,8 @@ namespace TrenchBroom {
                 return MapFormat::Quake3_Valve;
             } else if (formatName == "Quake3") {
                 return MapFormat::Quake3;
+            } else if (formatName == "Afterburner") {
+                return MapFormat::Afterburner;
             } else {
                 return MapFormat::Unknown;
             }
@@ -69,6 +71,8 @@ namespace TrenchBroom {
                     return "Quake3 (Valve)";
                 case MapFormat::Quake3:
                     return "Quake3";
+                case MapFormat::Afterburner:
+                    return "Afterburner";
                 case MapFormat::Unknown:
                     return "Unknown";
                 switchDefault()
@@ -95,6 +99,8 @@ namespace TrenchBroom {
                     return { MapFormat::Quake3_Valve, MapFormat::Quake3, MapFormat::Quake3_Legacy };
                 case MapFormat::Quake3:
                     return { MapFormat::Quake3, MapFormat::Quake3_Valve, MapFormat::Quake3_Legacy };
+                case MapFormat::Afterburner:
+                    return { MapFormat::Afterburner, MapFormat::Valve };
                 case MapFormat::Unknown:
                     return { MapFormat::Unknown };
                 switchDefault()
@@ -106,6 +112,7 @@ namespace TrenchBroom {
                 case MapFormat::Valve:
                 case MapFormat::Quake2_Valve:
                 case MapFormat::Quake3_Valve:
+                case MapFormat::Afterburner:
                     return true;
                 case MapFormat::Standard:
                 case MapFormat::Quake2:

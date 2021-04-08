@@ -279,6 +279,40 @@ namespace TrenchBroom {
                 } else {
                     parseBrush(status, startLine, false);
                 }
+            } else if (m_sourceMapFormat == Model::MapFormat::Afterburner) {
+                // We expect brush properties or the start of the brush face defs.
+                expect(QuakeMapToken::String | QuakeMapToken::OParenthesis, token);
+
+                bool needsDetailEntity = false;
+
+                // If we have "BRUSHFLAGS" "DETAIL" before the brush, this means we need
+                // to wrap the brush in a fake func_detail entity.
+                if (token.type() == QuakeMapToken::String) {
+                    token = m_tokenizer.nextToken();
+                    const std::string key = token.data();
+
+                    token = expect(QuakeMapToken::String, m_tokenizer.nextToken());
+                    const std::string value = token.data();
+
+                    // Right now, "BRUSHFLAGS" "DETAIL" is all we support. We expect a '(' next.
+                    token = expect(QuakeMapToken::OParenthesis, m_tokenizer.peekToken());
+
+                    needsDetailEntity = key == "BRUSHFLAGS" && value == "DETAIL";
+                }
+
+                if (needsDetailEntity) {
+                    // Create a fake entity.
+                    auto properties = std::vector<Model::EntityProperty>();
+                    properties.push_back(Model::EntityProperty("classname", "func_detail"));
+                    onBeginEntity(startLine, std::move(properties), status);
+                }
+
+                parseBrush(status, startLine, false);
+
+                if (needsDetailEntity) {
+                    // Terminate the fake entity.
+                    onEndEntity(startLine, token.line() - startLine, status);
+                }
             } else {
                 expect(QuakeMapToken::OParenthesis, token);
                 parseBrush(status, startLine, false);
@@ -354,6 +388,9 @@ namespace TrenchBroom {
                     break;
                 case Model::MapFormat::Valve:
                     parseValveFace(status);
+                    break;
+                case Model::MapFormat::Afterburner:
+                    parseAfterburnerFace(status);
                     break;
                 case Model::MapFormat::Quake3:
                     if (primitive) {
@@ -501,11 +538,37 @@ namespace TrenchBroom {
             onValveBrushFace(line, m_targetMapFormat, p1, p2, p3, attribs, texX, texY, status);
         }
 
+        void StandardMapParser::parseAfterburnerFace(ParserStatus& status) {
+            const auto line = m_tokenizer.line();
+
+            const auto [p1, p2, p3] = parseFacePoints(status);
+            const auto textureName = parseTextureName(status);
+
+            const auto [texX, xOffset, texY, yOffset] = parseValveTextureAxes(status);
+
+            auto attribs = Model::BrushFaceAttributes(textureName);
+            attribs.setXOffset(xOffset);
+            attribs.setYOffset(yOffset);
+            attribs.setRotation(parseFloat());
+            attribs.setXScale(parseFloat());
+            attribs.setYScale(parseFloat());
+
+            // For now, skip face flags, material and lightmap properties, as we can't use them yet.
+            parseInteger();                                             // Face flags
+            m_tokenizer.readAnyString(QuakeMapTokenizer::Whitespace()); // Material
+            expect(QuakeMapToken::OBracket, m_tokenizer.nextToken());   // Begin lightmap properties
+            parseFloat();                                               // Lightmap scale
+            parseFloat();                                               // Lightmap rotation
+            expect(QuakeMapToken::CBracket, m_tokenizer.nextToken());   // End lightmap properties
+
+            onValveBrushFace(line, m_targetMapFormat, p1, p2, p3, attribs, texX, texY, status);
+        }
+
         void StandardMapParser::parsePrimitiveFace(ParserStatus& status) {
             /* const auto line = */ m_tokenizer.line();
 
             /* const auto [p1, p2, p3] = */ parseFacePoints(status);
-            
+
 
             expect(QuakeMapToken::OParenthesis, m_tokenizer.nextToken());
 
