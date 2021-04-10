@@ -63,7 +63,7 @@ namespace TrenchBroom {
             static constexpr size_t Size_Skin = sizeof(int16_t);
             static constexpr size_t Size_TexturePalette = 768;
             static constexpr size_t Size_BodyPart = 64 + (3 * sizeof(int32_t));
-            static constexpr size_t Size_SubModel = 64 + (11 * sizeof(int32_t)) + (3 * sizeof(float));
+            static constexpr size_t Size_SubModel = 64 + (11 * sizeof(int32_t)) + sizeof(float);
             static constexpr size_t Size_Mesh = 5 * sizeof(int32_t);
             static constexpr size_t Size_Bone = 32 + (8 * sizeof(int32_t)) + (12 * sizeof(float));
         }
@@ -89,7 +89,7 @@ namespace TrenchBroom {
         {
             name = reader.readString(64);
             unused = reader.readInt<int32_t>();
-            unused2 = reader.readVec<float, 3>();
+            unused2 = reader.readFloat<float>();
             numMeshes = reader.readSize<int32_t>();
             meshIndex = reader.readSize<int32_t>();
             numVertices = reader.readSize<int32_t>();
@@ -207,6 +207,11 @@ namespace TrenchBroom {
             const size_t numSkinFamilies = reader.readSize<int32_t>();
             const size_t skinDataOffset = reader.readSize<int32_t>();
 
+            if ( numSkinReferences < 1 || numSkinFamilies < 1 || skinDataOffset < 1 )
+            {
+                throw AssetException("MDLs with textures in a \"t\" file are not currently supported.");
+            }
+
             reader.seekFromBegin(MdlLayout::Offset_HeaderFlags);
             const uint32_t mdlFlags = reader.readUnsignedInt<uint32_t>();
             const bool noEmbeddedTextures = mdlFlags & MdlLayout::MdlFlagNoEmbeddedTextures;
@@ -217,6 +222,7 @@ namespace TrenchBroom {
                 std::vector<Assets::Texture> textures;
 
                 const size_t meshSkinOffset = skinDataOffset + (it.mesh.skinRef * MdlLayout::Size_Skin);
+                reader.seekFromBegin(meshSkinOffset);
                 const size_t textureIndex = reader.readSize<int16_t>();
 
                 // This does potentially read textures multiple times, if different meshes

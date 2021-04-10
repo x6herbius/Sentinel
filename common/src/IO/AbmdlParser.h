@@ -69,18 +69,18 @@ namespace TrenchBroom {
             struct SubModel
             {
                 std::string name;
-                int32_t		unused = 0;
-                vm::vec3f	unused2;
-                size_t		numMeshes = 0;
-                size_t		meshIndex = 0;
-                size_t		numVertices = 0;
-                size_t		vertexInfoIndex = 0;
-                size_t		vertexIndex = 0;
-                size_t		numNormals = 0;
-                size_t		normalInfoIndex = 0;
-                size_t		normalIndex = 0;
-                size_t		blendVertexInfoIndex = 0;
-                size_t		blendNormalInfoIndex = 0;
+                int32_t unused = 0;
+                float unused2;
+                size_t numMeshes = 0;
+                size_t meshIndex = 0;
+                size_t numVertices = 0;
+                size_t vertexInfoIndex = 0;
+                size_t vertexIndex = 0;
+                size_t numNormals = 0;
+                size_t normalInfoIndex = 0;
+                size_t normalIndex = 0;
+                size_t blendVertexInfoIndex = 0;
+                size_t blendNormalInfoIndex = 0;
 
                 SubModel(BufferedReader& reader);
             };
