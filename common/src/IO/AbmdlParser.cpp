@@ -189,7 +189,6 @@ namespace TrenchBroom {
                 throw AssetException("MDL data was corrupted.");
             }
 
-            std::cout << "Loaded " << m_name << std::endl;
             return model;
         }
 
@@ -329,8 +328,7 @@ namespace TrenchBroom {
                 m_bodyPartIndexForCachedModelData = it.bodyPartIndex;
             }
 
-            m_vertexBatches.emplace_back();
-            getUnindexedVerticesFromMesh(reader, m_vertexBatches.back().vertexList, it);
+            generateVerticesFromMesh(reader, it);
         }
 
         void AbmdlParser::iterateMdlComponents(BufferedReader& reader, const std::function<void(const MdlIterator&)>& callback)
@@ -526,121 +524,52 @@ namespace TrenchBroom {
             }
         }
 
-        void AbmdlParser::getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it)
+        void AbmdlParser::generateVerticesFromMesh(BufferedReader& reader, const MdlIterator& it)
         {
             const size_t triCmdsOffset = it.mesh.triangleIndex;
-            std::vector<TriangleVertex> triangleVerts;
-            triangleVerts.resize(3);
             reader.seekFromBegin(triCmdsOffset);
 
             for ( int32_t numTriCmds = reader.readInt<int16_t>(); numTriCmds != 0; numTriCmds = reader.readInt<int16_t>() )
             {
+                m_vertexBatches.emplace_back();
+                VertexBatch& batch = m_vertexBatches.back();
+
                 if ( numTriCmds > 0 )
                 {
                     // This is a triangle strip.
-                    for ( size_t vertexIndex = 0; numTriCmds > 0; --numTriCmds, ++vertexIndex )
-                    {
-                        if ( vertexIndex == 0 )
-                        {
-                            // Fill in the first vertex.
-                            triangleVerts[0].readFrom(reader);
-
-                            // Not enough vertices to create a triangle yet.
-                            continue;
-                        }
-                        else if ( vertexIndex == 1 )
-                        {
-                            // Fill in the third vertex (so that we get the ordering correct).
-                            triangleVerts[2].readFrom(reader);
-
-                            // Not enough vertices to create a triangle yet.
-                            continue;
-                        }
-                        else if ( vertexIndex == 2 )
-                        {
-                            // Fill in the second vertex.
-                            triangleVerts[1].readFrom(reader);
-                        }
-                        else if ( (vertexIndex % 2) != 0 )
-                        {
-                            // Vertex index is odd. Shift third vertex to be first, then add new third vertex.
-                            triangleVerts[0] = triangleVerts[2];
-                            triangleVerts[2].readFrom(reader);
-                        }
-                        else
-                        {
-                            // Vertex index is even. Shift second vertex to be first, then add new second vertex.
-                            triangleVerts[0] = triangleVerts[1];
-                            triangleVerts[1].readFrom(reader);
-                        }
-
-                        // Create a triangle out of these vertices.
-                        appendModelTriangle(outVertices, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
-                    }
+                    batch.isTriangletrip = true;
                 }
                 else
                 {
                     // This is a triangle fan.
                     numTriCmds *= -1;
+                    batch.isTriangletrip = false;
+                }
 
-                    for ( size_t vertexIndex = 0; numTriCmds > 0; --numTriCmds, ++vertexIndex )
-                    {
-                        if ( vertexIndex == 0 )
-                        {
-                            // Fill in the first vertex.
-                            triangleVerts[0].readFrom(reader);
-
-                            // Not enough vertices to create a triangle yet.
-                            continue;
-                        }
-                        else if ( vertexIndex == 1 )
-                        {
-                            // Fill in the third vertex (so that we get the ordering correct).
-                            triangleVerts[2].readFrom(reader);
-
-                            // Not enough vertices to create a triangle yet.
-                            continue;
-                        }
-                        else if ( vertexIndex == 2 )
-                        {
-                            // Fill in the second vertex.
-                            triangleVerts[1].readFrom(reader);
-                        }
-                        else
-                        {
-                            // Shift the third vertex to be second, and read a new third vertex.
-                            triangleVerts[2] = triangleVerts[1];
-                            triangleVerts[1].readFrom(reader);
-                        }
-
-                        // Create a triangle out of these vertices.
-                        appendModelTriangle(outVertices, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
-                    }
+                for ( size_t vertexIndex = 0; numTriCmds > 0; --numTriCmds, ++vertexIndex )
+                {
+                    appendModelVertex(batch.vertexList, it, TriangleVertex(reader));
                 }
             }
         }
 
-        void AbmdlParser::appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertexTrio& verts)
+        void AbmdlParser::appendModelVertex(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertex& vertex)
         {
             const TextureInfo& texInfo = m_textureInfos[it.iteratorIndex];
 
             // We need a vec3f for the position, and a vec2f for the texture co-ordinates, for each vertex.
-            for ( size_t index = 0; index < 3; ++index )
-            {
-                const TriangleVertex& triVert = *(verts.v[index]);
-                const size_t vertexIndex = triVert.vertexIndex;
-                const size_t boneIndex = m_modelBoneIndices[vertexIndex];
+            const size_t vertexIndex = vertex.vertexIndex;
+            const size_t boneIndex = m_modelBoneIndices[vertexIndex];
 
-                const mat3x4f& transformForBone = m_boneTransforms[boneIndex];
-                const vm::vec3f& position = m_modelVertPositions[vertexIndex];
-                const vm::vec3f transformedPosition = transformVector(position, transformForBone);
+            const mat3x4f& transformForBone = m_boneTransforms[boneIndex];
+            const vm::vec3f& position = m_modelVertPositions[vertexIndex];
+            const vm::vec3f transformedPosition = transformVector(position, transformForBone);
 
-                const float u = (triVert.s + 1.0f) * (1.0f / static_cast<float>(texInfo.width));
-                const float v = 1.0f - triVert.t * (1.0f / static_cast<float>(texInfo.height));
-                const vm::vec2f texCoOrds(u, v);
+            const float u = (vertex.s + 1.0f) * (1.0f / static_cast<float>(texInfo.width));
+            const float v = 1.0f - vertex.t * (1.0f / static_cast<float>(texInfo.height));
+            const vm::vec2f texCoOrds(u, v);
 
-                outVertices.emplace_back(transformedPosition, texCoOrds);
-            }
+            outVertices.emplace_back(transformedPosition, texCoOrds);
         }
 
         // I couldn't find these functions anywhere in the codebase, so they were ported from Xash3D.

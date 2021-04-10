@@ -169,8 +169,8 @@ namespace TrenchBroom {
             void readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex);
 
             void cacheModelComponents(BufferedReader& reader, const SubModel& subModel);
-            void getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it);
-            void appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertexTrio& verts);
+            void generateVerticesFromMesh(BufferedReader& reader, const MdlIterator& it);
+            void appendModelVertex(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertex& vertex);
 
             std::vector<Bone> m_bones;
             std::vector<mat3x4f> m_boneTransforms;
