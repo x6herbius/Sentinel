@@ -40,6 +40,7 @@
 #include "IO/GameConfigParser.h"
 #include "IO/IOUtils.h"
 #include "IO/MdlParser.h"
+#include "IO/AbmdlParser.h"
 #include "IO/Md2Parser.h"
 #include "IO/Md3Parser.h"
 #include "IO/MdxParser.h"
@@ -318,7 +319,7 @@ namespace TrenchBroom {
             if (!pathsValue) {
                 return {};
             }
-            
+
             return IO::Path::asPaths(kdl::str_split(*pathsValue, ";"));
         }
 
@@ -431,7 +432,11 @@ namespace TrenchBroom {
                 const auto extension = kdl::str_to_lower(path.extension());
                 const auto supported = m_config.entityConfig().modelFormats;
 
-                if (extension == "mdl" && kdl::vec_contains(supported, "mdl")) {
+                if (extension == "mdl" && kdl::vec_contains(supported, "abmdl")) {
+                    auto reader = file->reader().buffer();
+                    IO::AbmdlParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    return parser.initializeModel(logger);
+                } else if (extension == "mdl" && kdl::vec_contains(supported, "mdl")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
                     IO::MdlParser parser(modelName, std::begin(reader), std::end(reader), palette);
@@ -491,7 +496,11 @@ namespace TrenchBroom {
                 const auto extension = kdl::str_to_lower(path.extension());
                 const auto supported = m_config.entityConfig().modelFormats;
 
-                if (extension == "mdl" && kdl::vec_contains(supported, "mdl")) {
+                if (extension == "mdl" && kdl::vec_contains(supported, "abmdl")) {
+                    auto reader = file->reader().buffer();
+                    IO::AbmdlParser parser(modelName, std::begin(reader), std::end(reader), m_fs);
+                    parser.loadFrame(frameIndex, model, logger);
+                } else if (extension == "mdl" && kdl::vec_contains(supported, "mdl")) {
                     const auto palette = loadTexturePalette();
                     auto reader = file->reader().buffer();
                     IO::MdlParser parser(modelName, std::begin(reader), std::end(reader), palette);

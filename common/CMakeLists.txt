@@ -23,6 +23,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/EL/Types.cpp
         ${COMMON_SOURCE_DIR}/EL/Value.cpp
         ${COMMON_SOURCE_DIR}/EL/VariableStore.cpp
+        ${COMMON_SOURCE_DIR}/IO/AbmdlParser.cpp
         ${COMMON_SOURCE_DIR}/IO/AseParser.cpp
         ${COMMON_SOURCE_DIR}/IO/BrushFaceReader.cpp
         ${COMMON_SOURCE_DIR}/IO/Bsp29Parser.cpp
