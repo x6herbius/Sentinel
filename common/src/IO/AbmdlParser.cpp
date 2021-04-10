@@ -176,9 +176,13 @@ namespace TrenchBroom {
 
             std::unique_ptr<Assets::EntityModel> model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::MdlInverted);
 
+            // For now, just add one frame (the reference frame) and one surface.
+            model->addFrames(1);
+            model->addSurface("surface_0");
+
             try
             {
-                createSurfacesAndLoadTextures(logger, reader, *model);
+                loadTextures(logger, reader, *model, false);
             }
             catch ( const ReaderException& )
             {
@@ -189,7 +193,7 @@ namespace TrenchBroom {
             return model;
         }
 
-        void AbmdlParser::doLoadFrame(const size_t frameIndex, Assets::EntityModel& model, Logger&) {
+        void AbmdlParser::doLoadFrame(const size_t frameIndex, Assets::EntityModel& model, Logger& logger) {
             BufferedReader reader = Reader::from(m_begin, m_end).buffer();
 
             const int32_t ident = reader.readInt<int32_t>();
@@ -209,6 +213,7 @@ namespace TrenchBroom {
 
             try
             {
+                loadTextures(logger, reader, model, true);
                 readBonesAndTransforms(reader);
                 loadVerticesForSurfaces(reader, model);
             }
@@ -218,7 +223,7 @@ namespace TrenchBroom {
             }
         }
 
-        void AbmdlParser::createSurfacesAndLoadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model)
+        void AbmdlParser::loadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model, bool textureInfosOnly)
         {
             reader.seekFromBegin(MdlLayout::Offset_HeaderSkinCount);
             const size_t numSkinReferences = reader.readSize<int32_t>();
@@ -234,11 +239,11 @@ namespace TrenchBroom {
             const uint32_t mdlFlags = reader.readUnsignedInt<uint32_t>();
             const bool noEmbeddedTextures = mdlFlags & MdlLayout::MdlFlagNoEmbeddedTextures;
 
-            iterateMdlComponents(reader, [this, &logger, &reader, &model, skinDataOffset, noEmbeddedTextures](const MdlIterator& it)
-            {
-                Assets::EntityModelSurface& surface = model.addSurface(it.GenerateSurfaceName());
-                std::vector<Assets::Texture> textures;
+            std::vector<Assets::Texture> textures;
+            std::vector<Assets::Texture>* texturesPtr = (!textureInfosOnly) ? &textures : nullptr;
 
+            iterateMdlComponents(reader, [this, &logger, &reader, texturesPtr, skinDataOffset, noEmbeddedTextures](const MdlIterator& it)
+            {
                 const size_t meshSkinOffset = skinDataOffset + (it.mesh.skinRef * MdlLayout::Size_Skin);
                 reader.seekFromBegin(meshSkinOffset);
                 const size_t textureIndex = reader.readSize<int16_t>();
@@ -249,28 +254,74 @@ namespace TrenchBroom {
                 // and then only load those textures once each.
                 if ( noEmbeddedTextures )
                 {
-                    readTextureFromDisk(logger, reader, textures, textureIndex);
+                    readTextureFromDisk(logger, reader, texturesPtr, textureIndex);
                 }
                 else
                 {
-                    readEmbeddedTexture(reader, textures, textureIndex);
+                    readEmbeddedTexture(reader, texturesPtr, textureIndex);
                 }
-
-                surface.setSkins(std::move(textures));
             });
+
+            if ( !textureInfosOnly )
+            {
+                model.surface(0).setSkins(std::move(textures));
+            }
         }
 
         void AbmdlParser::loadVerticesForSurfaces(BufferedReader& reader, Assets::EntityModel& model)
         {
+            Assets::EntityModelSurface& surface = model.surface(0);
             m_bodyPartIndexForCachedModelData = ~0UL;
 
-            iterateMdlComponents(reader, [this, &reader, &model](const MdlIterator& it)
+            iterateMdlComponents(reader, [this, &reader](const MdlIterator& it)
             {
-                loadVerticesForSurface(reader, model, model.surface(it.iteratorIndex), it);
+                loadVerticesForSurface(reader, it);
             });
+
+            size_t totalVertexCount = 0;
+            Renderer::IndexRangeMap::Size size;
+
+            for ( const VertexBatch& batch : m_vertexBatches )
+            {
+                totalVertexCount += batch.vertexList.size();
+
+                if (batch.isTriangletrip)
+                {
+                    size.inc(Renderer::PrimType::TriangleStrip);
+                }
+                else
+                {
+                    size.inc(Renderer::PrimType::TriangleFan);
+                }
+            }
+
+            vm::bbox3f::builder bounds;
+            Renderer::IndexRangeMapBuilder<Assets::EntityModelVertex::Type> builder(totalVertexCount, size);
+
+            for ( const VertexBatch& batch : m_vertexBatches )
+            {
+                if ( batch.vertexList.empty() )
+                {
+                    continue;
+                }
+
+                bounds.add(std::begin(batch.vertexList), std::end(batch.vertexList), Renderer::GetVertexComponent<0>());
+
+                if (batch.isTriangletrip)
+                {
+                    builder.addTriangleStrip(batch.vertexList);
+                }
+                else
+                {
+                    builder.addTriangleFan(batch.vertexList);
+                }
+            }
+
+            Assets::EntityModelLoadedFrame& modelFrame = model.loadFrame(0, "frame_0", bounds.bounds());
+            surface.addIndexedMesh(modelFrame, builder.vertices(), builder.indices());
         }
 
-        void AbmdlParser::loadVerticesForSurface(BufferedReader& reader, Assets::EntityModel& model, Assets::EntityModelSurface& surface, const MdlIterator& it)
+        void AbmdlParser::loadVerticesForSurface(BufferedReader& reader, const MdlIterator& it)
         {
             if ( m_bodyPartIndexForCachedModelData != it.bodyPartIndex )
             {
@@ -278,18 +329,8 @@ namespace TrenchBroom {
                 m_bodyPartIndexForCachedModelData = it.bodyPartIndex;
             }
 
-            std::vector<Assets::EntityModelVertex> meshFinalisedVertices;
-            vm::bbox3f::builder bounds;
-            getUnindexedVerticesFromMesh(reader, meshFinalisedVertices, bounds, it);
-
-            Renderer::IndexRangeMap::Size size;
-            size.inc(Renderer::PrimType::Triangles, meshFinalisedVertices.size());
-
-            Renderer::IndexRangeMapBuilder<Assets::EntityModelVertex::Type> builder(meshFinalisedVertices.size(), size);
-            builder.addTriangles(meshFinalisedVertices);
-
-            Assets::EntityModelLoadedFrame& frame = model.loadFrame(0, "frame_0", bounds.bounds());
-            surface.addIndexedMesh(frame, builder.vertices(), builder.indices());
+            m_vertexBatches.emplace_back();
+            getUnindexedVerticesFromMesh(reader, m_vertexBatches.back().vertexList, it);
         }
 
         void AbmdlParser::iterateMdlComponents(BufferedReader& reader, const std::function<void(const MdlIterator&)>& callback)
@@ -356,7 +397,7 @@ namespace TrenchBroom {
 
                 const Bone& bone = m_bones[boneIndex];
 
-                if ( boneIndex <= static_cast<size_t>(bone.parent) )
+                if ( bone.parent >= 0 && boneIndex <= static_cast<size_t>(bone.parent) )
                 {
                     // We assume bones are in order, so that the transform for the parent bone
                     // has been generated before the child is encountered.
@@ -384,7 +425,7 @@ namespace TrenchBroom {
             concat3x4Matrices(m_boneTransforms[static_cast<size_t>(bone.parent)], quatAndOriginToMat(boneQuat, boneOrigin), m_boneTransforms.back());
         }
 
-        void AbmdlParser::readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>& textureList, size_t textureIndex)
+        void AbmdlParser::readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex)
         {
             // Get the offset to the texture info objects.
             reader.seekFromBegin(MdlLayout::Offset_HeaderTexureInfo);
@@ -431,11 +472,15 @@ namespace TrenchBroom {
             palette.indexedToRgba(reader, imageDataSize, rgbaImage, transparency, avgColor);
 
             // Add the texture to the vector.
-            textureList.emplace_back(texInfo.name, texInfo.width, texInfo.height, avgColor, std::move(rgbaImage), GL_RGBA, texType);
+            if ( textureList )
+            {
+                textureList->emplace_back(texInfo.name, texInfo.width, texInfo.height, avgColor, std::move(rgbaImage), GL_RGBA, texType);
+            }
+
             m_textureInfos.emplace_back(texInfo);
         }
 
-        void AbmdlParser::readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>& textureList, size_t textureIndex)
+        void AbmdlParser::readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex)
         {
             // Get the offset to the texture info objects.
             reader.seekFromBegin(MdlLayout::Offset_HeaderTexureInfo);
@@ -452,7 +497,11 @@ namespace TrenchBroom {
             const TextureInfo texInfo(reader);
 
             // Let the skin loader attempt to load the referenced texture.
-            textureList.push_back(loadSkin(Path("textures") + Path(texInfo.name), m_fs, logger));
+            if ( textureList )
+            {
+                textureList->push_back(loadSkin(Path("textures") + Path(texInfo.name), m_fs, logger));
+            }
+
             m_textureInfos.emplace_back(texInfo);
         }
 
@@ -477,7 +526,7 @@ namespace TrenchBroom {
             }
         }
 
-        void AbmdlParser::getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, vm::bbox3f::builder& bounds, const MdlIterator& it)
+        void AbmdlParser::getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it)
         {
             const size_t triCmdsOffset = it.mesh.triangleIndex;
             std::vector<TriangleVertex> triangleVerts;
@@ -526,7 +575,7 @@ namespace TrenchBroom {
                         }
 
                         // Create a triangle out of these vertices.
-                        appendModelTriangle(outVertices, bounds, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
+                        appendModelTriangle(outVertices, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
                     }
                 }
                 else
@@ -565,13 +614,13 @@ namespace TrenchBroom {
                         }
 
                         // Create a triangle out of these vertices.
-                        appendModelTriangle(outVertices, bounds, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
+                        appendModelTriangle(outVertices, it, { &triangleVerts[0], &triangleVerts[1], &triangleVerts[2] });
                     }
                 }
             }
         }
 
-        void AbmdlParser::appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, vm::bbox3f::builder& bounds, const MdlIterator& it, const TriangleVertexTrio& verts)
+        void AbmdlParser::appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertexTrio& verts)
         {
             const TextureInfo& texInfo = m_textureInfos[it.iteratorIndex];
 
@@ -591,7 +640,6 @@ namespace TrenchBroom {
                 const vm::vec2f texCoOrds(u, v);
 
                 outVertices.emplace_back(transformedPosition, texCoOrds);
-                bounds.add(transformedPosition);
             }
         }
 

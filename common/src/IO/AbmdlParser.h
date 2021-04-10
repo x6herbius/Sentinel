@@ -137,6 +137,12 @@ namespace TrenchBroom {
                 const TriangleVertex* v[3];
             };
 
+            struct VertexBatch
+            {
+                bool isTriangletrip = false;
+                std::vector<Assets::EntityModelVertex> vertexList;
+            };
+
             std::string m_name;
             const char* m_begin;
             const char* m_end;
@@ -152,19 +158,19 @@ namespace TrenchBroom {
             std::unique_ptr<Assets::EntityModel> doInitializeModel(Logger& logger) override;
             void doLoadFrame(size_t frameIndex, Assets::EntityModel& model, Logger& logger) override;
 
-            void createSurfacesAndLoadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model);
+            void loadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model, bool textureInfosOnly);
             void loadVerticesForSurfaces(BufferedReader& reader, Assets::EntityModel& model);
-            void loadVerticesForSurface(BufferedReader& reader, Assets::EntityModel& model, Assets::EntityModelSurface& surface, const MdlIterator& it);
+            void loadVerticesForSurface(BufferedReader& reader, const MdlIterator& it);
             void iterateMdlComponents(BufferedReader& reader, const std::function<void(const MdlIterator&)>& callback);
 
             void readBonesAndTransforms(BufferedReader& reader);
             void createBoneTransform(const Bone& bone);
-            void readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>& textureList, size_t textureIndex);
-            void readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>& textureList, size_t textureIndex);
+            void readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex);
+            void readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex);
 
             void cacheModelComponents(BufferedReader& reader, const SubModel& subModel);
-            void getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, vm::bbox3f::builder& bounds, const MdlIterator& it);
-            void appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, vm::bbox3f::builder& bounds, const MdlIterator& it, const TriangleVertexTrio& verts);
+            void getUnindexedVerticesFromMesh(BufferedReader& reader, std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it);
+            void appendModelTriangle(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertexTrio& verts);
 
             std::vector<Bone> m_bones;
             std::vector<mat3x4f> m_boneTransforms;
@@ -173,6 +179,8 @@ namespace TrenchBroom {
             size_t m_bodyPartIndexForCachedModelData = 0;
             std::vector<size_t> m_modelBoneIndices;
             std::vector<vm::vec3f> m_modelVertPositions;
+
+            std::vector<VertexBatch> m_vertexBatches;
         };
     }
 }
