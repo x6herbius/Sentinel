@@ -27,6 +27,7 @@
 #include "IO/Reader.h"
 #include "IO/FileSystem.h"
 #include "IO/SkinLoader.h"
+#include "IO/ReaderException.h"
 #include "Renderer/IndexRangeMapBuilder.h"
 #include "Renderer/PrimType.h"
 
@@ -174,7 +175,17 @@ namespace TrenchBroom {
             }
 
             std::unique_ptr<Assets::EntityModel> model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::MdlInverted);
-            createSurfacesAndLoadTextures(logger, reader, *model);
+
+            try
+            {
+                createSurfacesAndLoadTextures(logger, reader, *model);
+            }
+            catch ( const ReaderException& )
+            {
+                throw AssetException("MDL data was corrupted.");
+            }
+
+            std::cout << "Loaded " << m_name << std::endl;
             return model;
         }
 
@@ -196,8 +207,15 @@ namespace TrenchBroom {
                 throw AssetException("v" + std::to_string(MdlLayout::Version10) + " MDLs currently only support one frame.");
             }
 
-            readBonesAndTransforms(reader);
-            loadVerticesForSurfaces(reader, model);
+            try
+            {
+                readBonesAndTransforms(reader);
+                loadVerticesForSurfaces(reader, model);
+            }
+            catch ( const ReaderException& )
+            {
+                throw AssetException("MDL data was corrupted.");
+            }
         }
 
         void AbmdlParser::createSurfacesAndLoadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model)
