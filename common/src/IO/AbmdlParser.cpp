@@ -431,19 +431,22 @@ namespace TrenchBroom {
 
         void AbmdlParser::createBoneTransform(const Bone& bone)
         {
+            // The MDL file's X is the world's Y, for some reason.
+            // We apply this transform to any root bones to fix the problem.
+            static mat3x4f ROOT_TRANSFORM(
+                +0, -1, +0, +0,
+                +1, +0, +0, +0,
+                +0, +0, +1, +0
+            );
+
             const vm::quatf boneQuat = anglesToQuaternion(bone.value[3], bone.value[4], bone.value[5]);
             const vm::vec3f boneOrigin(bone.value[0], bone.value[1], bone.value[2]);
 
-            if ( bone.parent < 0 )
-            {
-                // No parent matrix to combine, so just use the bone's matrix.
-                m_boneTransforms.emplace_back(quatAndOriginToMat(boneQuat, boneOrigin));
-                return;
-            }
+            // If we have a parent, use its transform. If not, make sure we use the root transform.
+            const mat3x4f& parentTransform = bone.parent >= 0 ? m_boneTransforms[static_cast<size_t>(bone.parent)] : ROOT_TRANSFORM;
 
-            // Otherwise, combine parent transform.
             m_boneTransforms.emplace_back();
-            concat3x4Matrices(m_boneTransforms[static_cast<size_t>(bone.parent)], quatAndOriginToMat(boneQuat, boneOrigin), m_boneTransforms.back());
+            concat3x4Matrices(parentTransform, quatAndOriginToMat(boneQuat, boneOrigin), m_boneTransforms.back());
         }
 
         void AbmdlParser::readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex)
