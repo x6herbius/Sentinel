@@ -30,6 +30,7 @@
 #include "IO/ReaderException.h"
 #include "Renderer/IndexRangeMapBuilder.h"
 #include "Renderer/PrimType.h"
+#include "Logger.h"
 
 #include <kdl/string_utils.h>
 
@@ -147,7 +148,7 @@ namespace TrenchBroom {
             t = reader.readInt<int16_t>();
         }
 
-        std::string AbmdlParser::MdlIterator::GenerateSurfaceName() const
+        std::string AbmdlParser::MdlIterator::generateSurfaceName() const
         {
             return bodyPart.name + "_" + firstSubModel.name + "_" + std::to_string(meshIndex);
         }
@@ -176,9 +177,8 @@ namespace TrenchBroom {
 
             std::unique_ptr<Assets::EntityModel> model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::MdlInverted);
 
-            // For now, just add one frame (the reference frame) and one surface.
+            // For now, just add one frame (the reference frame).
             model->addFrames(1);
-            model->addSurface("surface_0");
 
             try
             {
@@ -214,7 +214,8 @@ namespace TrenchBroom {
             {
                 loadTextures(logger, reader, model, true);
                 readBonesAndTransforms(reader);
-                loadVerticesForSurfaces(reader, model);
+                generateVerticesForAllMeshes(reader);
+                addVerticesToSurfaces(model);
             }
             catch ( const ReaderException& )
             {
@@ -238,11 +239,11 @@ namespace TrenchBroom {
             const uint32_t mdlFlags = reader.readUnsignedInt<uint32_t>();
             const bool noEmbeddedTextures = mdlFlags & MdlLayout::MdlFlagNoEmbeddedTextures;
 
-            std::vector<Assets::Texture> textures;
-            std::vector<Assets::Texture>* texturesPtr = (!textureInfosOnly) ? &textures : nullptr;
-
-            iterateMdlComponents(reader, [this, &logger, &reader, texturesPtr, skinDataOffset, noEmbeddedTextures](const MdlIterator& it)
+            iterateMdlComponents(reader, [this, &logger, &reader, &model, textureInfosOnly, skinDataOffset, noEmbeddedTextures](const MdlIterator& it)
             {
+                std::vector<Assets::Texture> textures;
+                std::vector<Assets::Texture>* texturesPtr = (!textureInfosOnly) ? &textures : nullptr;
+
                 const size_t meshSkinOffset = skinDataOffset + (it.mesh.skinRef * MdlLayout::Size_Skin);
                 reader.seekFromBegin(meshSkinOffset);
                 const size_t textureIndex = reader.readSize<int16_t>();
@@ -259,76 +260,96 @@ namespace TrenchBroom {
                 {
                     readEmbeddedTexture(reader, texturesPtr, textureIndex);
                 }
-            });
 
-            if ( !textureInfosOnly )
-            {
-                model.surface(0).setSkins(std::move(textures));
-            }
+                if ( !textureInfosOnly )
+                {
+                    Assets::EntityModelSurface& surface = model.addSurface(it.generateSurfaceName());
+                    surface.setSkins(std::move(textures));
+                }
+            });
         }
 
-        void AbmdlParser::loadVerticesForSurfaces(BufferedReader& reader, Assets::EntityModel& model)
+        void AbmdlParser::generateVerticesForAllMeshes(BufferedReader& reader)
         {
-            Assets::EntityModelSurface& surface = model.surface(0);
             m_bodyPartIndexForCachedModelData = ~0UL;
 
             iterateMdlComponents(reader, [this, &reader](const MdlIterator& it)
             {
-                loadVerticesForSurface(reader, it);
+                if ( m_bodyPartIndexForCachedModelData != it.bodyPartIndex )
+                {
+                    cacheModelComponents(reader, it.firstSubModel);
+                    m_bodyPartIndexForCachedModelData = it.bodyPartIndex;
+                }
+
+                generateVerticesFromMesh(reader, it);
             });
-
-            size_t totalVertexCount = 0;
-            Renderer::IndexRangeMap::Size size;
-
-            for ( const VertexBatch& batch : m_vertexBatches )
-            {
-                totalVertexCount += batch.vertexList.size();
-
-                if (batch.isTriangletrip)
-                {
-                    size.inc(Renderer::PrimType::TriangleStrip);
-                }
-                else
-                {
-                    size.inc(Renderer::PrimType::TriangleFan);
-                }
-            }
-
-            vm::bbox3f::builder bounds;
-            Renderer::IndexRangeMapBuilder<Assets::EntityModelVertex::Type> builder(totalVertexCount, size);
-
-            for ( const VertexBatch& batch : m_vertexBatches )
-            {
-                if ( batch.vertexList.empty() )
-                {
-                    continue;
-                }
-
-                bounds.add(std::begin(batch.vertexList), std::end(batch.vertexList), Renderer::GetVertexComponent<0>());
-
-                if (batch.isTriangletrip)
-                {
-                    builder.addTriangleStrip(batch.vertexList);
-                }
-                else
-                {
-                    builder.addTriangleFan(batch.vertexList);
-                }
-            }
-
-            Assets::EntityModelLoadedFrame& modelFrame = model.loadFrame(0, "frame_0", bounds.bounds());
-            surface.addIndexedMesh(modelFrame, builder.vertices(), builder.indices());
         }
 
-        void AbmdlParser::loadVerticesForSurface(BufferedReader& reader, const MdlIterator& it)
+        void AbmdlParser::addVerticesToSurfaces(Assets::EntityModel& model)
         {
-            if ( m_bodyPartIndexForCachedModelData != it.bodyPartIndex )
+            vm::bbox3f::builder bounds;
+
+            for ( const auto& it : m_vertexBatches )
             {
-                cacheModelComponents(reader, it.firstSubModel);
-                m_bodyPartIndexForCachedModelData = it.bodyPartIndex;
+                const std::vector<VertexBatch>& batchList = it.second;
+
+                for ( const VertexBatch& batch : batchList )
+                {
+                    bounds.add(std::begin(batch.vertexList), std::end(batch.vertexList), Renderer::GetVertexComponent<0>());
+                }
             }
 
-            generateVerticesFromMesh(reader, it);
+            // We only have one frame for now.
+            Assets::EntityModelLoadedFrame& modelFrame = model.loadFrame(0, "frame_0", bounds.bounds());
+
+            for ( const auto& it : m_vertexBatches )
+            {
+                const size_t surfaceIndex = it.first;
+                const std::vector<VertexBatch>& batchList = it.second;
+
+                size_t totalVertexCount = 0;
+                Renderer::IndexRangeMap::Size size;
+
+                for ( const VertexBatch& batch : batchList )
+                {
+                    if ( batch.vertexList.empty() )
+                    {
+                        continue;
+                    }
+
+                    totalVertexCount += batch.vertexList.size();
+
+                    if (batch.isTriangletrip)
+                    {
+                        size.inc(Renderer::PrimType::TriangleStrip);
+                    }
+                    else
+                    {
+                        size.inc(Renderer::PrimType::TriangleFan);
+                    }
+                }
+
+                Renderer::IndexRangeMapBuilder<Assets::EntityModelVertex::Type> builder(totalVertexCount, size);
+
+                for ( const VertexBatch& batch : batchList )
+                {
+                    if ( batch.vertexList.empty() )
+                    {
+                        continue;
+                    }
+
+                    if (batch.isTriangletrip)
+                    {
+                        builder.addTriangleStrip(batch.vertexList);
+                    }
+                    else
+                    {
+                        builder.addTriangleFan(batch.vertexList);
+                    }
+                }
+
+                model.surface(surfaceIndex).addIndexedMesh(modelFrame, builder.vertices(), builder.indices());
+            }
         }
 
         void AbmdlParser::iterateMdlComponents(BufferedReader& reader, const std::function<void(const MdlIterator&)>& callback)
@@ -526,13 +547,17 @@ namespace TrenchBroom {
 
         void AbmdlParser::generateVerticesFromMesh(BufferedReader& reader, const MdlIterator& it)
         {
+            const size_t surfaceIndex = m_vertexBatches.size();
+            std::vector<VertexBatch>& batchList = m_vertexBatches[surfaceIndex];
+
             const size_t triCmdsOffset = it.mesh.triangleIndex;
             reader.seekFromBegin(triCmdsOffset);
 
             for ( int32_t numTriCmds = reader.readInt<int16_t>(); numTriCmds != 0; numTriCmds = reader.readInt<int16_t>() )
             {
-                m_vertexBatches.emplace_back();
-                VertexBatch& batch = m_vertexBatches.back();
+                batchList.emplace_back();
+                VertexBatch& batch = batchList.back();
+                batch.surfaceIndex = surfaceIndex;
 
                 if ( numTriCmds > 0 )
                 {
@@ -565,14 +590,26 @@ namespace TrenchBroom {
             const vm::vec3f& position = m_modelVertPositions[vertexIndex];
             const vm::vec3f transformedPosition = transformVector(position, transformForBone);
 
-            const float u = (vertex.s + 1.0f) * (1.0f / static_cast<float>(texInfo.width));
-            const float v = 1.0f - vertex.t * (1.0f / static_cast<float>(texInfo.height));
-            const vm::vec2f texCoOrds(u, v);
+            vm::vec2f texCoOrds;
+
+            if ( texInfo.flags & MdlLayout::TexFlagUVCoOrds )
+            {
+                texCoOrds[0] = uint16ToFloat(static_cast<uint16_t>(vertex.s));
+                texCoOrds[1] = uint16ToFloat(static_cast<uint16_t>(vertex.t));
+            }
+            else
+            {
+                texCoOrds[0] = static_cast<float>(vertex.s) / static_cast<float>(texInfo.width);
+                texCoOrds[1] = static_cast<float>(vertex.t) / static_cast<float>(texInfo.height);
+            }
 
             outVertices.emplace_back(transformedPosition, texCoOrds);
         }
 
         // I couldn't find these functions anywhere in the codebase, so they were ported from Xash3D.
+        // TODO: 3x4 matrix can just be replaced with a 4x4 matrix where the last row is [0 0 0 1].
+        // This will mean we can scrap the matrix concat/vector transform functions and just use
+        // the functions that are already present in TB.
         vm::quatf AbmdlParser::anglesToQuaternion(float pitchRad, float yawRad, float rollRad)
         {
             const float sinPitch = std::sin(pitchRad * 0.5f);
@@ -646,6 +683,38 @@ namespace TrenchBroom {
            const float z = (vec[0] * mat[0][2]) + (vec[1] * mat[1][2]) + (vec[2] * mat[2][2]) + mat[3][2];
 
            return vm::vec3f(x, y, z);
+        }
+
+        // This witchcraft was in Xash3D too.
+        float AbmdlParser::uint16ToFloat(uint16_t val)
+        {
+            uint32_t f = (val << 16) & 0x80000000;
+            uint32_t em = val & 0x7fffU;
+
+            if ( em > 0x03ff )
+            {
+                f |= (em << 13) + ((127 - 15) << 23);
+            }
+            else
+            {
+                uint32_t m = em & 0x03ff;
+
+                if ( m != 0 )
+                {
+                    uint32_t e = (em >> 10) & 0x1f;
+
+                    while ( (m & 0x0400) == 0 )
+                    {
+                        m <<= 1;
+                        e--;
+                    }
+
+                    m &= 0x3ff;
+                    f |= ((e + (127 - 14)) << 23) | (m << 13);
+                }
+            }
+
+            return *((float*)&f);
         }
     }
 }

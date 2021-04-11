@@ -129,7 +129,7 @@ namespace TrenchBroom {
                 size_t meshIndex;
                 const Mesh& mesh;
 
-                std::string GenerateSurfaceName() const;
+                std::string generateSurfaceName() const;
             };
 
             struct TriangleVertexTrio
@@ -139,6 +139,7 @@ namespace TrenchBroom {
 
             struct VertexBatch
             {
+                size_t surfaceIndex = 0;
                 bool isTriangletrip = false;
                 std::vector<Assets::EntityModelVertex> vertexList;
             };
@@ -154,13 +155,14 @@ namespace TrenchBroom {
             static mat3x4f quatAndOriginToMat(const vm::quatf& quat, const vm::vec3f& origin);
             static void concat3x4Matrices(const mat3x4f& a, const mat3x4f b, mat3x4f& out);
             static vm::vec3f transformVector(const vm::vec3f vec, const mat3x4f mat);
+            static float uint16ToFloat(uint16_t val);
 
             std::unique_ptr<Assets::EntityModel> doInitializeModel(Logger& logger) override;
             void doLoadFrame(size_t frameIndex, Assets::EntityModel& model, Logger& logger) override;
 
             void loadTextures(Logger& logger, BufferedReader& reader, Assets::EntityModel& model, bool textureInfosOnly);
-            void loadVerticesForSurfaces(BufferedReader& reader, Assets::EntityModel& model);
-            void loadVerticesForSurface(BufferedReader& reader, const MdlIterator& it);
+            void generateVerticesForAllMeshes(BufferedReader& reader);
+            void addVerticesToSurfaces(Assets::EntityModel& model);
             void iterateMdlComponents(BufferedReader& reader, const std::function<void(const MdlIterator&)>& callback);
 
             void readBonesAndTransforms(BufferedReader& reader);
@@ -180,7 +182,7 @@ namespace TrenchBroom {
             std::vector<size_t> m_modelBoneIndices;
             std::vector<vm::vec3f> m_modelVertPositions;
 
-            std::vector<VertexBatch> m_vertexBatches;
+            std::map<size_t, std::vector<VertexBatch>> m_vertexBatches;
         };
     }
 }
