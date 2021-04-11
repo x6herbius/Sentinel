@@ -27,14 +27,11 @@
 #include "IO/Reader.h"
 #include "IO/FileSystem.h"
 #include "IO/File.h"
-#include "IO/SkinLoader.h"
+#include "IO/FreeImageTextureReader.h"
 #include "IO/ReaderException.h"
-#include "IO/TextureReader.h"
-#include "IO/ImageLoaderImpl.h"
 #include "Renderer/IndexRangeMapBuilder.h"
 #include "Renderer/PrimType.h"
 #include "Logger.h"
-#include "FreeImage.h"
 #include "ResourceUtils.h"
 
 #include <kdl/string_utils.h>
@@ -73,25 +70,6 @@ namespace TrenchBroom {
             static constexpr size_t Size_SubModel = 64 + (11 * sizeof(int32_t)) + sizeof(float);
             static constexpr size_t Size_Mesh = 5 * sizeof(int32_t);
             static constexpr size_t Size_Bone = 32 + (8 * sizeof(int32_t)) + (12 * sizeof(float));
-        }
-
-        static constexpr GLenum freeImage32BPPFormatToGLFormat()
-        {
-            if constexpr (FI_RGBA_RED == 0
-                && FI_RGBA_GREEN == 1
-                && FI_RGBA_BLUE == 2
-                && FI_RGBA_ALPHA == 3) {
-
-                return GL_RGBA;
-            } else if constexpr (FI_RGBA_BLUE == 0
-                && FI_RGBA_GREEN == 1
-                && FI_RGBA_RED == 2
-                && FI_RGBA_ALPHA == 3) {
-
-                return GL_BGRA;
-            } else {
-                throw std::runtime_error("Expected FreeImage to use RGBA or BGRA");
-            }
         }
 
         AbmdlParser::TextureInfo::TextureInfo(BufferedReader& reader)
@@ -548,101 +526,20 @@ namespace TrenchBroom {
             m_textureInfos.emplace_back(texInfo);
         }
 
-        // This is basically the FreeImageTextureReader code, but we need to be able to force the image
-        // to be opaque at a pixel level if required. This really needs to be made into its own image
-        // loader class, because doing this is just horrible.
         Assets::Texture AbmdlParser::loadTexture(Logger& logger, const Path& path, bool allowTranslucent)
         {
             const TextureReader::StaticNameStrategy nameStrategy(path.basename());
 
             try
             {
-                const auto file = m_fs.openFile(path);
-                auto reader = file->reader().buffer();
+                FreeImageTextureReader reader(nameStrategy, m_fs, logger);
+                reader.setForcePixelsOpaque(!allowTranslucent);
 
-                InitFreeImage::initialize();
-
-                const auto* begin = reader.begin();
-                const auto* end = reader.end();
-                const auto imageSize = static_cast<size_t>(end - begin);
-                auto* imageBegin = reinterpret_cast<BYTE*>(const_cast<char*>(begin));
-                auto* imageMemory = FreeImage_OpenMemory(imageBegin, static_cast<DWORD>(imageSize));
-                const auto  imageFormat = FreeImage_GetFileTypeFromMemory(imageMemory);
-                auto* image = FreeImage_LoadFromMemory(imageFormat, imageMemory);
-
-                if (image == nullptr)
-                {
-                    FreeImage_CloseMemory(imageMemory);
-                    throw AssetException("FreeImage could not load image data");
-                }
-
-                const auto imageWidth = static_cast<size_t>(FreeImage_GetWidth(image));
-                const auto imageHeight = static_cast<size_t>(FreeImage_GetHeight(image));
-
-                if ( imageWidth > 8192 || imageHeight > 8192 )
-                {
-                    FreeImage_CloseMemory(imageMemory);
-                    throw AssetException("Invalid texture dimensions");
-                }
-
-                const auto imageColourType = FreeImage_GetColorType(image);
-
-                // This is supposed to indicate whether any pixels are transparent (alpha < 100%)
-                const auto masked = FreeImage_IsTransparent(image);
-
-                const size_t mipCount = 1;
-                constexpr auto format = freeImage32BPPFormatToGLFormat();
-                Assets::TextureBufferList buffers(mipCount);
-                Assets::setMipBufferSize(buffers, mipCount, imageWidth, imageHeight, format);
-
-                const auto inputBytesPerPixel = FreeImage_GetLine(image) / FreeImage_GetWidth(image);
-
-                if (imageColourType != FIC_RGBALPHA || inputBytesPerPixel != 4)
-                {
-                    FIBITMAP* tempImage = FreeImage_ConvertTo32Bits(image);
-                    FreeImage_Unload(image);
-                    image = tempImage;
-                }
-
-                if (image == nullptr)
-                {
-                    FreeImage_CloseMemory(imageMemory);
-                    throw AssetException("Unsupported pixel format");
-                }
-
-                const auto bytesPerPixel = FreeImage_GetLine(image) / FreeImage_GetWidth(image);
-                ensure(bytesPerPixel == 4, "expected to have converted image to 32-bit");
-
-                unsigned char* outBytes = buffers.at(0).data();
-                const int outBytesPerRow = static_cast<int>(imageWidth * 4);
-
-                FreeImage_ConvertToRawBits(outBytes, image, outBytesPerRow, 32, FI_RGBA_RED_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_BLUE_MASK, TRUE);
-
-                FreeImage_Unload(image);
-                FreeImage_CloseMemory(imageMemory);
-
-                const std::size_t bufferSize = buffers.at(0).size();
-
-                Color averageColor;
-                for ( std::size_t i = 0; i < bufferSize; i += 4 )
-                {
-                    if ( !allowTranslucent )
-                    {
-                        outBytes[i+3] = 255;
-                    }
-
-                    averageColor = averageColor + Color(outBytes[i], outBytes[i+1], outBytes[i+2], outBytes[i+3]);
-                }
-
-                averageColor = averageColor / static_cast<float>(bufferSize / 4);
-
-                const auto textureType = allowTranslucent ? Assets::Texture::selectTextureType(masked) : Assets::TextureType::Opaque;
-                const std::string textureName = nameStrategy.textureName(path.lastComponent().asString(), path);
-                return Assets::Texture(textureName, imageWidth, imageHeight, averageColor, std::move(buffers), format, textureType);
+                return reader.readTexture(m_fs.openFile(path));
             }
             catch (Exception& e)
             {
-                logger.error() << "Could not load skin '" << path << "': " << e.what();
+                logger.error() << "Could not load texture '" << path << "': " << e.what();
                 return loadDefaultTexture(m_fs, logger, nameStrategy.textureName("", path));
             }
         }

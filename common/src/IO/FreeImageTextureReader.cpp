@@ -76,6 +76,14 @@ namespace TrenchBroom {
             return average;
         }
 
+        bool FreeImageTextureReader::forcePixelsOpaque() const {
+            return m_forcePixelsOpaque;
+        }
+
+        void FreeImageTextureReader::setForcePixelsOpaque(bool force) {
+            m_forcePixelsOpaque = force;
+        }
+
         Assets::Texture FreeImageTextureReader::doReadTexture(std::shared_ptr<File> file) const {
             auto reader = file->reader().buffer();
 
@@ -133,10 +141,18 @@ namespace TrenchBroom {
 
             FreeImage_ConvertToRawBits(outBytes, image, outBytesPerRow, 32, FI_RGBA_RED_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_BLUE_MASK, TRUE);
 
+            if ( m_forcePixelsOpaque && masked )
+            {
+                for ( size_t index = 3; index < imageWidth * imageHeight * 4; index += 4 )
+                {
+                    outBytes[index] = 255;
+                }
+            }
+
             FreeImage_Unload(image);
             FreeImage_CloseMemory(imageMemory);
 
-            const auto textureType = Assets::Texture::selectTextureType(masked);
+            const auto textureType = m_forcePixelsOpaque ? Assets::TextureType::Opaque : Assets::Texture::selectTextureType(masked);
             const Color averageColor = getAverageColor(buffers.at(0), format);
 
             return Assets::Texture(textureName(path), imageWidth, imageHeight, averageColor, std::move(buffers), format, textureType);

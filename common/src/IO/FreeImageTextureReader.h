@@ -26,7 +26,7 @@
 
 namespace TrenchBroom {
     class Logger;
-    
+
     namespace IO {
         class File;
         class FileSystem;
@@ -34,8 +34,13 @@ namespace TrenchBroom {
         class FreeImageTextureReader : public TextureReader {
         public:
             explicit FreeImageTextureReader(const NameStrategy& nameStrategy, const FileSystem& fs, Logger& logger);
+
+            bool forcePixelsOpaque() const;
+            void setForcePixelsOpaque(bool force);
         private:
             Assets::Texture doReadTexture(std::shared_ptr<File> file) const override;
+
+            bool m_forcePixelsOpaque = false;
         };
     }
 }
