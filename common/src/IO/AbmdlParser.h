@@ -38,6 +38,7 @@ namespace TrenchBroom {
         class BufferedReader;
         class Reader;
         class FileSystem;
+        class Path;
 
         // This is not a nice class. We really need a proper MDL-handling framework to make it nice.
         class AbmdlParser : public EntityModelParser {
@@ -169,6 +170,7 @@ namespace TrenchBroom {
             void createBoneTransform(const Bone& bone);
             void readEmbeddedTexture(BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex);
             void readTextureFromDisk(Logger& logger, BufferedReader& reader, std::vector<Assets::Texture>* textureList, size_t textureIndex);
+            Assets::Texture loadTexture(Logger& logger, const Path& path, bool allowTranslucent);
 
             void cacheModelComponents(BufferedReader& reader, const SubModel& subModel);
             void generateVerticesFromMesh(BufferedReader& reader, const MdlIterator& it);
