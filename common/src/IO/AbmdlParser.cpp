@@ -42,7 +42,8 @@
 namespace TrenchBroom {
     namespace IO {
         namespace MdlLayout {
-            static constexpr int Ident = (('T'<<24) + ('S'<<16) + ('D'<<8) + 'I');
+            static constexpr int HLIdent = (('T'<<24) + ('S'<<16) + ('D'<<8) + 'I');
+            static constexpr int ABIdent = (('B'<<24) + ('T'<<16) + ('F'<<8) + 'A');
             static constexpr int Version10 = 10;
 
             static constexpr unsigned int TexFlagMasked = 0x40;
@@ -170,12 +171,14 @@ namespace TrenchBroom {
             const int32_t ident = reader.readInt<int32_t>();
             const int32_t version = reader.readInt<int32_t>();
 
-            if (ident != MdlLayout::Ident) {
+            if (ident != MdlLayout::ABIdent && ident != MdlLayout::ABIdent) {
                 throw AssetException("Unknown MDL model ident: " + std::to_string(ident));
             }
             if (version != MdlLayout::Version10) {
                 throw AssetException("Unknown MDL model version: " + std::to_string(version));
             }
+
+            m_isAfterburnerModel = ident == MdlLayout::ABIdent;
 
             std::unique_ptr<Assets::EntityModel> model = std::make_unique<Assets::EntityModel>(m_name, Assets::PitchType::MdlInverted);
 
@@ -200,12 +203,14 @@ namespace TrenchBroom {
             const int32_t ident = reader.readInt<int32_t>();
             const int32_t version = reader.readInt<int32_t>();
 
-            if (ident != MdlLayout::Ident) {
+            if (ident != MdlLayout::HLIdent && ident != MdlLayout::ABIdent) {
                 throw AssetException("Unknown MDL model ident: " + std::to_string(ident));
             }
             if (version != MdlLayout::Version10) {
                 throw AssetException("Unknown MDL model version: " + std::to_string(version));
             }
+
+            m_isAfterburnerModel = ident == MdlLayout::ABIdent;
 
             if ( frameIndex != 0 )
             {
@@ -254,7 +259,7 @@ namespace TrenchBroom {
                 // reference the same texture. Does this matter? Are textures cached behind the scenes?
                 // Otherwise, we'd have to build up a table of which textures are used by which meshes,
                 // and then only load those textures once each.
-                if ( noEmbeddedTextures )
+                if ( noEmbeddedTextures && m_isAfterburnerModel )
                 {
                     readTextureFromDisk(logger, reader, texturesPtr, textureIndex);
                 }

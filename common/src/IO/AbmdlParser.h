@@ -176,6 +176,7 @@ namespace TrenchBroom {
             void generateVerticesFromMesh(BufferedReader& reader, const MdlIterator& it);
             void appendModelVertex(std::vector<Assets::EntityModelVertex>& outVertices, const MdlIterator& it, const TriangleVertex& vertex);
 
+            bool m_isAfterburnerModel = false;
             std::vector<Bone> m_bones;
             std::vector<mat3x4f> m_boneTransforms;
             std::vector<TextureInfo> m_textureInfos;
