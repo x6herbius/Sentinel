@@ -39,6 +39,7 @@
 #include "Model/MapFormat.h"
 #include "Model/ModelUtils.h"
 #include "Model/Node.h"
+#include "Model/PatchNode.h"
 #include "Model/WorldNode.h"
 #include "View/Actions.h"
 #include "View/Autosaver.h"
@@ -150,7 +151,7 @@ namespace TrenchBroom {
             m_autosaveTimer = new QTimer(this);
             m_autosaveTimer->start(1000);
 
-            bindObservers();
+            connectObservers();
             bindEvents();
 
             restoreWindowGeometry(this);
@@ -172,7 +173,7 @@ namespace TrenchBroom {
 
             m_mapView->deactivateTool();
 
-            unbindObservers();
+            m_notifierConnection.disconnect();
             removeRecentDocumentsMenu();
 
             // The order of deletion here is important because both the document and the children
@@ -429,15 +430,16 @@ namespace TrenchBroom {
             statusBar()->addWidget(m_statusBarLabel);
         }
 
-        static Model::EntityNodeBase* commonEntityForBrushList(const std::vector<Model::BrushNode*>& list) {
+        template <typename T>
+        static Model::EntityNodeBase* commonEntityForNodeList(const std::vector<T*>& list) {
             if (list.empty())
                 return nullptr;
 
             Model::EntityNodeBase* firstEntity = list.front()->entity();
             bool multipleEntities = false;
 
-            for (const Model::BrushNode* brush : list) {
-                if (brush->entity() != firstEntity) {
+            for (const T* node : list) {
+                if (node->entity() != firstEntity) {
                     multipleEntities = true;
                 }
             }
@@ -507,10 +509,24 @@ namespace TrenchBroom {
 
             // selected brushes
             if (!selectedNodes.brushes().empty()) {
-                Model::EntityNodeBase* commonEntityNode = commonEntityForBrushList(selectedNodes.brushes());
+                Model::EntityNodeBase* commonEntityNode = commonEntityForNodeList(selectedNodes.brushes());
 
                 // if all selected brushes are from the same entity, print the entity name
                 std::string token = numberWithSuffix(selectedNodes.brushes().size(), "brush", "brushes");
+                if (commonEntityNode) {
+                    token += " (" + commonEntityNode->entity().classname() + ")";
+                } else {
+                    token += " (multiple entities)";
+                }
+                tokens.push_back(token);
+            }
+
+            // selected patches
+            if (!selectedNodes.patches().empty()) {
+                Model::EntityNodeBase* commonEntityNode = commonEntityForNodeList(selectedNodes.patches());
+
+                // if all selected patches are from the same entity, print the entity name
+                std::string token = numberWithSuffix(selectedNodes.patches().size(), "patch", "patches");
                 if (commonEntityNode) {
                     token += " (" + commonEntityNode->entity().classname() + ")";
                 } else {
@@ -564,6 +580,7 @@ namespace TrenchBroom {
             size_t hiddenGroups = 0u;
             size_t hiddenEntities = 0u;
             size_t hiddenBrushes = 0u;
+            size_t hiddenPatches = 0u;
 
             const auto& editorContext = document->editorContext();
             document->world()->accept(kdl::overload(
@@ -585,7 +602,12 @@ namespace TrenchBroom {
                     if (!editorContext.visible(brush)) {
                         ++hiddenBrushes;
                     }
-                 }
+                },
+                [&](const Model::PatchNode* patch) {
+                    if (!editorContext.visible(patch)) {
+                        ++hiddenPatches;
+                    }
+                }
             ));
 
             // print hidden objects
@@ -601,6 +623,9 @@ namespace TrenchBroom {
                 if (hiddenBrushes > 0) {
                     hiddenDescriptors.push_back(numberWithSuffix(hiddenBrushes, "brush", "brushes"));
                 }
+                if (hiddenPatches > 0) {
+                    hiddenDescriptors.push_back(numberWithSuffix(hiddenPatches, "patch", "patches"));
+                }
 
                 pipeSeparatedSections << QObject::tr("%1 hidden")
                         .arg(QString::fromStdString(kdl::str_join(hiddenDescriptors, ", ", ", and ", " and ")));
@@ -613,56 +638,30 @@ namespace TrenchBroom {
             m_statusBarLabel->setText(QString(describeSelection(m_document.get())));
         }
 
-        void MapFrame::bindObservers() {
+        void MapFrame::connectObservers() {
             PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.addObserver(this, &MapFrame::preferenceDidChange);
+            m_notifierConnection += prefs.preferenceDidChangeNotifier.connect(this, &MapFrame::preferenceDidChange);
 
-            m_document->documentWasClearedNotifier.addObserver(this, &MapFrame::documentWasCleared);
-            m_document->documentWasNewedNotifier.addObserver(this, &MapFrame::documentDidChange);
-            m_document->documentWasLoadedNotifier.addObserver(this, &MapFrame::documentDidChange);
-            m_document->documentWasSavedNotifier.addObserver(this, &MapFrame::documentDidChange);
-            m_document->documentModificationStateDidChangeNotifier.addObserver(this, &MapFrame::documentModificationStateDidChange);
-            m_document->transactionDoneNotifier.addObserver(this, &MapFrame::transactionDone);
-            m_document->transactionUndoneNotifier.addObserver(this, &MapFrame::transactionUndone);
-            m_document->selectionDidChangeNotifier.addObserver(this, &MapFrame::selectionDidChange);
-            m_document->currentLayerDidChangeNotifier.addObserver(this, &MapFrame::currentLayerDidChange);
-            m_document->groupWasOpenedNotifier.addObserver(this, &MapFrame::groupWasOpened);
-            m_document->groupWasClosedNotifier.addObserver(this, &MapFrame::groupWasClosed);
-            m_document->nodeVisibilityDidChangeNotifier.addObserver(this, &MapFrame::nodeVisibilityDidChange);
-            m_document->editorContextDidChangeNotifier.addObserver(this, &MapFrame::editorContextDidChange);
+            m_notifierConnection += m_document->documentWasClearedNotifier.connect(this, &MapFrame::documentWasCleared);
+            m_notifierConnection += m_document->documentWasNewedNotifier.connect(this, &MapFrame::documentDidChange);
+            m_notifierConnection += m_document->documentWasLoadedNotifier.connect(this, &MapFrame::documentDidChange);
+            m_notifierConnection += m_document->documentWasSavedNotifier.connect(this, &MapFrame::documentDidChange);
+            m_notifierConnection += m_document->documentModificationStateDidChangeNotifier.connect(this, &MapFrame::documentModificationStateDidChange);
+            m_notifierConnection += m_document->transactionDoneNotifier.connect(this, &MapFrame::transactionDone);
+            m_notifierConnection += m_document->transactionUndoneNotifier.connect(this, &MapFrame::transactionUndone);
+            m_notifierConnection += m_document->selectionDidChangeNotifier.connect(this, &MapFrame::selectionDidChange);
+            m_notifierConnection += m_document->currentLayerDidChangeNotifier.connect(this, &MapFrame::currentLayerDidChange);
+            m_notifierConnection += m_document->groupWasOpenedNotifier.connect(this, &MapFrame::groupWasOpened);
+            m_notifierConnection += m_document->groupWasClosedNotifier.connect(this, &MapFrame::groupWasClosed);
+            m_notifierConnection += m_document->nodeVisibilityDidChangeNotifier.connect(this, &MapFrame::nodeVisibilityDidChange);
+            m_notifierConnection += m_document->editorContextDidChangeNotifier.connect(this, &MapFrame::editorContextDidChange);
 
             Grid& grid = m_document->grid();
-            grid.gridDidChangeNotifier.addObserver(this, &MapFrame::gridDidChange);
+            m_notifierConnection += grid.gridDidChangeNotifier.connect(this, &MapFrame::gridDidChange);
 
-            m_mapView->mapViewToolBox()->toolActivatedNotifier.addObserver(this, &MapFrame::toolActivated);
-            m_mapView->mapViewToolBox()->toolDeactivatedNotifier.addObserver(this, &MapFrame::toolDeactivated);
-            m_mapView->mapViewToolBox()->toolHandleSelectionChangedNotifier.addObserver(this, &MapFrame::toolHandleSelectionChanged);
-        }
-
-        void MapFrame::unbindObservers() {
-            PreferenceManager& prefs = PreferenceManager::instance();
-            assertResult(prefs.preferenceDidChangeNotifier.removeObserver(this, &MapFrame::preferenceDidChange))
-
-            m_document->documentWasClearedNotifier.removeObserver(this, &MapFrame::documentWasCleared);
-            m_document->documentWasNewedNotifier.removeObserver(this, &MapFrame::documentDidChange);
-            m_document->documentWasLoadedNotifier.removeObserver(this, &MapFrame::documentDidChange);
-            m_document->documentWasSavedNotifier.removeObserver(this, &MapFrame::documentDidChange);
-            m_document->documentModificationStateDidChangeNotifier.removeObserver(this, &MapFrame::documentModificationStateDidChange);
-            m_document->transactionDoneNotifier.removeObserver(this, &MapFrame::transactionDone);
-            m_document->transactionUndoneNotifier.removeObserver(this, &MapFrame::transactionUndone);
-            m_document->selectionDidChangeNotifier.removeObserver(this, &MapFrame::selectionDidChange);
-            m_document->currentLayerDidChangeNotifier.removeObserver(this, &MapFrame::currentLayerDidChange);
-            m_document->groupWasOpenedNotifier.removeObserver(this, &MapFrame::groupWasOpened);
-            m_document->groupWasClosedNotifier.removeObserver(this, &MapFrame::groupWasClosed);
-            m_document->nodeVisibilityDidChangeNotifier.removeObserver(this, &MapFrame::nodeVisibilityDidChange);
-            m_document->editorContextDidChangeNotifier.removeObserver(this, &MapFrame::editorContextDidChange);
-
-            Grid& grid = m_document->grid();
-            grid.gridDidChangeNotifier.removeObserver(this, &MapFrame::gridDidChange);
-
-            m_mapView->mapViewToolBox()->toolActivatedNotifier.removeObserver(this, &MapFrame::toolActivated);
-            m_mapView->mapViewToolBox()->toolDeactivatedNotifier.removeObserver(this, &MapFrame::toolDeactivated);
-            m_mapView->mapViewToolBox()->toolHandleSelectionChangedNotifier.removeObserver(this, &MapFrame::toolHandleSelectionChanged);
+            m_notifierConnection += m_mapView->mapViewToolBox().toolActivatedNotifier.connect(this, &MapFrame::toolActivated);
+            m_notifierConnection += m_mapView->mapViewToolBox().toolDeactivatedNotifier.connect(this, &MapFrame::toolDeactivated);
+            m_notifierConnection += m_mapView->mapViewToolBox().toolHandleSelectionChangedNotifier.connect(this, &MapFrame::toolHandleSelectionChanged);
         }
 
         void MapFrame::documentWasCleared(View::MapDocument*) {
@@ -712,15 +711,15 @@ namespace TrenchBroom {
             updateToolBarWidgets();
         }
 
-        void MapFrame::toolActivated(Tool*) {
+        void MapFrame::toolActivated(Tool&) {
             updateActionState();
         }
 
-        void MapFrame::toolDeactivated(Tool*) {
+        void MapFrame::toolDeactivated(Tool&) {
             updateActionState();
         }
 
-        void MapFrame::toolHandleSelectionChanged(Tool*) {
+        void MapFrame::toolHandleSelectionChanged(Tool&) {
             updateActionState();
         }
 
@@ -765,7 +764,7 @@ namespace TrenchBroom {
         }
 
         bool MapFrame::newDocument(std::shared_ptr<Model::Game> game, const Model::MapFormat mapFormat) {
-            if (!confirmOrDiscardChanges()) {
+            if (!confirmOrDiscardChanges() || !closeCompileDialog()) {
                 return false;
             }
             m_document->newDocument(mapFormat, MapDocument::DefaultWorldBounds, game);
@@ -773,7 +772,7 @@ namespace TrenchBroom {
         }
 
         bool MapFrame::openDocument(std::shared_ptr<Model::Game> game, const Model::MapFormat mapFormat, const IO::Path& path) {
-            if (!confirmOrDiscardChanges()) {
+            if (!confirmOrDiscardChanges() || !closeCompileDialog()) {
                 return false;
             }
             const auto startTime = std::chrono::high_resolution_clock::now();
@@ -1157,13 +1156,13 @@ namespace TrenchBroom {
         void MapFrame::deleteSelection() {
             if (canDeleteSelection()) {
                 if (m_mapView->clipToolActive())
-                    m_mapView->clipTool()->removeLastPoint();
+                    m_mapView->clipTool().removeLastPoint();
                 else if (m_mapView->vertexToolActive())
-                    m_mapView->vertexTool()->removeSelection();
+                    m_mapView->vertexTool().removeSelection();
                 else if (m_mapView->edgeToolActive())
-                    m_mapView->edgeTool()->removeSelection();
+                    m_mapView->edgeTool().removeSelection();
                 else if (m_mapView->faceToolActive())
-                    m_mapView->faceTool()->removeSelection();
+                    m_mapView->faceTool().removeSelection();
                 else if (!m_mapView->anyToolActive())
                     m_document->deleteObjects();
             }
@@ -1171,13 +1170,13 @@ namespace TrenchBroom {
 
         bool MapFrame::canDeleteSelection() const {
             if (m_mapView->clipToolActive()) {
-                return m_mapView->clipTool()->canRemoveLastPoint();
+                return m_mapView->clipTool().canRemoveLastPoint();
             } else if (m_mapView->vertexToolActive()) {
-                return m_mapView->vertexTool()->canRemoveSelection();
+                return m_mapView->vertexTool().canRemoveSelection();
             } else if (m_mapView->edgeToolActive()) {
-                return m_mapView->edgeTool()->canRemoveSelection();
+                return m_mapView->edgeTool().canRemoveSelection();
             } else if (m_mapView->faceToolActive()) {
-                return m_mapView->faceTool()->canRemoveSelection();
+                return m_mapView->faceTool().canRemoveSelection();
             } else {
                 return canCutSelection();
             }
@@ -1292,7 +1291,7 @@ namespace TrenchBroom {
         }
 
         bool MapFrame::canUngroupSelectedObjects() const {
-            return m_document->selectedNodes().hasOnlyGroups() && !m_mapView->anyToolActive();
+            return m_document->selectedNodes().hasGroups() && !m_mapView->anyToolActive();
         }
 
         void MapFrame::renameSelectedGroups() {
@@ -1440,12 +1439,12 @@ namespace TrenchBroom {
 
         void MapFrame::csgConvexMerge() {
             if (canDoCsgConvexMerge()) {
-                if (m_mapView->vertexToolActive() && m_mapView->vertexTool()->canDoCsgConvexMerge()) {
-                    m_mapView->vertexTool()->csgConvexMerge();
-                } else if (m_mapView->edgeToolActive() && m_mapView->edgeTool()->canDoCsgConvexMerge()) {
-                    m_mapView->edgeTool()->csgConvexMerge();
-                } else if (m_mapView->faceToolActive() && m_mapView->faceTool()->canDoCsgConvexMerge()) {
-                    m_mapView->faceTool()->csgConvexMerge();
+                if (m_mapView->vertexToolActive() && m_mapView->vertexTool().canDoCsgConvexMerge()) {
+                    m_mapView->vertexTool().csgConvexMerge();
+                } else if (m_mapView->edgeToolActive() && m_mapView->edgeTool().canDoCsgConvexMerge()) {
+                    m_mapView->edgeTool().csgConvexMerge();
+                } else if (m_mapView->faceToolActive() && m_mapView->faceTool().canDoCsgConvexMerge()) {
+                    m_mapView->faceTool().csgConvexMerge();
                 } else {
                     m_document->csgConvexMerge();
                 }
@@ -1455,9 +1454,9 @@ namespace TrenchBroom {
         bool MapFrame::canDoCsgConvexMerge() const {
             return (m_document->hasSelectedBrushFaces() && m_document->selectedBrushFaces().size() > 1) ||
                    (m_document->selectedNodes().hasOnlyBrushes() && m_document->selectedNodes().brushCount() > 1) ||
-                   (m_mapView->vertexToolActive() && m_mapView->vertexTool()->canDoCsgConvexMerge()) ||
-                   (m_mapView->edgeToolActive() && m_mapView->edgeTool()->canDoCsgConvexMerge()) ||
-                   (m_mapView->faceToolActive() && m_mapView->faceTool()->canDoCsgConvexMerge());
+                   (m_mapView->vertexToolActive() && m_mapView->vertexTool().canDoCsgConvexMerge()) ||
+                   (m_mapView->edgeToolActive() && m_mapView->edgeTool().canDoCsgConvexMerge()) ||
+                   (m_mapView->faceToolActive() && m_mapView->faceTool().canDoCsgConvexMerge());
         }
 
         void MapFrame::csgSubtract() {
@@ -1654,6 +1653,19 @@ namespace TrenchBroom {
             showModelessDialog(m_compilationDialog);
         }
 
+        bool MapFrame::closeCompileDialog() {
+            if (!m_compilationDialog) {
+                return true;
+            }
+
+            if (m_compilationDialog->close()) {
+                m_compilationDialog = nullptr;
+                return true;
+            }
+
+            return false;
+        }
+
         void MapFrame::showLaunchEngineDialog() {
             LaunchGameEngineDialog dialog(m_document, this);
             dialog.exec();
@@ -1808,7 +1820,7 @@ namespace TrenchBroom {
         }
 
         void MapFrame::closeEvent(QCloseEvent* event) {
-            if (m_compilationDialog != nullptr && !m_compilationDialog->close()) {
+            if (!closeCompileDialog()) {
                 event->ignore();
             } else {
                 ensure(m_frameManager != nullptr, "frameManager is null");

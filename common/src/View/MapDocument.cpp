@@ -38,6 +38,7 @@
 #include "IO/GameConfigParser.h"
 #include "IO/SimpleParserStatus.h"
 #include "IO/SystemPaths.h"
+#include "Model/BezierPatch.h"
 #include "Model/Brush.h"
 #include "Model/BrushError.h"
 #include "Model/BrushFace.h"
@@ -70,6 +71,7 @@
 #include "Model/Node.h"
 #include "Model/NodeContents.h"
 #include "Model/NonIntegerVerticesIssueGenerator.h"
+#include "Model/PatchNode.h"
 #include "Model/PropertyKeyWithDoubleQuotationMarksIssueGenerator.h"
 #include "Model/PropertyValueWithDoubleQuotationMarksIssueGenerator.h"
 #include "Model/WorldBoundsIssueGenerator.h"
@@ -103,6 +105,7 @@
 #include <kdl/map_utils.h>
 #include <kdl/memory_utils.h>
 #include <kdl/overload.h>
+#include <kdl/parallel.h>
 #include <kdl/string_format.h>
 #include <kdl/result.h>
 #include <kdl/result_for_each.h>
@@ -118,6 +121,7 @@
 #include <cassert>
 #include <cstdlib> // for std::abs
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -158,6 +162,9 @@ namespace TrenchBroom {
                 },
                 [&](Model::BrushNode* brushNode) {
                     addGroupNode(brushNode->containingGroup());
+                },
+                [&](Model::PatchNode* patchNode) {
+                    addGroupNode(patchNode->containingGroup());
                 }
             ));
 
@@ -177,9 +184,10 @@ namespace TrenchBroom {
         /**
          * Applies the given lambda to a copy of the contents of each of the given nodes and returns a vector of pairs of the original node and the modified contents.
          *
-         * The lambda L needs two overloads:
+         * The lambda L needs three overloads:
          * - bool operator()(Model::Entity&);
          * - bool operator()(Model::Brush&);
+         * - bool operator()(Model::BezierPatch&);
          *
          * The given node contents should be modified in place and the lambda should return true if it was applied successfully and false otherwise.
          *
@@ -187,7 +195,7 @@ namespace TrenchBroom {
          */        
         template <typename N, typename L>
         static std::optional<std::vector<std::pair<Model::Node*, Model::NodeContents>>> applyToNodeContents(const std::vector<N*>& nodes, L lambda) {
-            using NodeContentType = std::variant<Model::Layer, Model::Group, Model::Entity, Model::Brush>;
+            using NodeContentType = std::variant<Model::Layer, Model::Group, Model::Entity, Model::Brush, Model::BezierPatch>;
 
             auto newNodes = std::vector<std::pair<Model::Node*, Model::NodeContents>>{};
             newNodes.reserve(nodes.size());
@@ -199,7 +207,8 @@ namespace TrenchBroom {
                     [](const Model::LayerNode* layerNode)   -> NodeContentType { return layerNode->layer(); },
                     [](const Model::GroupNode* groupNode)   -> NodeContentType { return groupNode->group(); },
                     [](const Model::EntityNode* entityNode) -> NodeContentType { return entityNode->entity(); },
-                    [](const Model::BrushNode* brushNode)   -> NodeContentType { return brushNode->brush(); }
+                    [](const Model::BrushNode* brushNode)   -> NodeContentType { return brushNode->brush(); },
+                    [](const Model::PatchNode* patchNode)   -> NodeContentType { return patchNode->patch(); }
                 ));
 
                 success = success && std::visit(lambda, nodeContents);
@@ -212,9 +221,10 @@ namespace TrenchBroom {
         /**
          * Applies the given lambda to a copy of the contents of each of the given nodes and swaps the node contents if the given lambda succeeds for all node contents.
          *
-         * The lambda L needs two overloads:
+         * The lambda L needs three overloads:
          * - bool operator()(Model::Entity&);
          * - bool operator()(Model::Brush&);
+         * - bool operator()(Model::BezierPatch&);
          *
          * The given node contents should be modified in place and the lambda should return true if it was applied successfully and false otherwise.
          *
@@ -315,12 +325,10 @@ namespace TrenchBroom {
         m_selectionBoundsValid(true),
         m_viewEffectsService(nullptr),
         m_repeatStack(std::make_unique<RepeatStack>()) {
-            bindObservers();
+            connectObservers();
         }
 
         MapDocument::~MapDocument() {
-            unbindObservers();
-
             if (isPointFileLoaded()) {
                 unloadPointFile();
             }
@@ -594,7 +602,8 @@ namespace TrenchBroom {
                     groupNode->visitChildren(thisLambda);
                 },
                 [] (const Model::EntityNode*) {},
-                [] (const Model::BrushNode*) {}
+                [] (const Model::BrushNode*) {},
+                [] (const Model::PatchNode*) {}
             ));
             return result;
         }
@@ -633,6 +642,10 @@ namespace TrenchBroom {
                     [&](Model::BrushNode* brush) {
                         nodesToDetach.push_back(brush);
                         nodesToAdd[parent].push_back(brush);
+                    },
+                    [&](Model::PatchNode* patch) {
+                        nodesToDetach.push_back(patch);
+                        nodesToAdd[parent].push_back(patch);
                     }
                 ));
             }
@@ -666,7 +679,8 @@ namespace TrenchBroom {
                             groupNode->visitChildren(thisLambda);
                         },
                         [] (Model::EntityNode*) {},
-                        [] (Model::BrushNode*) {}
+                        [] (Model::BrushNode*) {},
+                        [] (Model::PatchNode*) {}
                     ));
                 }
             }
@@ -798,17 +812,19 @@ namespace TrenchBroom {
             }
 
             std::vector<Model::EntityNodeBase*> nodes;
+            const auto addEntity = [&](auto* entity) {
+                ensure(entity != nullptr, "entity is null");
+                nodes.push_back(entity);
+            };
+
             for (auto* node : m_selectedNodes) {
                 node->accept(kdl::overload(
                     [&](auto&& thisLambda, Model::WorldNode* world) { nodes.push_back(world); world->visitChildren(thisLambda); },
                     [&](auto&& thisLambda, Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
                     [&](auto&& thisLambda, Model::GroupNode* group) { group->visitChildren(thisLambda); },
-                    [&](Model::EntityNode* entity)                  { nodes.push_back(entity); },
-                    [&](Model::BrushNode* brush) {
-                        auto* entity = brush->entity();
-                        ensure(entity != nullptr, "entity is null");
-                        nodes.push_back(entity);
-                    }
+                    [&](Model::EntityNode* entity)                  { addEntity(entity); },
+                    [&](Model::BrushNode* brush)                    { addEntity(brush->entity()); },
+                    [&](Model::PatchNode* patch)                    { addEntity(patch->entity()); }
                 ));
             }
 
@@ -926,7 +942,8 @@ namespace TrenchBroom {
                 [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::GroupNode* group)   { collectNode(group); group->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::EntityNode* entity) { collectNode(entity); entity->visitChildren(thisLambda); },
-                [&](Model::BrushNode* brush)                      { collectNode(brush); }
+                [&](Model::BrushNode* brush)                      { collectNode(brush); },
+                [&](Model::PatchNode* patch)                      { collectNode(patch); }
             ));
 
             Transaction transaction(this, "Select Inverse");
@@ -1073,7 +1090,19 @@ namespace TrenchBroom {
             m_selectedBrushFaces.clear();
         }
 
+        /**
+         * Takes a { parent, children } map and adds the children to the given parents.
+         * The world node tree takes ownership of the children, unless the transaction fails.
+         *
+         * @param nodes the nodes to add and the parents to add them to
+         * @return the added nodes
+         */
         std::vector<Model::Node*> MapDocument::addNodes(const std::map<Model::Node*, std::vector<Model::Node*>>& nodes) {
+            for (const auto& [parent, children] : nodes) {
+                assert(parent == m_world.get() || parent->isDescendantOf(m_world.get()));
+                unused(parent);
+            }
+
             Transaction transaction(this, "Add Objects");
             const auto result = executeAndStore(AddRemoveNodesCommand::add(nodes, findAllLinkedGroupsToUpdate(*m_world, kdl::map_keys(nodes))));
             if (!result->success()) {
@@ -1099,13 +1128,19 @@ namespace TrenchBroom {
                         groupNode->visitChildren(thisLambda);
                     },
                     [] (const Model::EntityNode*) {},
-                    [] (const Model::BrushNode*)  {}
+                    [] (const Model::BrushNode*)  {},
+                    [] (const Model::PatchNode*)  {}
                 ));
             }
 
             return kdl::vec_sort_and_remove_duplicates(std::move(linkedGroupIds));
         }
 
+        /**
+         * Removes the given nodes. If this causes any groups/entities to become empty, removes them as well.
+         * 
+         * Ownership of the removed nodes is transferred to the undo system.
+         */
         void MapDocument::removeNodes(const std::vector<Model::Node*>& nodes) {
             std::map<Model::Node*, std::vector<Model::Node*>> removableNodes = parentChildrenMap(removeImplicitelyRemovedNodes(nodes));
             auto linkedGroupIdsOfRemovedGroups = std::vector<std::string>{};
@@ -1132,7 +1167,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)       { return true; },
                 [&](Model::Group& group) { group.resetLinkedGroupId(); return true; },
                 [] (Model::Entity&)      { return true; },
-                [] (Model::Brush&)       { return true; }
+                [] (Model::Brush&)       { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -1253,7 +1289,8 @@ namespace TrenchBroom {
                 [] (const Model::LayerNode*)  { return false; },
                 [] (const Model::GroupNode*)  { return false; },
                 [&](const Model::EntityNode*) { return true; },
-                [] (const Model::BrushNode*)  { return false; }
+                [] (const Model::BrushNode*)  { return false; },
+                [] (const Model::PatchNode*)  { return false; }
             ));
         }
 
@@ -1361,11 +1398,36 @@ namespace TrenchBroom {
             return entityNode;
         }
 
+        static std::vector<Model::Node*> collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes, const Model::EntityNodeBase* world) {
+            std::vector<Model::Node*> result;
+            const auto addNode = [&](auto&& thisLambda, auto* node) {
+                if (node->entity() == world) {
+                    result.push_back(node);
+                } else {
+                    node->visitParent(thisLambda);
+                }
+            };
+
+            Model::Node::visitAll(selectedNodes, kdl::overload(
+                [] (Model::WorldNode*)         {},
+                [] (Model::LayerNode*)         {},
+                [&](Model::GroupNode* group)   { result.push_back(group); },
+                [&](Model::EntityNode* entity) { result.push_back(entity); },
+                [&](auto&& thisLambda, Model::BrushNode* brush) {
+                    addNode(thisLambda, brush);
+                },
+                [&](auto&& thisLambda, Model::PatchNode* patch) {
+                    addNode(thisLambda, patch);
+                }
+            ));
+            return kdl::vec_sort_and_remove_duplicates(std::move(result));
+        }
+
         Model::GroupNode* MapDocument::groupSelection(const std::string& name) {
             if (!hasSelectedNodes())
                 return nullptr;
 
-            const std::vector<Model::Node*> nodes = collectGroupableNodes(selectedNodes().nodes());
+            const std::vector<Model::Node*> nodes = collectGroupableNodes(selectedNodes().nodes(), world());
             if (nodes.empty())
                 return nullptr;
 
@@ -1398,44 +1460,33 @@ namespace TrenchBroom {
             select(group);
         }
 
-        std::vector<Model::Node*> MapDocument::collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes) const {
-            std::vector<Model::Node*> result;
-            Model::Node::visitAll(selectedNodes, kdl::overload(
-                [] (Model::WorldNode*)         {},
-                [] (Model::LayerNode*)         {},
-                [&](Model::GroupNode* group)   { result.push_back(group); },
-                [&](Model::EntityNode* entity) { result.push_back(entity); },
-                [&](auto&& thisLambda, Model::BrushNode* brush) {
-                    if (brush->entity() == world()) {
-                        result.push_back(brush);
-                    } else {
-                        brush->visitParent(thisLambda);
-                    }
-                }
-            ));
-            return kdl::vec_sort_and_remove_duplicates(std::move(result));
-        }
-
         void MapDocument::ungroupSelection() {
-            if (!hasSelectedNodes() || !m_selectedNodes.hasOnlyGroups())
+            if (!hasSelectedNodes())
                 return;
 
             const Transaction transaction(this, "Ungroup");
             separateSelectedLinkedGroups(false);
 
-            const std::vector<Model::GroupNode*> groups = m_selectedNodes.groups();
-            std::vector<Model::Node*> allChildren;
+            const std::vector<Model::Node*> selectedNodes = m_selectedNodes.nodes();
+            std::vector<Model::Node*> nodesToReselect;
 
             deselectAll();
 
-            for (Model::GroupNode* group : groups) {
-                Model::Node* parent = group->parent();
-                const std::vector<Model::Node*> children = group->children();
-                reparentNodes({{parent, children}});
-                allChildren = kdl::vec_concat(std::move(allChildren), children);
-            }
+            Model::Node::visitAll(selectedNodes, kdl::overload(
+                [] (Model::WorldNode*)         {},
+                [] (Model::LayerNode*)         {},
+                [&](Model::GroupNode* group)   {
+                    Model::Node* parent = group->parent();
+                    const std::vector<Model::Node*> children = group->children();
+                    reparentNodes({{parent, children}});
+                    nodesToReselect = kdl::vec_concat(std::move(nodesToReselect), children);
+                },
+                [&](Model::EntityNode* entity) { nodesToReselect.push_back(entity); },
+                [&](Model::BrushNode* brush) { nodesToReselect.push_back(brush); },
+                [&](Model::PatchNode* patch) { nodesToReselect.push_back(patch); }
+            ));
 
-            select(allChildren);
+            select(nodesToReselect);
         }
 
         void MapDocument::renameGroups(const std::string& name) {
@@ -1447,7 +1498,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)       { return true; },
                 [&](Model::Group& group) { group.setName(name); return true; },
                 [] (Model::Entity&)      { return true; },
-                [] (Model::Brush&)       { return true; }
+                [] (Model::Brush&)       { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -1493,7 +1545,8 @@ namespace TrenchBroom {
                     [] (Model::Layer&)       { return true; },
                     [&](Model::Group& group) { group.setLinkedGroupId(generateUuid()); return true; },
                     [] (Model::Entity&)      { return true; },
-                    [] (Model::Brush&)       { return true; }
+                    [] (Model::Brush&)       { return true; },
+                    [] (Model::BezierPatch&) { return true; }
                 ));
             }
 
@@ -1552,7 +1605,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)       { return true; },
                 [&](Model::Group& group) { group.setLinkedGroupId(newLinkedGroupId); return true; },
                 [] (Model::Entity&)      { return true; },
-                [] (Model::Brush&)       { return true; }
+                [] (Model::Brush&)       { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -1561,7 +1615,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)       { return true; },
                 [&](Model::Group& group) { group.resetLinkedGroupId(); return true; },
                 [] (Model::Entity&)      { return true; },
-                [] (Model::Brush&)       { return true; }
+                [] (Model::Brush&)       { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -1632,7 +1687,8 @@ namespace TrenchBroom {
                 [&](Model::Layer& layer) { layer.setName(name); return true; },
                 [] (Model::Group&)       { return true; },
                 [] (Model::Entity&)      { return true; },
-                [] (Model::Brush&)       { return true; }
+                [] (Model::Brush&)       { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -1707,6 +1763,23 @@ namespace TrenchBroom {
             auto nodesToMove = std::vector<Model::Node*>{};
             auto nodesToSelect = std::vector<Model::Node*>{};
 
+            const auto addBrushOrPatchNode = [&](auto* node) {
+                assert(node->selected());
+
+                if (!node->containedInGroup()) {
+                    auto* entity = node->entity();
+                    if (entity == m_world.get()) {
+                        nodesToMove.push_back(node);
+                        nodesToSelect.push_back(node);
+                    } else {
+                        if (!kdl::vec_contains(nodesToMove, entity)) {
+                            nodesToMove.push_back(entity);
+                            nodesToSelect = kdl::vec_concat(std::move(nodesToSelect), entity->children());
+                        }
+                    }
+                }
+            };
+
             for (auto* node : selectedNodes) {
                 node->accept(kdl::overload(
                     [] (Model::WorldNode*) {},
@@ -1721,26 +1794,17 @@ namespace TrenchBroom {
                     },
                     [&](Model::EntityNode* entity) {
                         assert(entity->selected());
+
                         if (!entity->containedInGroup()) {
                             nodesToMove.push_back(entity);
                             nodesToSelect.push_back(entity);
                         }
                     },
                     [&](Model::BrushNode* brush) {
-                        assert(brush->selected());
-
-                        if (!brush->containedInGroup()) {
-                            auto* entity = brush->entity();
-                            if (entity == m_world.get()) {
-                                nodesToMove.push_back(brush);
-                                nodesToSelect.push_back(brush);
-                            } else {
-                                if (!kdl::vec_contains(nodesToMove, entity)) {
-                                    nodesToMove.push_back(entity);
-                                    nodesToSelect = kdl::vec_concat(std::move(nodesToSelect), entity->children());
-                                }
-                            }
-                        }
+                        addBrushOrPatchNode(brush);
+                    },
+                    [&](Model::PatchNode* patch) {
+                        addBrushOrPatchNode(patch);
                     }
                 ));
             }
@@ -1818,7 +1882,8 @@ namespace TrenchBroom {
                 [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::GroupNode* group)   { collectNode(group); group->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::EntityNode* entity) { collectNode(entity); entity->visitChildren(thisLambda); },
-                [&](Model::BrushNode* brush) { collectNode(brush); }
+                [&](Model::BrushNode* brush) { collectNode(brush); },
+                [&](Model::PatchNode* patch) { collectNode(patch); }
             ));
 
             Transaction transaction(this, "Isolate Objects");
@@ -1917,7 +1982,7 @@ namespace TrenchBroom {
         void MapDocument::downgradeShownToInherit(const std::vector<Model::Node*>& nodes) {
             std::vector<Model::Node*> nodesToReset;
             for (auto* node : nodes) {
-                if (node->visibilityState() == Model::VisibilityState::Visibility_Shown) {
+                if (node->visibilityState() == Model::VisibilityState::Shown) {
                     nodesToReset.push_back(node);
                 }
             }
@@ -1930,7 +1995,7 @@ namespace TrenchBroom {
         void MapDocument::downgradeUnlockedToInherit(const std::vector<Model::Node*>& nodes) {
             std::vector<Model::Node*> nodesToReset;
             for (auto* node : nodes) {
-                if (node->lockState() == Model::LockState::Lock_Unlocked) {
+                if (node->lockState() == Model::LockState::Unlocked) {
                     nodesToReset.push_back(node);
                 }
             }
@@ -1939,6 +2004,13 @@ namespace TrenchBroom {
 
         bool MapDocument::swapNodeContents(const std::string& commandName, std::vector<std::pair<Model::Node*, Model::NodeContents>> nodesToSwap, std::vector<std::pair<const Model::GroupNode*, std::vector<Model::GroupNode*>>> linkedGroupsToUpdate) {
             return executeAndStore(std::make_unique<SwapNodeContentsCommand>(commandName, std::move(nodesToSwap), std::move(linkedGroupsToUpdate)))->success();
+        }
+
+        bool MapDocument::swapNodeContents(const std::string& commandName, std::vector<std::pair<Model::Node*, Model::NodeContents>> nodesToSwap) {
+            auto linkedGroupsToUpdate = findContainingLinkedGroupsToUpdate(*m_world, 
+                                                                           kdl::vec_transform(nodesToSwap, [](const auto& p) { return p.first; }));
+
+            return swapNodeContents(commandName, std::move(nodesToSwap), std::move(linkedGroupsToUpdate));
         }
 
         bool MapDocument::transformObjects(const std::string& commandName, const vm::mat4x4& transformation) {
@@ -1960,49 +2032,61 @@ namespace TrenchBroom {
                     },
                     [&](Model::BrushNode* brush) { 
                         nodesToTransform.push_back(brush);
-                     }
+                    },
+                    [&](Model::PatchNode* patch) { 
+                        nodesToTransform.push_back(patch);
+                    }
                 ));
             }
 
-            auto nodesToUpdate = std::vector<std::pair<Model::Node*, Model::NodeContents>>{};
-            nodesToUpdate.reserve(nodesToTransform.size());
-            for (auto* node : nodesToTransform) {
-                bool success = true;
+            using TransformResult = kdl::result<std::pair<Model::Node*, Model::NodeContents>, Model::BrushError>;
 
-                node->accept(kdl::overload(
-                    [&](Model::WorldNode*) {},
-                    [&](Model::LayerNode*) {},
-                    [&](Model::GroupNode* groupNode) {
+            const bool lockTexturesPref = pref(Preferences::TextureLock);
+            const auto transformResults = kdl::vec_parallel_transform(nodesToTransform, [&](Model::Node* node) -> TransformResult {
+                return node->accept(kdl::overload(
+                    [&](Model::WorldNode*) -> TransformResult { ensure(false, "Unexpected world node"); },
+                    [&](Model::LayerNode*) -> TransformResult { ensure(false, "Unexpected layer node"); },
+                    [&](Model::GroupNode* groupNode) -> TransformResult {
                         auto group = groupNode->group();
                         group.transform(transformation);
-                        nodesToUpdate.emplace_back(groupNode, group);
+                        return std::make_pair(groupNode, Model::NodeContents{std::move(group)});
                     },
-                    [&](Model::EntityNode* entityNode) {
+                    [&](Model::EntityNode* entityNode) -> TransformResult {
                         auto entity = entityNode->entity();
                         entity.transform(transformation);
-                        nodesToUpdate.emplace_back(entityNode, entity);
+                        return std::make_pair(entityNode, Model::NodeContents{std::move(entity)});
                     },
-                    [&](Model::BrushNode* brushNode) {
-                        const bool lockTextures = pref(Preferences::TextureLock)
+                    [&](Model::BrushNode* brushNode) -> TransformResult {
+                        const bool lockTextures = lockTexturesPref
                             || (Model::findContainingLinkedGroup(*brushNode) != nullptr);
 
                         auto brush = brushNode->brush();
-                        brush.transform(m_worldBounds, transformation, lockTextures)
-                            .and_then([&](){
-                                nodesToUpdate.emplace_back(brushNode, brush);
-                            }).handle_errors([&](const Model::BrushError e) {
-                                error() << "Could not transform brush: " << e;
-                                success = false;
+                        return brush.transform(m_worldBounds, transformation, lockTextures)
+                            .and_then([&]() -> TransformResult {
+                                return std::make_pair(brushNode, Model::NodeContents{std::move(brush)});
                             });
-                     }
+                    },
+                    [&](Model::PatchNode* patchNode) -> TransformResult {
+                        auto patch = patchNode->patch();
+                        patch.transform(transformation);
+                        return std::make_pair(patchNode, Model::NodeContents{std::move(patch)});
+                    }
                 ));
+            });
 
-                if (!success) {
-                    return false;
+            bool transformFailed = false;
+            const auto nodesToUpdate = kdl::collect_values(transformResults, kdl::overload(
+                [&](const Model::BrushError& e) {
+                    error() << "Could not transform brush: " << e;
+                    transformFailed = true;
                 }
+            ));
+
+            if (transformFailed) {
+                return false;
             }
 
-            const auto success = swapNodeContents(commandName, nodesToUpdate, findContainingLinkedGroupsToUpdate(*m_world, m_selectedNodes.nodes()));
+            const auto success = swapNodeContents(commandName, std::move(nodesToUpdate), findContainingLinkedGroupsToUpdate(*m_world, m_selectedNodes.nodes()));
 
             if (success) {
                 m_repeatStack->push([=]() { this->transformObjects(commandName, transformation); });
@@ -2275,7 +2359,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)         { return true; },
                 [] (Model::Group&)         { return true; },
                 [&](Model::Entity& entity) { entity.addOrUpdateProperty(key, value, defaultToProtected); return true; },
-                [] (Model::Brush&)         { return true; }
+                [] (Model::Brush&)         { return true; },
+                [] (Model::BezierPatch&)   { return true; }
             ));
         }
 
@@ -2285,7 +2370,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)         { return true; },
                 [] (Model::Group&)         { return true; },
                 [&](Model::Entity& entity) { entity.renameProperty(oldKey, newKey); return true; },
-                [] (Model::Brush&)         { return true; }
+                [] (Model::Brush&)         { return true; },
+                [] (Model::BezierPatch&)   { return true; }
             ));
         }
 
@@ -2295,7 +2381,8 @@ namespace TrenchBroom {
                 [] (Model::Layer&)         { return true; },
                 [] (Model::Group&)         { return true; },
                 [&](Model::Entity& entity) { entity.removeProperty(key); return true; },
-                [] (Model::Brush&)         { return true; }
+                [] (Model::Brush&)         { return true; },
+                [] (Model::BezierPatch&)   { return true; }
             ));
         }
 
@@ -2310,7 +2397,8 @@ namespace TrenchBroom {
                     }
                     return true;
                 },
-                [] (Model::Brush&) { return true; }
+                [] (Model::Brush&) { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -2329,7 +2417,8 @@ namespace TrenchBroom {
                     
                     return true;
                 },
-                [] (Model::Brush&) { return true; }
+                [] (Model::Brush&) { return true; },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -2460,7 +2549,8 @@ namespace TrenchBroom {
                                 return false;
                             }
                         ));
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
         }
 
@@ -2541,7 +2631,8 @@ namespace TrenchBroom {
                         failedBrushCount += 1;
                     }
                     return true;
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
 
             if (succeededBrushCount > 0) {
@@ -2577,7 +2668,8 @@ namespace TrenchBroom {
                         }).handle_errors([&](const Model::BrushError e) {
                             error() << "Could not move brush vertices: " << e;
                         });
-               }
+               },
+               [] (Model::BezierPatch&) { return true; }
             ));
 
             if (newNodes) {
@@ -2621,7 +2713,8 @@ namespace TrenchBroom {
                         }).handle_errors([&](const Model::BrushError e) {
                             error() << "Could not move brush edges: " << e;
                         });
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
 
             if (newNodes) {
@@ -2660,7 +2753,8 @@ namespace TrenchBroom {
                         }).handle_errors([&](const Model::BrushError e) {
                             error() << "Could not move brush faces: " << e;
                         });
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
 
             if (newNodes) {
@@ -2688,7 +2782,8 @@ namespace TrenchBroom {
                         .handle_errors([&](const Model::BrushError e) {
                             error() << "Could not add brush vertex: " << e;
                         });
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
 
             if (newNodes) {
@@ -2718,7 +2813,8 @@ namespace TrenchBroom {
                         .handle_errors([&](const Model::BrushError e) {
                             error() << "Could not remove brush vertices: " << e;
                         });
-                }
+                },
+                [] (Model::BezierPatch&) { return true; }
             ));
 
             if (newNodes) {
@@ -2852,7 +2948,7 @@ namespace TrenchBroom {
 
         void MapDocument::pick(const vm::ray3& pickRay, Model::PickResult& pickResult) const {
             if (m_world != nullptr)
-                m_world->pick(pickRay, pickResult);
+                m_world->pick(*m_editorContext, pickRay, pickResult);
         }
 
         std::vector<Model::Node*> MapDocument::findNodesContaining(const vm::vec3& point) const {
@@ -2929,19 +3025,19 @@ namespace TrenchBroom {
 
         void MapDocument::reloadTextureCollections() {
             const auto nodes = std::vector<Model::Node*>{m_world.get()};
-            Notifier<const std::vector<Model::Node*>&>::NotifyBeforeAndAfter notifyNodes(nodesWillChangeNotifier, nodesDidChangeNotifier, nodes);
-            Notifier<>::NotifyBeforeAndAfter notifyTextureCollections(textureCollectionsWillChangeNotifier, textureCollectionsDidChangeNotifier);
+            NotifyBeforeAndAfter notifyNodes(nodesWillChangeNotifier, nodesDidChangeNotifier, nodes);
+            NotifyBeforeAndAfter notifyTextureCollections(textureCollectionsWillChangeNotifier, textureCollectionsDidChangeNotifier);
 
             info("Reloading texture collections");
             reloadTextures();
             setTextures();
-            initializeNodeTags(this);
+            initializeAllNodeTags(this);
         }
 
         void MapDocument::reloadEntityDefinitions() {
             const auto nodes = std::vector<Model::Node*>{m_world.get()};
-            Notifier<const std::vector<Model::Node*>&>::NotifyBeforeAndAfter notifyNodes(nodesWillChangeNotifier, nodesDidChangeNotifier, nodes);
-            Notifier<>::NotifyBeforeAndAfter notifyEntityDefinitions(entityDefinitionsWillChangeNotifier, entityDefinitionsDidChangeNotifier);
+            NotifyBeforeAndAfter notifyNodes(nodesWillChangeNotifier, nodesDidChangeNotifier, nodes);
+            NotifyBeforeAndAfter notifyEntityDefinitions(entityDefinitionsWillChangeNotifier, entityDefinitionsDidChangeNotifier);
 
             info("Reloading entity definitions");
         }
@@ -3027,6 +3123,10 @@ namespace TrenchBroom {
                         Assets::Texture* texture = manager.texture(face.attributes().textureName());
                         brushNode->setFaceTexture(i, texture);
                     }
+                },
+                [&](Model::PatchNode* patchNode) { 
+                    auto* texture = manager.texture(patchNode->patch().textureName());
+                    patchNode->setTexture(texture);
                 }
             );
         }
@@ -3042,6 +3142,9 @@ namespace TrenchBroom {
                     for (size_t i = 0u; i < brush.faceCount(); ++i) {
                         brushNode->setFaceTexture(i, nullptr);
                     }
+                },
+                [] (Model::PatchNode* patchNode) { 
+                    patchNode->setTexture(nullptr);
                 }
             );
         }
@@ -3088,7 +3191,8 @@ namespace TrenchBroom {
                 [] (auto&& thisLambda, Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
                 [] (auto&& thisLambda, Model::GroupNode* group) { group->visitChildren(thisLambda); },
                 [=](Model::EntityNode* entity)                  { setEntityDefinition(entity); },
-                [] (Model::BrushNode*) {}
+                [] (Model::BrushNode*) {},
+                [] (Model::PatchNode*) {}
             );
         }
 
@@ -3098,7 +3202,8 @@ namespace TrenchBroom {
                 [](auto&& thisLambda, Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
                 [](auto&& thisLambda, Model::GroupNode* group) { group->visitChildren(thisLambda); },
                 [](Model::EntityNode* entity)                  { entity->setDefinition(nullptr); },
-                [](Model::BrushNode*) {}
+                [](Model::BrushNode*) {},
+                [](Model::PatchNode*) {}
             );
         }
 
@@ -3143,7 +3248,8 @@ namespace TrenchBroom {
                     const auto* frame = manager.frame(modelSpec);
                     entityNode->setModelFrame(frame);
                 },
-                [] (Model::BrushNode*) {}
+                [] (Model::BrushNode*) {},
+                [] (Model::PatchNode*) {}
             );
         }
 
@@ -3153,7 +3259,8 @@ namespace TrenchBroom {
                 [](auto&& thisLambda, Model::LayerNode* layer) { layer->visitChildren(thisLambda); },
                 [](auto&& thisLambda, Model::GroupNode* group) { group->visitChildren(thisLambda); },
                 [](Model::EntityNode* entity)                  { entity->setModelFrame(nullptr); },
-                [](Model::BrushNode*) {}
+                [](Model::BrushNode*) {},
+                [](Model::PatchNode*) {}
             );
         }
 
@@ -3305,7 +3412,8 @@ namespace TrenchBroom {
                 [&](auto&& thisLambda, Model::LayerNode* layer) { layer->initializeTags(tagManager); layer->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::GroupNode* group) { group->initializeTags(tagManager); group->visitChildren(thisLambda); },
                 [&](auto&& thisLambda, Model::EntityNode* entity) { entity->initializeTags(tagManager); entity->visitChildren(thisLambda); },
-                [&](Model::BrushNode* brush) { brush->initializeTags(tagManager); }
+                [&](Model::BrushNode* brush) { brush->initializeTags(tagManager); },
+                [&](Model::PatchNode* patch) { patch->initializeTags(tagManager); }
             );
         }
 
@@ -3315,11 +3423,12 @@ namespace TrenchBroom {
                 [](auto&& thisLambda, Model::LayerNode* layer) { layer->clearTags(); layer->visitChildren(thisLambda); },
                 [](auto&& thisLambda, Model::GroupNode* group) { group->clearTags(); group->visitChildren(thisLambda); },
                 [](auto&& thisLambda, Model::EntityNode* entity) { entity->clearTags(); entity->visitChildren(thisLambda); },
-                [](Model::BrushNode* brush) { brush->clearTags(); }
+                [](Model::BrushNode* brush) { brush->clearTags(); },
+                [](Model::PatchNode* patch) { patch->clearTags(); }
             );
         }
 
-        void MapDocument::initializeNodeTags(MapDocument* document) {
+        void MapDocument::initializeAllNodeTags(MapDocument* document) {
             assert(document == this);
             unused(document);
             m_world->accept(makeInitializeNodeTagsVisitor(*m_tagManager));
@@ -3352,7 +3461,8 @@ namespace TrenchBroom {
                 [] (auto&& thisLambda, Model::LayerNode* layer)   { layer->visitChildren(thisLambda); },
                 [] (auto&& thisLambda, Model::GroupNode* group)   { group->visitChildren(thisLambda); },
                 [] (auto&& thisLambda, Model::EntityNode* entity) { entity->visitChildren(thisLambda); },
-                [&](Model::BrushNode* brush)                      { brush->initializeTags(*m_tagManager); }
+                [&](Model::BrushNode* brush)                      { brush->initializeTags(*m_tagManager); },
+                [] (Model::PatchNode*)                            {}
             ));
         }
 
@@ -3393,62 +3503,33 @@ namespace TrenchBroom {
             documentModificationStateDidChangeNotifier();
         }
 
-        void MapDocument::bindObservers() {
-            textureCollectionsWillChangeNotifier.addObserver(this, &MapDocument::textureCollectionsWillChange);
-            textureCollectionsDidChangeNotifier.addObserver(this, &MapDocument::textureCollectionsDidChange);
+        void MapDocument::connectObservers() {
+            m_notifierConnection += textureCollectionsWillChangeNotifier.connect(this, &MapDocument::textureCollectionsWillChange);
+            m_notifierConnection += textureCollectionsDidChangeNotifier.connect(this, &MapDocument::textureCollectionsDidChange);
 
-            entityDefinitionsWillChangeNotifier.addObserver(this, &MapDocument::entityDefinitionsWillChange);
-            entityDefinitionsDidChangeNotifier.addObserver(this, &MapDocument::entityDefinitionsDidChange);
+            m_notifierConnection += entityDefinitionsWillChangeNotifier.connect(this, &MapDocument::entityDefinitionsWillChange);
+            m_notifierConnection += entityDefinitionsDidChangeNotifier.connect(this, &MapDocument::entityDefinitionsDidChange);
 
-            modsWillChangeNotifier.addObserver(this, &MapDocument::modsWillChange);
-            modsDidChangeNotifier.addObserver(this, &MapDocument::modsDidChange);
-
-            PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.addObserver(this, &MapDocument::preferenceDidChange);
-            m_editorContext->editorContextDidChangeNotifier.addObserver(editorContextDidChangeNotifier);
-            commandDoneNotifier.addObserver(this, &MapDocument::commandDone);
-            commandUndoneNotifier.addObserver(this, &MapDocument::commandUndone);
-            transactionDoneNotifier.addObserver(this, &MapDocument::transactionDone);
-            transactionUndoneNotifier.addObserver(this, &MapDocument::transactionUndone);
-
-            // tag management
-            documentWasNewedNotifier.addObserver(this, &MapDocument::initializeNodeTags);
-            documentWasLoadedNotifier.addObserver(this, &MapDocument::initializeNodeTags);
-            nodesWereAddedNotifier.addObserver(this, &MapDocument::initializeNodeTags);
-            nodesWillBeRemovedNotifier.addObserver(this, &MapDocument::clearNodeTags);
-            nodesDidChangeNotifier.addObserver(this, &MapDocument::updateNodeTags);
-            brushFacesDidChangeNotifier.addObserver(this, &MapDocument::updateFaceTags);
-            modsDidChangeNotifier.addObserver(this, &MapDocument::updateAllFaceTags);
-            textureCollectionsDidChangeNotifier.addObserver(this, &MapDocument::updateAllFaceTags);
-        }
-
-        void MapDocument::unbindObservers() {
-            textureCollectionsWillChangeNotifier.removeObserver(this, &MapDocument::textureCollectionsWillChange);
-            textureCollectionsDidChangeNotifier.removeObserver(this, &MapDocument::textureCollectionsDidChange);
-
-            entityDefinitionsWillChangeNotifier.removeObserver(this, &MapDocument::entityDefinitionsWillChange);
-            entityDefinitionsDidChangeNotifier.removeObserver(this, &MapDocument::entityDefinitionsDidChange);
-
-            modsWillChangeNotifier.removeObserver(this, &MapDocument::modsWillChange);
-            modsDidChangeNotifier.removeObserver(this, &MapDocument::modsDidChange);
+            m_notifierConnection += modsWillChangeNotifier.connect(this, &MapDocument::modsWillChange);
+            m_notifierConnection += modsDidChangeNotifier.connect(this, &MapDocument::modsDidChange);
 
             PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.removeObserver(this, &MapDocument::preferenceDidChange);
-            m_editorContext->editorContextDidChangeNotifier.removeObserver(editorContextDidChangeNotifier);
-            commandDoneNotifier.removeObserver(this, &MapDocument::commandDone);
-            commandUndoneNotifier.removeObserver(this, &MapDocument::commandUndone);
-            transactionDoneNotifier.removeObserver(this, &MapDocument::transactionDone);
-            transactionUndoneNotifier.removeObserver(this, &MapDocument::transactionUndone);
+            m_notifierConnection += prefs.preferenceDidChangeNotifier.connect(this, &MapDocument::preferenceDidChange);
+            m_notifierConnection += m_editorContext->editorContextDidChangeNotifier.connect(editorContextDidChangeNotifier);
+            m_notifierConnection += commandDoneNotifier.connect(this, &MapDocument::commandDone);
+            m_notifierConnection += commandUndoneNotifier.connect(this, &MapDocument::commandUndone);
+            m_notifierConnection += transactionDoneNotifier.connect(this, &MapDocument::transactionDone);
+            m_notifierConnection += transactionUndoneNotifier.connect(this, &MapDocument::transactionUndone);
 
             // tag management
-            documentWasNewedNotifier.removeObserver(this, &MapDocument::initializeNodeTags);
-            documentWasLoadedNotifier.removeObserver(this, &MapDocument::initializeNodeTags);
-            nodesWereAddedNotifier.removeObserver(this, &MapDocument::initializeNodeTags);
-            nodesWillBeRemovedNotifier.removeObserver(this, &MapDocument::clearNodeTags);
-            nodesDidChangeNotifier.removeObserver(this, &MapDocument::updateNodeTags);
-            brushFacesDidChangeNotifier.removeObserver(this, &MapDocument::updateFaceTags);
-            modsDidChangeNotifier.removeObserver(this, &MapDocument::updateAllFaceTags);
-            textureCollectionsDidChangeNotifier.removeObserver(this, &MapDocument::updateAllFaceTags);
+            m_notifierConnection += documentWasNewedNotifier.connect(this, &MapDocument::initializeAllNodeTags);
+            m_notifierConnection += documentWasLoadedNotifier.connect(this, &MapDocument::initializeAllNodeTags);
+            m_notifierConnection += nodesWereAddedNotifier.connect(this, &MapDocument::initializeNodeTags);
+            m_notifierConnection += nodesWillBeRemovedNotifier.connect(this, &MapDocument::clearNodeTags);
+            m_notifierConnection += nodesDidChangeNotifier.connect(this, &MapDocument::updateNodeTags);
+            m_notifierConnection += brushFacesDidChangeNotifier.connect(this, &MapDocument::updateFaceTags);
+            m_notifierConnection += modsDidChangeNotifier.connect(this, &MapDocument::updateAllFaceTags);
+            m_notifierConnection += textureCollectionsDidChangeNotifier.connect(this, &MapDocument::updateAllFaceTags);
         }
 
         void MapDocument::textureCollectionsWillChange() {

@@ -22,11 +22,13 @@
 #include "View/FaceTool.h"
 #include "View/VertexHandleManager.h"
 
+#include <memory>
+
 namespace TrenchBroom {
     namespace View {
         class FaceToolController::SelectFacePart : public SelectPartBase<vm::polygon3> {
         public:
-            explicit SelectFacePart(FaceTool* tool) :
+            explicit SelectFacePart(FaceTool& tool) :
             SelectPartBase(tool, FaceHandleManager::HandleHitType) {}
         private:
             bool equalHandles(const vm::polygon3& lhs, const vm::polygon3& rhs) const override {
@@ -36,14 +38,14 @@ namespace TrenchBroom {
 
         class FaceToolController::MoveFacePart : public MovePartBase {
         public:
-            explicit MoveFacePart(FaceTool* tool) :
+            explicit MoveFacePart(FaceTool& tool) :
             MovePartBase(tool, FaceHandleManager::HandleHitType) {}
         };
 
-        FaceToolController::FaceToolController(FaceTool* tool) :
+        FaceToolController::FaceToolController(FaceTool& tool) :
         VertexToolControllerBase(tool) {
-            addController(new MoveFacePart(tool));
-            addController(new SelectFacePart(tool));
+            addController(std::make_unique<MoveFacePart>(tool));
+            addController(std::make_unique<SelectFacePart>(tool));
         }
     }
 }

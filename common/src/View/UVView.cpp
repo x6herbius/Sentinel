@@ -35,6 +35,7 @@
 #include "Renderer/Renderable.h"
 #include "Renderer/RenderBatch.h"
 #include "Renderer/RenderContext.h"
+#include "Renderer/RenderUtils.h"
 #include "Renderer/Shaders.h"
 #include "Renderer/ShaderManager.h"
 #include "Renderer/VboManager.h"
@@ -51,6 +52,7 @@
 #include <kdl/memory_utils.h>
 
 #include <cassert>
+#include <memory>
 #include <vector>
 
 namespace TrenchBroom {
@@ -64,11 +66,7 @@ namespace TrenchBroom {
             setToolBox(m_toolBox);
             createTools();
             m_toolBox.disable();
-            bindObservers();
-        }
-
-        UVView::~UVView() {
-            unbindObservers();
+            connectObservers();
         }
 
         void UVView::setSubDivisions(const vm::vec2i& subDivisions) {
@@ -77,42 +75,26 @@ namespace TrenchBroom {
         }
 
         void UVView::createTools() {
-            addTool(new UVRotateTool(m_document, m_helper));
-            addTool(new UVOriginTool(m_helper));
-            addTool(new UVScaleTool(m_document, m_helper));
-            addTool(new UVShearTool(m_document, m_helper));
-            addTool(new UVOffsetTool(m_document, m_helper));
-            addTool(new UVCameraTool(m_camera));
+            addTool(std::make_unique<UVRotateTool>(m_document, m_helper));
+            addTool(std::make_unique<UVOriginTool>(m_helper));
+            addTool(std::make_unique<UVScaleTool>(m_document, m_helper));
+            addTool(std::make_unique<UVShearTool>(m_document, m_helper));
+            addTool(std::make_unique<UVOffsetTool>(m_document, m_helper));
+            addTool(std::make_unique<UVCameraTool>(m_camera));
         }
 
-        void UVView::bindObservers() {
+        void UVView::connectObservers() {
             auto document = kdl::mem_lock(m_document);
-            document->documentWasClearedNotifier.addObserver(this, &UVView::documentWasCleared);
-            document->nodesDidChangeNotifier.addObserver(this, &UVView::nodesDidChange);
-            document->brushFacesDidChangeNotifier.addObserver(this, &UVView::brushFacesDidChange);
-            document->selectionDidChangeNotifier.addObserver(this, &UVView::selectionDidChange);
-            document->grid().gridDidChangeNotifier.addObserver(this, &UVView::gridDidChange);
+            m_notifierConnection += document->documentWasClearedNotifier.connect(this, &UVView::documentWasCleared);
+            m_notifierConnection += document->nodesDidChangeNotifier.connect(this, &UVView::nodesDidChange);
+            m_notifierConnection += document->brushFacesDidChangeNotifier.connect(this, &UVView::brushFacesDidChange);
+            m_notifierConnection += document->selectionDidChangeNotifier.connect(this, &UVView::selectionDidChange);
+            m_notifierConnection += document->grid().gridDidChangeNotifier.connect(this, &UVView::gridDidChange);
 
             PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.addObserver(this, &UVView::preferenceDidChange);
+            m_notifierConnection += prefs.preferenceDidChangeNotifier.connect(this, &UVView::preferenceDidChange);
 
-            m_camera.cameraDidChangeNotifier.addObserver(this, &UVView::cameraDidChange);
-        }
-
-        void UVView::unbindObservers() {
-            if (!kdl::mem_expired(m_document)) {
-                auto document = kdl::mem_lock(m_document);
-                document->documentWasClearedNotifier.removeObserver(this, &UVView::documentWasCleared);
-                document->nodesDidChangeNotifier.removeObserver(this, &UVView::nodesDidChange);
-                document->brushFacesDidChangeNotifier.removeObserver(this, &UVView::brushFacesDidChange);
-                document->selectionDidChangeNotifier.removeObserver(this, &UVView::selectionDidChange);
-                document->grid().gridDidChangeNotifier.removeObserver(this, &UVView::gridDidChange);
-            }
-
-            PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.removeObserver(this, &UVView::preferenceDidChange);
-
-            m_camera.cameraDidChangeNotifier.removeObserver(this, &UVView::cameraDidChange);
+            m_notifierConnection += m_camera.cameraDidChangeNotifier.connect(this, &UVView::cameraDidChange);
         }
 
         void UVView::selectionDidChange(const Selection&) {
@@ -268,7 +250,7 @@ namespace TrenchBroom {
                 shader.set("Brightness", pref(Preferences::Brightness));
                 shader.set("RenderGrid", true);
                 shader.set("GridSizes", vm::vec2f(texture->width(), texture->height()));
-                shader.set("GridColor", vm::vec4f(Renderer::FaceRenderer::gridColorForTexture(texture), 0.6f)); // TODO: make this a preference
+                shader.set("GridColor", vm::vec4f(Renderer::gridColorForTexture(texture), 0.6f)); // TODO: make this a preference
                 shader.set("GridScales", scale);
                 shader.set("GridMatrix", vm::mat4x4f(toTex));
                 shader.set("GridDivider", vm::vec2f(m_helper.subDivisions()));
@@ -350,7 +332,7 @@ namespace TrenchBroom {
         }
 
         Model::PickResult UVView::doPick(const vm::ray3& pickRay) const {
-            Model::PickResult pickResult = Model::PickResult::byDistance(kdl::mem_lock(m_document)->editorContext());
+            Model::PickResult pickResult = Model::PickResult::byDistance();
             if (!m_helper.valid())
                 return pickResult;
 

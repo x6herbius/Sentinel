@@ -20,11 +20,13 @@
 #pragma once
 
 #include "FloatType.h"
+#include "NotifierConnection.h"
 #include "Model/HitType.h"
 #include "View/Tool.h"
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace TrenchBroom {
@@ -73,7 +75,7 @@ namespace TrenchBroom {
                 bool canRemoveLastPoint() const;
                 void removeLastPoint();
 
-                bool canDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition) const;
+                std::optional<std::tuple<vm::vec3, vm::vec3>> canDragPoint(const Model::PickResult& pickResult) const;
                 void beginDragPoint(const Model::PickResult& pickResult);
                 void beginDragLastPoint();
                 bool dragPoint(const vm::vec3& newPosition, const std::vector<vm::vec3>& helpVectors);
@@ -98,7 +100,7 @@ namespace TrenchBroom {
                 virtual bool doCanRemoveLastPoint() const = 0;
                 virtual void doRemoveLastPoint() = 0;
 
-                virtual bool doCanDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition) const = 0;
+                virtual std::optional<std::tuple<vm::vec3, vm::vec3>> doCanDragPoint(const Model::PickResult& pickResult) const = 0;
                 virtual void doBeginDragPoint(const Model::PickResult& pickResult) = 0;
                 virtual void doBeginDragLastPoint() = 0;
                 virtual bool doDragPoint(const vm::vec3& newPosition, const std::vector<vm::vec3>& helpVectors) = 0;
@@ -126,6 +128,8 @@ namespace TrenchBroom {
 
             bool m_ignoreNotifications;
             bool m_dragging;
+
+            NotifierConnection m_notifierConnection;
         public:
             explicit ClipTool(std::weak_ptr<MapDocument> document);
             ~ClipTool() override;
@@ -158,7 +162,7 @@ namespace TrenchBroom {
             bool canRemoveLastPoint() const;
             bool removeLastPoint();
 
-            bool beginDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition);
+            std::optional<std::tuple<vm::vec3, vm::vec3>> beginDragPoint(const Model::PickResult& pickResult);
             void beginDragLastPoint();
             bool dragPoint(const vm::vec3& newPosition, const std::vector<vm::vec3>& helpVectors);
             void endDragPoint();
@@ -187,8 +191,7 @@ namespace TrenchBroom {
 
             bool doRemove();
 
-            void bindObservers();
-            void unbindObservers();
+            void connectObservers();
             void selectionDidChange(const Selection& selection);
             void nodesWillChange(const std::vector<Model::Node*>& nodes);
             void nodesDidChange(const std::vector<Model::Node*>& nodes);

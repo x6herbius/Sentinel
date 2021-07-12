@@ -20,6 +20,7 @@
 #pragma once
 
 #include "FloatType.h"
+#include "NotifierConnection.h"
 
 #include <vecmath/forward.h>
 #include <vecmath/util.h>
@@ -42,7 +43,7 @@ namespace TrenchBroom {
             Q_OBJECT
         private:
             std::weak_ptr<MapDocument> m_document;
-            RotateObjectsTool* m_tool;
+            RotateObjectsTool& m_tool;
 
             QComboBox* m_recentlyUsedCentersList;
             QAbstractButton* m_resetCenterButton;
@@ -50,16 +51,16 @@ namespace TrenchBroom {
             SpinControl* m_angle;
             QComboBox* m_axis;
             QAbstractButton* m_rotateButton;
+
+            NotifierConnection m_notifierConnection;
         public:
-            RotateObjectsToolPage(std::weak_ptr<MapDocument> document, RotateObjectsTool* tool, QWidget* parent = nullptr);
-            ~RotateObjectsToolPage() override;
+            RotateObjectsToolPage(std::weak_ptr<MapDocument> document, RotateObjectsTool& tool, QWidget* parent = nullptr);
 
             void setAxis(vm::axis::type axis);
             void setRecentlyUsedCenters(const std::vector<vm::vec3>& centers);
             void setCurrentCenter(const vm::vec3& center);
         private:
-            void bindObservers();
-            void unbindObservers();
+            void connectObservers();
 
             void createGui();
             void updateGui();

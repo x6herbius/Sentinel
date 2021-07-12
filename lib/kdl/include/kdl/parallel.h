@@ -18,8 +18,15 @@
 #ifndef KDL_PARALLEL_H
 #define KDL_PARALLEL_H
 
+#include "kdl/vector_utils.h"
+
+#ifdef _WIN32
+#include <ppl.h>
+#endif
+
 #include <atomic>
 #include <future> // for std::async
+#include <optional>
 #include <thread>
 #include <utility> // for std::declval
 #include <vector>
@@ -39,6 +46,9 @@ namespace kdl {
      */
     template<class L>
     void parallel_for(const size_t count, L&& lambda) {
+#ifdef _WIN32
+        concurrency::parallel_for<size_t>(0, count, lambda);
+#else
         size_t numThreads = static_cast<size_t>(std::thread::hardware_concurrency());
         if (numThreads == 0) {
             numThreads = 1;
@@ -64,6 +74,7 @@ namespace kdl {
         for (size_t i = 0; i < numThreads; ++i) {
             threads[i].wait();
         }
+#endif
     }
 
     /**
@@ -83,7 +94,7 @@ namespace kdl {
      */
     template<class T, class L>
     auto vec_parallel_transform(std::vector<T> input, L&& transform) {
-        using ResultType = decltype(transform(std::declval<T&&>()));
+        using ResultType = std::optional<decltype(transform(std::declval<T&&>()))>;
 
         std::vector<ResultType> result;
         result.resize(input.size());
@@ -92,7 +103,7 @@ namespace kdl {
             result[index] = transform(std::move(input[index]));
         });
 
-        return result;
+        return vec_transform(std::move(result), [](ResultType&& x) { return std::move(*x); });
     }
 }
 

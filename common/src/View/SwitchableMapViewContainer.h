@@ -19,13 +19,15 @@
 
 #pragma once
 
-#include <QWidget>
 
 #include "FloatType.h"
 #include "Macros.h"
+#include "NotifierConnection.h"
 #include "View/MapView.h"
 
 #include <memory>
+
+#include <QWidget>
 
 namespace TrenchBroom {
     class Logger;
@@ -61,6 +63,8 @@ namespace TrenchBroom {
 
             MapViewContainer* m_mapView;
             std::unique_ptr<MapViewActivationTracker> m_activationTracker;
+
+            NotifierConnection m_notifierConnection;
         public:
             SwitchableMapViewContainer(Logger* logger, std::weak_ptr<MapDocument> document, GLContextManager& contextManager, QWidget* parent = nullptr);
             ~SwitchableMapViewContainer() override;
@@ -82,7 +86,7 @@ namespace TrenchBroom {
             bool clipToolActive() const;
             bool canToggleClipTool() const;
             void toggleClipTool();
-            ClipTool* clipTool();
+            ClipTool& clipTool();
 
             bool rotateObjectsToolActive() const;
             bool canToggleRotateObjectsTool() const;
@@ -104,10 +108,10 @@ namespace TrenchBroom {
             void toggleVertexTool();
             void toggleEdgeTool();
             void toggleFaceTool();
-            VertexTool* vertexTool();
-            EdgeTool* edgeTool();
-            FaceTool* faceTool();
-            MapViewToolBox* mapViewToolBox();
+            VertexTool& vertexTool();
+            EdgeTool& edgeTool();
+            FaceTool& faceTool();
+            MapViewToolBox& mapViewToolBox();
 
             bool canMoveCameraToNextTracePoint() const;
             bool canMoveCameraToPreviousTracePoint() const;
@@ -118,9 +122,8 @@ namespace TrenchBroom {
             bool currentViewMaximized() const;
             void toggleMaximizeCurrentView();
         private:
-            void bindObservers();
-            void unbindObservers();
-            void refreshViews(Tool* tool);
+            void connectObservers();
+            void refreshViews(Tool& tool);
         private: // implement MapView interface
             void doInstallActivationTracker(MapViewActivationTracker& activationTracker) override;
             bool doGetIsCurrent() const override;

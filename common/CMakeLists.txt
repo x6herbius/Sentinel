@@ -91,6 +91,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/IO/WalTextureReader.cpp
         ${COMMON_SOURCE_DIR}/IO/WorldReader.cpp
         ${COMMON_SOURCE_DIR}/IO/ZipFileSystem.cpp
+        ${COMMON_SOURCE_DIR}/Model/BezierPatch.cpp
         ${COMMON_SOURCE_DIR}/Model/Brush.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushBuilder.cpp
         ${COMMON_SOURCE_DIR}/Model/BrushError.cpp
@@ -130,7 +131,6 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/Hit.cpp
         ${COMMON_SOURCE_DIR}/Model/HitAdapter.cpp
         ${COMMON_SOURCE_DIR}/Model/HitFilter.cpp
-        ${COMMON_SOURCE_DIR}/Model/HitQuery.cpp
         ${COMMON_SOURCE_DIR}/Model/HitType.cpp
         ${COMMON_SOURCE_DIR}/Model/InvalidTextureScaleIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/Issue.cpp
@@ -158,6 +158,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Model/Object.cpp
         ${COMMON_SOURCE_DIR}/Model/ParallelTexCoordSystem.cpp
         ${COMMON_SOURCE_DIR}/Model/ParaxialTexCoordSystem.cpp
+        ${COMMON_SOURCE_DIR}/Model/PatchNode.cpp
         ${COMMON_SOURCE_DIR}/Model/PickResult.cpp
         ${COMMON_SOURCE_DIR}/Model/PointEntityWithBrushesIssueGenerator.cpp
         ${COMMON_SOURCE_DIR}/Model/PointFile.cpp
@@ -207,12 +208,16 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Renderer/GridRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/GroupLinkRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/GroupRenderer.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArray.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArrayMap.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArrayMapBuilder.cpp
         ${COMMON_SOURCE_DIR}/Renderer/IndexRangeMap.cpp
         ${COMMON_SOURCE_DIR}/Renderer/IndexRangeRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/LinkRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/MapRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/ObjectRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/OrthographicCamera.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/PatchRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/PerspectiveCamera.cpp
         ${COMMON_SOURCE_DIR}/Renderer/PointGuideRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/PointHandleRenderer.cpp
@@ -233,6 +238,9 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/Renderer/SpikeGuideRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/TextAnchor.cpp
         ${COMMON_SOURCE_DIR}/Renderer/TextRenderer.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayMap.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayMapBuilder.cpp
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexRangeMap.cpp
         ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexRangeRenderer.cpp
         ${COMMON_SOURCE_DIR}/Renderer/TextureFont.cpp
@@ -294,6 +302,8 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/CurrentGroupCommand.cpp
         ${COMMON_SOURCE_DIR}/View/CyclingMapView.cpp
         ${COMMON_SOURCE_DIR}/View/DirectoryTextureCollectionEditor.cpp
+        ${COMMON_SOURCE_DIR}/View/DragTracker.cpp
+        ${COMMON_SOURCE_DIR}/View/DropTracker.cpp
         ${COMMON_SOURCE_DIR}/View/EdgeTool.cpp
         ${COMMON_SOURCE_DIR}/View/EdgeToolController.cpp
         ${COMMON_SOURCE_DIR}/View/ElidedLabel.cpp
@@ -329,6 +339,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/GetVersion.cpp
         ${COMMON_SOURCE_DIR}/View/GLContextManager.cpp
         ${COMMON_SOURCE_DIR}/View/Grid.cpp
+        ${COMMON_SOURCE_DIR}/View/HandleDragTracker.cpp
         ${COMMON_SOURCE_DIR}/View/ImageListBox.cpp
         ${COMMON_SOURCE_DIR}/View/InfoPanel.cpp
         ${COMMON_SOURCE_DIR}/View/InputEvent.cpp
@@ -361,6 +372,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/View/MapViewToolBox.cpp
         ${COMMON_SOURCE_DIR}/View/ModEditor.cpp
         ${COMMON_SOURCE_DIR}/View/MousePreferencePane.cpp
+        ${COMMON_SOURCE_DIR}/View/MoveHandleDragTracker.cpp
         ${COMMON_SOURCE_DIR}/View/MoveObjectsTool.cpp
         ${COMMON_SOURCE_DIR}/View/MoveObjectsToolController.cpp
         ${COMMON_SOURCE_DIR}/View/MoveObjectsToolPage.cpp
@@ -451,6 +463,7 @@ set(COMMON_SOURCE
         ${COMMON_SOURCE_DIR}/FileLogger.cpp
         ${COMMON_SOURCE_DIR}/Exceptions.cpp
         ${COMMON_SOURCE_DIR}/Logger.cpp
+        ${COMMON_SOURCE_DIR}/NotifierConnection.cpp
         ${COMMON_SOURCE_DIR}/PreferenceManager.cpp
         ${COMMON_SOURCE_DIR}/Preference.cpp
         ${COMMON_SOURCE_DIR}/Preferences.cpp
@@ -558,6 +571,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/IO/WalTextureReader.h
         ${COMMON_SOURCE_DIR}/IO/WorldReader.h
         ${COMMON_SOURCE_DIR}/IO/ZipFileSystem.h
+        ${COMMON_SOURCE_DIR}/Model/BezierPatch.h
         ${COMMON_SOURCE_DIR}/Model/Brush.h
         ${COMMON_SOURCE_DIR}/Model/BrushBuilder.h
         ${COMMON_SOURCE_DIR}/Model/BrushError.h
@@ -599,7 +613,6 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/Hit.h
         ${COMMON_SOURCE_DIR}/Model/HitAdapter.h
         ${COMMON_SOURCE_DIR}/Model/HitFilter.h
-        ${COMMON_SOURCE_DIR}/Model/HitQuery.h
         ${COMMON_SOURCE_DIR}/Model/HitType.h
         ${COMMON_SOURCE_DIR}/Model/IdType.h
         ${COMMON_SOURCE_DIR}/Model/InvalidTextureScaleIssueGenerator.h
@@ -612,6 +625,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/LayerNode.h
         ${COMMON_SOURCE_DIR}/Model/LinkSourceIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/LinkTargetIssueGenerator.h
+        ${COMMON_SOURCE_DIR}/Model/LockState.cpp
         ${COMMON_SOURCE_DIR}/Model/LockState.h
         ${COMMON_SOURCE_DIR}/Model/LongPropertyKeyIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/LongPropertyValueIssueGenerator.h
@@ -630,6 +644,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/Object.h
         ${COMMON_SOURCE_DIR}/Model/ParallelTexCoordSystem.h
         ${COMMON_SOURCE_DIR}/Model/ParaxialTexCoordSystem.h
+        ${COMMON_SOURCE_DIR}/Model/PatchNode.h
         ${COMMON_SOURCE_DIR}/Model/PickResult.h
         ${COMMON_SOURCE_DIR}/Model/PointEntityWithBrushesIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/PointFile.h
@@ -666,6 +681,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Model/TexCoordSystem.h
         ${COMMON_SOURCE_DIR}/Model/TransformEntityPropertiesQuickFix.h
         ${COMMON_SOURCE_DIR}/Model/UpdateLinkedGroupsError.h
+        ${COMMON_SOURCE_DIR}/Model/VisibilityState.cpp
         ${COMMON_SOURCE_DIR}/Model/VisibilityState.h
         ${COMMON_SOURCE_DIR}/Model/WorldBoundsIssueGenerator.h
         ${COMMON_SOURCE_DIR}/Model/WorldNode.h
@@ -700,6 +716,9 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Renderer/GridRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/GroupLinkRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/GroupRenderer.h
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArray.h
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArrayMap.h
+        ${COMMON_SOURCE_DIR}/Renderer/IndexArrayMapBuilder.h
         ${COMMON_SOURCE_DIR}/Renderer/IndexedVertexList.h
         ${COMMON_SOURCE_DIR}/Renderer/IndexRangeMap.h
         ${COMMON_SOURCE_DIR}/Renderer/IndexRangeMapBuilder.h
@@ -708,6 +727,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Renderer/MapRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/ObjectRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/OrthographicCamera.h
+        ${COMMON_SOURCE_DIR}/Renderer/PatchRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/PerspectiveCamera.h
         ${COMMON_SOURCE_DIR}/Renderer/PointGuideRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/PointHandleRenderer.h
@@ -728,6 +748,9 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Renderer/SpikeGuideRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/TextAnchor.h
         ${COMMON_SOURCE_DIR}/Renderer/TextRenderer.h
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayMap.h
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayMapBuilder.h
+        ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexArrayRenderer.h
         ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexRangeMap.h
         ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexRangeMapBuilder.h
         ${COMMON_SOURCE_DIR}/Renderer/TexturedIndexRangeRenderer.h
@@ -791,6 +814,8 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/CurrentGroupCommand.h
         ${COMMON_SOURCE_DIR}/View/CyclingMapView.h
         ${COMMON_SOURCE_DIR}/View/DirectoryTextureCollectionEditor.h
+        ${COMMON_SOURCE_DIR}/View/DragTracker.h
+        ${COMMON_SOURCE_DIR}/View/DropTracker.h
         ${COMMON_SOURCE_DIR}/View/EdgeTool.h
         ${COMMON_SOURCE_DIR}/View/EdgeToolController.h
         ${COMMON_SOURCE_DIR}/View/ElidedLabel.h
@@ -826,6 +851,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/GetVersion.h
         ${COMMON_SOURCE_DIR}/View/GLContextManager.h
         ${COMMON_SOURCE_DIR}/View/Grid.h
+        ${COMMON_SOURCE_DIR}/View/HandleDragTracker.h
         ${COMMON_SOURCE_DIR}/View/ImageListBox.h
         ${COMMON_SOURCE_DIR}/View/InfoPanel.h
         ${COMMON_SOURCE_DIR}/View/InputEvent.h
@@ -859,10 +885,10 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/View/MapViewToolBox.h
         ${COMMON_SOURCE_DIR}/View/ModEditor.h
         ${COMMON_SOURCE_DIR}/View/MousePreferencePane.h
+        ${COMMON_SOURCE_DIR}/View/MoveHandleDragTracker.h
         ${COMMON_SOURCE_DIR}/View/MoveObjectsTool.h
         ${COMMON_SOURCE_DIR}/View/MoveObjectsToolController.h
         ${COMMON_SOURCE_DIR}/View/MoveObjectsToolPage.h
-        ${COMMON_SOURCE_DIR}/View/MoveToolController.h
         ${COMMON_SOURCE_DIR}/View/MultiCompletionLineEdit.h
         ${COMMON_SOURCE_DIR}/View/MultiMapView.h
         ${COMMON_SOURCE_DIR}/View/OnePaneMapView.h
@@ -956,6 +982,7 @@ set(COMMON_HEADER
         ${COMMON_SOURCE_DIR}/Logger.h
         ${COMMON_SOURCE_DIR}/Macros.h
         ${COMMON_SOURCE_DIR}/Notifier.h
+        ${COMMON_SOURCE_DIR}/NotifierConnection.h
         ${COMMON_SOURCE_DIR}/Preference.h
         ${COMMON_SOURCE_DIR}/PreferenceManager.h
         ${COMMON_SOURCE_DIR}/Preferences.h

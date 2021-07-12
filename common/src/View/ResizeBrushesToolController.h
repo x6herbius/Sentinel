@@ -30,11 +30,12 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class DragTracker;
         class ResizeBrushesTool;
 
-        class ResizeBrushesToolController : public ToolControllerBase<PickingPolicy, KeyPolicy, MousePolicy, MouseDragPolicy, RenderPolicy, NoDropPolicy> {
+        class ResizeBrushesToolController : public ToolController {
         protected:
-            ResizeBrushesTool* m_tool;
+            ResizeBrushesTool& m_tool;
         private:
             enum class Mode {
                 Resize,
@@ -42,39 +43,34 @@ namespace TrenchBroom {
             };
             Mode m_mode;
         protected:
-            explicit ResizeBrushesToolController(ResizeBrushesTool* tool);
+            explicit ResizeBrushesToolController(ResizeBrushesTool& tool);
         public:
             ~ResizeBrushesToolController() override;
         private:
-            Tool* doGetTool() override;
-            const Tool* doGetTool() const override;
+            Tool& tool() override;
+            const Tool& tool() const override;
 
-            void doPick(const InputState& inputState, Model::PickResult& pickResult) override;
+            void pick(const InputState& inputState, Model::PickResult& pickResult) override;
 
-            void doModifierKeyChange(const InputState& inputState) override;
+            void modifierKeyChange(const InputState& inputState) override;
 
-            void doMouseMove(const InputState& inputState) override;
+            void mouseMove(const InputState& inputState) override;
 
-            bool doStartMouseDrag(const InputState& inputState) override;
-            bool doMouseDrag(const InputState& inputState) override;
-            void doEndMouseDrag(const InputState& inputState) override;
-            void doCancelMouseDrag() override;
+            std::unique_ptr<DragTracker> acceptMouseDrag(const InputState& inputState) override;
 
-            void doSetRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const override;
-            void doRender(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
-            Renderer::DirectEdgeRenderer buildEdgeRenderer();
+            void render(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
 
-            bool doCancel() override;
+            bool cancel() override;
 
             bool handleInput(const InputState& inputState) const;
-            virtual bool doHandleInput(const InputState& inputState) const = 0;
         private:
+            virtual bool doHandleInput(const InputState& inputState) const = 0;
             virtual Model::Hit doPick(const vm::ray3& pickRay, const Model::PickResult& pickResult) = 0;
         };
 
         class ResizeBrushesToolController2D : public ResizeBrushesToolController {
         public:
-            explicit ResizeBrushesToolController2D(ResizeBrushesTool* tool);
+            explicit ResizeBrushesToolController2D(ResizeBrushesTool& tool);
         private:
             Model::Hit doPick(const vm::ray3& pickRay, const Model::PickResult& pickResult) override;
             bool doHandleInput(const InputState& inputState) const override;
@@ -82,7 +78,7 @@ namespace TrenchBroom {
 
         class ResizeBrushesToolController3D : public ResizeBrushesToolController {
         public:
-            explicit ResizeBrushesToolController3D(ResizeBrushesTool* tool);
+            explicit ResizeBrushesToolController3D(ResizeBrushesTool& tool);
         private:
             Model::Hit doPick(const vm::ray3& pickRay, const Model::PickResult& pickResult) override;
             bool doHandleInput(const InputState& inputState) const override;

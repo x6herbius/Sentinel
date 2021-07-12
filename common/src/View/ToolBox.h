@@ -20,8 +20,10 @@
 #pragma once
 
 #include "Notifier.h"
+#include "NotifierConnection.h"
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,8 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class DragTracker;
+        class DropTracker;
         class InputState;
         class Tool;
         class ToolController;
@@ -50,8 +54,8 @@ namespace TrenchBroom {
         class ToolBox : public QObject {
             Q_OBJECT
         private:
-            ToolController* m_dragReceiver;
-            ToolController* m_dropReceiver;
+            std::unique_ptr<DragTracker> m_dragTracker;
+            std::unique_ptr<DropTracker> m_dropTracker;
             Tool* m_modalTool;
 
             using ToolList = std::vector<Tool*>;
@@ -59,15 +63,18 @@ namespace TrenchBroom {
             ToolMap m_suppressedTools;
 
             bool m_enabled;
+
+            NotifierConnection m_notifierConnection;
         public:
-            Notifier<Tool*> toolActivatedNotifier;
-            Notifier<Tool*> toolDeactivatedNotifier;
-            Notifier<Tool*> refreshViewsNotifier;
-            Notifier<Tool*> toolHandleSelectionChangedNotifier;
+            Notifier<Tool&> toolActivatedNotifier;
+            Notifier<Tool&> toolDeactivatedNotifier;
+            Notifier<Tool&> refreshViewsNotifier;
+            Notifier<Tool&> toolHandleSelectionChangedNotifier;
         public:
             ToolBox();
+            ~ToolBox();
         protected:
-            void addTool(Tool* tool);
+            void addTool(Tool& tool);
         public: // picking
             void pick(ToolChain* chain, const InputState& inputState, Model::PickResult& pickResult);
         public: // event handling
@@ -99,11 +106,10 @@ namespace TrenchBroom {
              * @param suppressedTool the tool that becomes supressed while the other is active
              * @param primaryTool the tool that controls when the suppressed tool is deactivated
              */
-            void suppressWhileActive(Tool* suppressedTool, Tool* primaryTool);
+            void suppressWhileActive(Tool& suppressedTool, Tool& primaryTool);
 
             bool anyToolActive() const;
-            bool toolActive(const Tool* tool) const;
-            void toggleTool(Tool* tool);
+            void toggleTool(Tool& tool);
             void deactivateAllTools();
 
             bool enabled() const;
@@ -113,8 +119,8 @@ namespace TrenchBroom {
             void setRenderOptions(ToolChain* chain, const InputState& inputState, Renderer::RenderContext& renderContext);
             void renderTools(ToolChain* chain, const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
         private:
-            bool activateTool(Tool* tool);
-            void deactivateTool(Tool* tool);
+            bool activateTool(Tool& tool);
+            void deactivateTool(Tool& tool);
         };
     }
 }

@@ -23,16 +23,19 @@
 #include "FloatType.h"
 #include "Polyhedron.h"
 #include "Polyhedron_Matcher.h"
+#include "Model/BezierPatch.h"
 #include "Model/Brush.h"
 #include "Model/BrushError.h"
 #include "Model/BrushFace.h"
 #include "Model/BrushFaceHandle.h"
 #include "Model/BrushGeometry.h"
+#include "Model/EditorContext.h"
 #include "Model/EntityNode.h"
 #include "Model/GroupNode.h"
 #include "Model/IssueGenerator.h"
 #include "Model/LayerNode.h"
 #include "Model/ModelUtils.h"
+#include "Model/PatchNode.h"
 #include "Model/PickResult.h"
 #include "Model/TagVisitor.h"
 #include "Model/TexCoordSystem.h"
@@ -81,7 +84,8 @@ namespace TrenchBroom {
                 [](const EntityNode* entity)                  -> const EntityNodeBase* { return entity; },
                 [](auto&& thisLambda, const LayerNode* layer) -> const EntityNodeBase* { return layer->visitParent(thisLambda).value_or(nullptr); },
                 [](auto&& thisLambda, const GroupNode* group) -> const EntityNodeBase* { return group->visitParent(thisLambda).value_or(nullptr); },
-                [](auto&& thisLambda, const BrushNode* brush) -> const EntityNodeBase* { return brush->visitParent(thisLambda).value_or(nullptr); }
+                [](auto&& thisLambda, const BrushNode* brush) -> const EntityNodeBase* { return brush->visitParent(thisLambda).value_or(nullptr); },
+                [](auto&& thisLambda, const PatchNode* patch) -> const EntityNodeBase* { return patch->visitParent(thisLambda).value_or(nullptr); }
             )).value_or(nullptr);
         }
 
@@ -132,6 +136,90 @@ namespace TrenchBroom {
             invalidateVertexCache();
         }
 
+        static bool containsPatch(const Brush& brush, const PatchGrid& grid) {
+            if (!brush.bounds().contains(grid.bounds)) {
+                return false;
+            }
+
+            for (const auto& point : grid.points) {
+                if (!brush.containsPoint(point.position)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool BrushNode::contains(const Node* node) const {
+            return node->accept(kdl::overload(
+                [](const WorldNode*)          { return false; },
+                [](const LayerNode*)          { return false; },
+                [&](const GroupNode* group)   { return m_brush.contains(group->logicalBounds()); },
+                [&](const EntityNode* entity) { return m_brush.contains(entity->logicalBounds()); },
+                [&](const BrushNode* brush)   { return m_brush.contains(brush->brush()); },
+                [&](const PatchNode* patch)   { return containsPatch(m_brush, patch->grid()); }
+            ));
+        }
+
+        static bool faceIntersectsEdge(const BrushFace& face, const vm::vec3& p0, const vm::vec3& p1) {
+            const auto ray = vm::ray3{p0, p1 - p0}; // not normalized
+            if (const auto dist = face.intersectWithRay(ray); !vm::is_nan(dist)) {
+                // dist is scaled by inverse of vm::length(p1 - p0)
+                return dist >= 0.0 && dist <= 1.0;
+            }
+            return false;
+        }
+
+        static bool intersectsPatch(const Brush& brush, const PatchGrid& grid) {
+            if (!brush.bounds().intersects(grid.bounds)) {
+                return false;
+            }
+
+            // if brush contains any grid point, they intersect (or grid is contained, which we count as intersection)
+            for (const auto& point : grid.points) {
+                if (brush.containsPoint(point.position)) {
+                    return true;
+                }
+            }
+
+            // now check if any quad edge of the given grid intersects with any face
+            for (const auto& face : brush.faces()) {
+                // check row edges
+                for (size_t row = 0u; row < grid.pointRowCount; ++row) {
+                    for (size_t col = 0u; col < grid.pointColumnCount - 1u; ++col) {
+                        const auto& p0 = grid.point(row, col).position;
+                        const auto& p1 = grid.point(row, col + 1u).position;
+                        if (faceIntersectsEdge(face, p0, p1)) {
+                            return true;
+                        }
+                    }
+                }
+                // check column edges
+                for (size_t col = 0u; col < grid.pointColumnCount; ++col) {
+                    for (size_t row = 0u; row < grid.pointRowCount - 1u; ++row) {
+                        const auto& p0 = grid.point(row, col).position;
+                        const auto& p1 = grid.point(row + 1u, col).position;
+                        if (faceIntersectsEdge(face, p0, p1)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool BrushNode::intersects(const Node* node) const {
+            return node->accept(kdl::overload(
+                [](const WorldNode*)          { return false; },
+                [](const LayerNode*)          { return false; },
+                [&](const GroupNode* group)   { return m_brush.intersects(group->logicalBounds()); },
+                [&](const EntityNode* entity) { return m_brush.intersects(entity->logicalBounds()); },
+                [&](const BrushNode* brush)   { return m_brush.intersects(brush->brush()); },
+                [&](const PatchNode* patch)   { return intersectsPatch(m_brush, patch->grid()); }
+            ));
+        }
+
         void BrushNode::clearSelectedFaces() {
             for (BrushFace& face : m_brush.faces()) {
                 if (face.selected()) {
@@ -161,6 +249,20 @@ namespace TrenchBroom {
 
         const vm::bbox3& BrushNode::doGetPhysicalBounds() const {
             return logicalBounds();
+        }
+
+        FloatType BrushNode::doGetProjectedArea(const vm::axis::type axis) const {
+            const auto normal = vm::vec3::axis(axis);
+
+            auto result = static_cast<FloatType>(0);
+            for (const auto& face : m_brush.faces()) {
+                // only consider one side of the brush -- doesn't matter which one!
+                if (vm::dot(face.boundary().normal, normal) > 0.0) {
+                    result += face.projectedArea(axis);
+                }
+            }
+
+            return result;
         }
 
         Node* BrushNode::doClone(const vm::bbox3& /* worldBounds */) const {
@@ -201,12 +303,14 @@ namespace TrenchBroom {
             visitor.visit(this);
         }
 
-        void BrushNode::doPick(const vm::ray3& ray, PickResult& pickResult) {
-            if (const auto hit = findFaceHit(ray)) {
-                const auto [distance, faceIndex] = *hit;
-                ensure(!vm::is_nan(distance), "nan hit distance");
-                const auto hitPoint = vm::point_at_distance(ray, distance);
-                pickResult.addHit(Hit(BrushHitType, distance, hitPoint, BrushFaceHandle(this, faceIndex)));
+        void BrushNode::doPick(const EditorContext& editorContext, const vm::ray3& ray, PickResult& pickResult) {
+            if (editorContext.visible(this)) {
+                if (const auto hit = findFaceHit(ray)) {
+                    const auto [distance, faceIndex] = *hit;
+                    ensure(!vm::is_nan(distance), "nan hit distance");
+                    const auto hitPoint = vm::point_at_distance(ray, distance);
+                    pickResult.addHit(Hit(BrushHitType, distance, hitPoint, BrushFaceHandle(this, faceIndex)));
+                }
             }
         }
 
@@ -239,26 +343,6 @@ namespace TrenchBroom {
 
         GroupNode* BrushNode::doGetContainingGroup() {
             return findContainingGroup(this);
-        }
-
-        bool BrushNode::doContains(const Node* node) const {
-            return node->accept(kdl::overload(
-                [](const WorldNode*)          { return false; },
-                [](const LayerNode*)          { return false; },
-                [&](const GroupNode* group)   { return m_brush.contains(group->logicalBounds()); },
-                [&](const EntityNode* entity) { return m_brush.contains(entity->logicalBounds()); },
-                [&](const BrushNode* brush)   { return m_brush.contains(brush->brush()); }
-            ));
-        }
-
-        bool BrushNode::doIntersects(const Node* node) const {
-            return node->accept(kdl::overload(
-                [](const WorldNode*)          { return false; },
-                [](const LayerNode*)          { return false; },
-                [&](const GroupNode* group)   { return m_brush.intersects(group->logicalBounds()); },
-                [&](const EntityNode* entity) { return m_brush.intersects(entity->logicalBounds()); },
-                [&](const BrushNode* brush)   { return m_brush.intersects(brush->brush()); }
-            ));
         }
 
         void BrushNode::invalidateVertexCache() {

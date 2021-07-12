@@ -17,132 +17,118 @@
  along with TrenchBroom. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "View/MapDocumentTest.h"
+#include "TestUtils.h"
+
+#include "Model/BrushBuilder.h"
 #include "Model/BrushNode.h"
 #include "Model/Entity.h"
 #include "Model/EntityNode.h"
 #include "Model/GroupNode.h"
 #include "Model/LayerNode.h"
+#include "Model/ModelUtils.h"
+#include "Model/PatchNode.h"
 #include "Model/WorldNode.h"
-#include "View/MapDocumentTest.h"
 #include "View/PasteType.h"
 
-#include <set>
+#include <kdl/result.h>
 
-#include "TestUtils.h"
+#include <functional>
+#include <set>
 
 #include "Catch2.h"
 
 namespace TrenchBroom {
     namespace View {
-        class GroupNodesTest : public MapDocumentTest {};
-
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.createEmptyGroup", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.createEmptyGroup", "[GroupNodesTest]") {
             CHECK(document->groupSelection("test") == nullptr);
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.createGroupWithOneNode", "[GroupNodesTest]") {
-            Model::BrushNode* brush = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush);
-            document->select(brush);
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.createGroupWithOneNode", "[GroupNodesTest]") {
+            using CreateNode = std::function<Model::Node*(const MapDocumentTest&)>;
+            CreateNode createNode = GENERATE_COPY(
+                CreateNode{[](const auto& test) { return test.createBrushNode(); }},
+                CreateNode{[](const auto& test) { return test.createPatchNode(); }});
+
+            auto* node = createNode(*this);
+            addNode(*document, document->parentForNodes(), node);
+            document->select(node);
 
             Model::GroupNode* group = document->groupSelection("test");
             CHECK(group != nullptr);
 
-            CHECK(brush->parent() == group);
+            CHECK(node->parent() == group);
             CHECK(group->selected());
-            CHECK_FALSE(brush->selected());
+            CHECK_FALSE(node->selected());
 
             document->undoCommand();
             CHECK(group->parent() == nullptr);
-            CHECK(brush->parent() == document->parentForNodes());
-            CHECK(brush->selected());
+            CHECK(node->parent() == document->parentForNodes());
+            CHECK(node->selected());
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.createGroupWithPartialBrushEntity", "[GroupNodesTest]") {
-            Model::BrushNode* brush1 = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush1);
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.createGroupWithPartialBrushEntity", "[GroupNodesTest]") {
+            Model::BrushNode* child1 = createBrushNode();
+            addNode(*document, document->parentForNodes(), child1);
 
-            Model::BrushNode* brush2 = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush2);
+            Model::PatchNode* child2 = createPatchNode();
+            addNode(*document, document->parentForNodes(), child2);
 
             Model::EntityNode* entity = new Model::EntityNode();
             addNode(*document, document->parentForNodes(), entity);
-            reparentNodes(*document, entity, { brush1, brush2 });
+            reparentNodes(*document, entity, { child1, child2 });
 
-            document->select(brush1);
+            document->select(child1);
 
             Model::GroupNode* group = document->groupSelection("test");
             CHECK(group != nullptr);
 
-            CHECK(brush1->parent() == entity);
-            CHECK(brush2->parent() == entity);
+            CHECK(child1->parent() == entity);
+            CHECK(child2->parent() == entity);
             CHECK(entity->parent() == group);
             CHECK(group->selected());
-            CHECK_FALSE(brush1->selected());
+            CHECK_FALSE(child1->selected());
 
             document->undoCommand();
             CHECK(group->parent() == nullptr);
-            CHECK(brush1->parent() == entity);
-            CHECK(brush2->parent() == entity);
+            CHECK(child1->parent() == entity);
+            CHECK(child2->parent() == entity);
             CHECK(entity->parent() == document->parentForNodes());
             CHECK_FALSE(group->selected());
-            CHECK(brush1->selected());
+            CHECK(child1->selected());
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.createGroupWithFullBrushEntity", "[GroupNodesTest]") {
-            Model::BrushNode* brush1 = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush1);
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.createGroupWithFullBrushEntity", "[GroupNodesTest]") {
+            Model::BrushNode* child1 = createBrushNode();
+            addNode(*document, document->parentForNodes(), child1);
 
-            Model::BrushNode* brush2 = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush2);
+            Model::PatchNode* child2 = createPatchNode();
+            addNode(*document, document->parentForNodes(), child2);
 
             Model::EntityNode* entity = new Model::EntityNode();
             addNode(*document, document->parentForNodes(), entity);
-            reparentNodes(*document, entity, { brush1, brush2 });
+            reparentNodes(*document, entity, { child1, child2 });
 
-            document->select(std::vector<Model::Node*>({ brush1, brush2 }));
+            document->select(std::vector<Model::Node*>({ child1, child2 }));
 
             Model::GroupNode* group = document->groupSelection("test");
             CHECK(group != nullptr);
 
-            CHECK(brush1->parent() == entity);
-            CHECK(brush2->parent() == entity);
+            CHECK(child1->parent() == entity);
+            CHECK(child2->parent() == entity);
             CHECK(entity->parent() == group);
             CHECK(group->selected());
-            CHECK_FALSE(brush1->selected());
-            CHECK_FALSE(brush2->selected());
+            CHECK_FALSE(child1->selected());
+            CHECK_FALSE(child2->selected());
 
             document->undoCommand();
             CHECK(group->parent() == nullptr);
-            CHECK(brush1->parent() == entity);
-            CHECK(brush2->parent() == entity);
+            CHECK(child1->parent() == entity);
+            CHECK(child2->parent() == entity);
             CHECK(entity->parent() == document->parentForNodes());
             CHECK_FALSE(group->selected());
-            CHECK(brush1->selected());
-            CHECK(brush2->selected());
-        }
-
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.pasteInGroup", "[GroupNodesTest]") {
-            // https://github.com/TrenchBroom/TrenchBroom/issues/1734
-
-            const std::string data("{"
-                              "\"classname\" \"light\""
-                              "\"origin\" \"0 0 0\""
-                              "}");
-
-            Model::BrushNode* brush = createBrushNode();
-            addNode(*document, document->parentForNodes(), brush);
-            document->select(brush);
-
-            Model::GroupNode* group = document->groupSelection("test");
-            document->openGroup(group);
-
-            CHECK(document->paste(data) == PasteType::Node);
-            CHECK(document->selectedNodes().hasOnlyEntities());
-            CHECK(document->selectedNodes().entityCount() == 1u);
-
-            Model::EntityNode* light = document->selectedNodes().entities().front();
-            CHECK(light->parent() == group);
+            CHECK(child1->selected());
+            CHECK(child2->selected());
         }
 
         static bool hasEmptyName(const std::vector<std::string>& names) {
@@ -154,46 +140,7 @@ namespace TrenchBroom {
             return false;
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.copyPasteGroupResetsDuplicateGroupId", "[GroupNodesTest]") {
-            auto* entityNode = new Model::EntityNode{};
-            document->addNodes({{document->parentForNodes(), {entityNode}}});
-
-            document->select(entityNode);
-            auto* groupNode = document->groupSelection("test");
-
-            const auto persistentGroupId = groupNode->persistentId();
-            REQUIRE(persistentGroupId.has_value());
-
-            document->deselectAll();
-            document->select(groupNode);
-
-            const auto str = document->serializeSelectedNodes();
-
-            SECTION("Copy and paste resets persistent group ID") {
-                document->deselectAll();
-                REQUIRE(document->paste(str) == PasteType::Node);
-
-                auto* pastedGroupNode = dynamic_cast<Model::GroupNode*>(document->world()->defaultLayer()->children().back());
-                REQUIRE(pastedGroupNode != nullptr);
-                REQUIRE(pastedGroupNode != groupNode);
-
-                CHECK(pastedGroupNode->persistentId() != persistentGroupId);
-            }
-
-            SECTION("Cut and paste retains persistent group ID") {
-                document->deleteObjects();
-                document->deselectAll();
-                REQUIRE(document->paste(str) == PasteType::Node);
-
-                auto* pastedGroupNode = dynamic_cast<Model::GroupNode*>(document->world()->defaultLayer()->children().back());
-                REQUIRE(pastedGroupNode != nullptr);
-                REQUIRE(pastedGroupNode != groupNode);
-
-                CHECK(pastedGroupNode->persistentId() == persistentGroupId);
-            }
-        }
-
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.undoMoveGroupContainingBrushEntity", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.undoMoveGroupContainingBrushEntity", "[GroupNodesTest]") {
             // Test for issue #1715
 
             Model::BrushNode* brush1 = createBrushNode();
@@ -217,7 +164,7 @@ namespace TrenchBroom {
             CHECK_FALSE(hasEmptyName(entityNode->entity().propertyKeys()));
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.rotateGroupContainingBrushEntity", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.rotateGroupContainingBrushEntity", "[GroupNodesTest]") {
             // Test for issue #1754
 
             Model::BrushNode* brush1 = createBrushNode();
@@ -241,7 +188,7 @@ namespace TrenchBroom {
             CHECK_FALSE(entityNode->entity().hasProperty("origin"));
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.renameGroup", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.renameGroup", "[GroupNodesTest]") {
             Model::BrushNode* brush1 = createBrushNode();
             addNode(*document, document->parentForNodes(), brush1);
             document->select(brush1);
@@ -258,7 +205,7 @@ namespace TrenchBroom {
             CHECK(group->name() == "abc");
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.duplicateNodeInGroup", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.duplicateNodeInGroup", "[GroupNodesTest]") {
             Model::BrushNode* brush = createBrushNode();
             addNode(*document, document->parentForNodes(), brush);
             document->select(brush);
@@ -275,7 +222,146 @@ namespace TrenchBroom {
             CHECK(brushCopy->parent() == group);
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.ungroupLinkedGroups", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.ungroupInnerGroup") {
+            // see https://github.com/TrenchBroom/TrenchBroom/issues/2050
+            Model::EntityNode* outerEnt1 = new Model::EntityNode();
+            Model::EntityNode* outerEnt2 = new Model::EntityNode();
+            Model::EntityNode* innerEnt1 = new Model::EntityNode();
+            Model::EntityNode* innerEnt2 = new Model::EntityNode();
+
+            addNode(*document, document->parentForNodes(), innerEnt1);
+            addNode(*document, document->parentForNodes(), innerEnt2);
+            document->select(std::vector<Model::Node*> {innerEnt1, innerEnt2});
+
+            Model::GroupNode* inner = document->groupSelection("Inner");
+
+            document->deselectAll();
+            addNode(*document, document->parentForNodes(), outerEnt1);
+            addNode(*document, document->parentForNodes(), outerEnt2);
+            document->select(std::vector<Model::Node*> {inner, outerEnt1, outerEnt2});
+
+            Model::GroupNode* outer = document->groupSelection("Outer");
+            document->deselectAll();
+
+            // check our assumptions
+            CHECK(outer->childCount() == 3u);
+            CHECK(inner->childCount() == 2u);
+
+            CHECK(outer->parent() == document->currentLayer());
+
+            CHECK(outerEnt1->parent() == outer);
+            CHECK(outerEnt2->parent() == outer);
+            CHECK(inner->parent() == outer);
+
+            CHECK(innerEnt1->parent() == inner);
+            CHECK(innerEnt2->parent() == inner);
+
+            CHECK(document->currentGroup() == nullptr);
+            CHECK(!outer->opened());
+            CHECK(!inner->opened());
+
+            CHECK(Model::findOutermostClosedGroup(innerEnt1) == outer);
+            CHECK(Model::findOutermostClosedGroup(outerEnt1) == outer);
+
+            CHECK(Model::findContainingGroup(innerEnt1) == inner);
+            CHECK(Model::findContainingGroup(outerEnt1) == outer);
+
+            // open the outer group and ungroup the inner group
+            document->openGroup(outer);
+            document->select(inner);
+            document->ungroupSelection();
+            document->deselectAll();
+
+            CHECK(innerEnt1->parent() == outer);
+            CHECK(innerEnt2->parent() == outer);
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.ungroupLeavesPointEntitySelected") {
+            Model::EntityNode* ent1 = new Model::EntityNode();
+
+            addNode(*document, document->parentForNodes(), ent1);
+            document->select(std::vector<Model::Node*> {ent1});
+
+            Model::GroupNode* group = document->groupSelection("Group");
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> {group}));
+
+            document->ungroupSelection();
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> {ent1}));
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.ungroupLeavesBrushEntitySelected") {
+            const Model::BrushBuilder builder(document->world()->mapFormat(), document->worldBounds());
+
+            Model::EntityNode* ent1 = new Model::EntityNode();
+            addNode(*document, document->parentForNodes(), ent1);
+
+            Model::BrushNode* brushNode1 = new Model::BrushNode(builder.createCuboid(vm::bbox3(vm::vec3(0, 0, 0), vm::vec3(64, 64, 64)), "texture").value());
+            addNode(*document, ent1, brushNode1);
+            document->select(std::vector<Model::Node*>{ent1});
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> { brushNode1}));
+            CHECK_FALSE(ent1->selected());
+            CHECK(brushNode1->selected());
+
+            Model::GroupNode* group = document->groupSelection("Group");
+            CHECK_THAT(group->children(), Catch::Equals(std::vector<Model::Node*> {ent1}));
+            CHECK_THAT(ent1->children(), Catch::Equals(std::vector<Model::Node*> { brushNode1}));
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> {group}));
+            CHECK(document->selectedNodes().brushesRecursively() == std::vector<Model::BrushNode*>{ brushNode1});
+            CHECK(document->selectedNodes().hasBrushesRecursively());
+            CHECK(!document->selectedNodes().hasBrushes());
+
+            document->ungroupSelection();
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> { brushNode1}));
+            CHECK_FALSE(ent1->selected());
+            CHECK(brushNode1->selected());
+        }
+
+        // https://github.com/TrenchBroom/TrenchBroom/issues/3824
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.ungroupGroupAndPointEntity") {
+            auto* ent1 = new Model::EntityNode{};
+            auto* ent2 = new Model::EntityNode{};
+
+            addNode(*document, document->parentForNodes(), ent1);
+            addNode(*document, document->parentForNodes(), ent2);
+            document->select(std::vector<Model::Node*>{ ent1 });
+
+            auto* group = document->groupSelection("Group");
+            document->select(std::vector<Model::Node*>{ent2});
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::UnorderedEquals(std::vector<Model::Node*>{group, ent2}));
+            
+            document->ungroupSelection();
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::UnorderedEquals(std::vector<Model::Node*>{ent1, ent2}));
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.mergeGroups") {
+            document->selectAllNodes();
+            document->deleteObjects();
+
+            Model::EntityNode* ent1 = new Model::EntityNode();
+            addNode(*document, document->parentForNodes(), ent1);
+            document->deselectAll();
+            document->select(std::vector<Model::Node*> {ent1});
+            Model::GroupNode* group1 = document->groupSelection("group1");
+
+            Model::EntityNode* ent2 = new Model::EntityNode();
+            addNode(*document, document->parentForNodes(), ent2);
+            document->deselectAll();
+            document->select(std::vector<Model::Node*> {ent2});
+            Model::GroupNode* group2 = document->groupSelection("group2");
+
+            CHECK_THAT(document->currentLayer()->children(), Catch::UnorderedEquals(std::vector<Model::Node*>{ group1, group2 }));
+
+            document->select(std::vector<Model::Node*> {group1, group2});
+            document->mergeSelectedGroupsWithGroup(group2);
+
+            CHECK_THAT(document->selectedNodes().nodes(), Catch::Equals(std::vector<Model::Node*> {group2}));
+            CHECK_THAT(document->currentLayer()->children(), Catch::Equals(std::vector<Model::Node*> {group2}));
+
+            CHECK_THAT(group1->children(), Catch::UnorderedEquals(std::vector<Model::Node*>{}));
+            CHECK_THAT(group2->children(), Catch::UnorderedEquals(std::vector<Model::Node*>{ ent1, ent2 }));
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.ungroupLinkedGroups", "[GroupNodesTest]") {
             auto* brushNode = createBrushNode();
             document->addNodes({{document->parentForNodes(), {brushNode}}});
 
@@ -342,7 +428,7 @@ namespace TrenchBroom {
             CHECK(groupNode->group().linkedGroupId() == linkedGroupNode2->group().linkedGroupId());
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.createLinkedDuplicate", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.createLinkedDuplicate", "[GroupNodesTest]") {
             auto* brushNode = createBrushNode();
             document->addNodes({{document->parentForNodes(), {brushNode}}});
             document->select(brushNode);
@@ -365,7 +451,7 @@ namespace TrenchBroom {
             CHECK(linkedGroupNode->group().linkedGroupId() == groupNode->group().linkedGroupId());
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodesTest.selectLinkedGroups", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.selectLinkedGroups", "[GroupNodesTest]") {
             auto* entityNode = new Model::EntityNode{};
             auto* brushNode = createBrushNode();
             document->addNodes({{document->parentForNodes(), {brushNode, entityNode}}});
@@ -413,7 +499,7 @@ namespace TrenchBroom {
             }
         }
 
-        TEST_CASE_METHOD(GroupNodesTest, "GroupNodestTest.separateGroups", "[GroupNodesTest]") {
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodestTest.separateGroups", "[GroupNodesTest]") {
             auto* brushNode = createBrushNode();
             document->addNodes({{document->parentForNodes(), {brushNode}}});
             document->select(brushNode);
@@ -495,6 +581,20 @@ namespace TrenchBroom {
                 CHECK(linkedGroupNode2->group().linkedGroupId() == originalLinkedGroupId);
                 CHECK(linkedGroupNode3->group().linkedGroupId() == originalLinkedGroupId);
             }
+        }
+
+        TEST_CASE_METHOD(MapDocumentTest, "GroupNodesTest.newWithGroupOpen") {
+            Model::EntityNode* entity = new Model::EntityNode();
+            addNode(*document, document->parentForNodes(), entity);
+            document->select(entity);
+            Model::GroupNode* group = document->groupSelection("my group");
+            document->openGroup(group);
+
+            CHECK(document->currentGroup() == group);
+
+            document->newDocument(Model::MapFormat::Valve, MapDocument::DefaultWorldBounds, document->game());
+
+            CHECK(document->currentGroup() == nullptr);
         }
     }
 }

@@ -82,6 +82,9 @@ namespace TrenchBroom {
             void updateFaceTags(size_t faceIndex, TagManager& tagManager);
             
             void setFaceTexture(size_t faceIndex, Assets::Texture* texture);
+
+            bool contains(const Node* node) const;
+            bool intersects(const Node* node) const;
         private:
             void clearSelectedFaces();
             void updateSelectedFaceCount();
@@ -89,6 +92,8 @@ namespace TrenchBroom {
             const std::string& doGetName() const override;
             const vm::bbox3& doGetLogicalBounds() const override;
             const vm::bbox3& doGetPhysicalBounds() const override;
+
+            FloatType doGetProjectedArea(vm::axis::type axis) const override;
 
             Node* doClone(const vm::bbox3& worldBounds) const override;
 
@@ -104,7 +109,7 @@ namespace TrenchBroom {
             void doAccept(NodeVisitor& visitor) override;
             void doAccept(ConstNodeVisitor& visitor) const override;
         private: // implement Object interface
-            void doPick(const vm::ray3& ray, PickResult& pickResult) override;
+            void doPick(const EditorContext& editorContext, const vm::ray3& ray, PickResult& pickResult) override;
             void doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) override;
 
             std::optional<std::tuple<FloatType, size_t>> findFaceHit(const vm::ray3& ray) const;
@@ -112,9 +117,6 @@ namespace TrenchBroom {
             Node* doGetContainer() override;
             LayerNode* doGetContainingLayer() override;
             GroupNode* doGetContainingGroup() override;
-
-            bool doContains(const Node* node) const override;
-            bool doIntersects(const Node* node) const override;
         public: // renderer cache
             /**
              * Only exposed to be called by BrushFace

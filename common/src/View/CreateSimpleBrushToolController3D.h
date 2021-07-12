@@ -29,33 +29,24 @@
 namespace TrenchBroom {
     namespace View {
         class CreateSimpleBrushTool;
+        class DragTracker;
         class MapDocument;
 
-        class CreateSimpleBrushToolController3D : public ToolControllerBase<NoPickingPolicy, KeyPolicy, NoMousePolicy, RestrictedDragPolicy, RenderPolicy, NoDropPolicy> {
+        class CreateSimpleBrushToolController3D : public ToolController {
         private:
-            CreateSimpleBrushTool* m_tool;
+            CreateSimpleBrushTool& m_tool;
             std::weak_ptr<MapDocument> m_document;
 
             vm::vec3 m_initialPoint;
         public:
-            CreateSimpleBrushToolController3D(CreateSimpleBrushTool* tool, std::weak_ptr<MapDocument> document);
+            CreateSimpleBrushToolController3D(CreateSimpleBrushTool& tool, std::weak_ptr<MapDocument> document);
         private:
-            Tool* doGetTool() override;
-            const Tool* doGetTool() const override;
+            Tool& tool() override;
+            const Tool& tool() const override;
 
-            void doModifierKeyChange(const InputState& inputState) override;
+            std::unique_ptr<DragTracker> acceptMouseDrag(const InputState& inputState) override;
 
-            DragInfo doStartDrag(const InputState& inputState) override;
-            DragResult doDrag(const InputState& inputState, const vm::vec3& lastHandlePosition, const vm::vec3& nextHandlePosition) override;
-            void doEndDrag(const InputState& inputState) override;
-            void doCancelDrag() override;
-
-            void doSetRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const override;
-            void doRender(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
-
-            bool doCancel() override;
-        private:
-            void updateBounds(const vm::vec3& point, const vm::vec3& cameraPosition);
+            bool cancel() override;
         };
     }
 }

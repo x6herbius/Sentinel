@@ -26,6 +26,7 @@
 
 #include <vecmath/forward.h>
 #include <vecmath/bbox.h>
+#include <vecmath/util.h>
 
 #include <iosfwd>
 #include <memory>
@@ -34,6 +35,7 @@
 
 namespace TrenchBroom {
     namespace Model {
+        class EditorContext;
         class EntityNodeBase;
         class ConstNodeVisitor;
         class Issue;
@@ -110,6 +112,11 @@ namespace TrenchBroom {
              * beyond the bounds specified in the .fgd.
              */
             const vm::bbox3& physicalBounds() const;
+
+            /**
+             * Returns the area of this node when projected onto a plane with the given axis.
+             */
+            FloatType projectedArea(vm::axis::type axis) const;
         public: // cloning and snapshots
             Node* clone(const vm::bbox3& worldBounds) const;
             Node* cloneRecursively(const vm::bbox3& worldBounds) const;
@@ -313,7 +320,7 @@ namespace TrenchBroom {
             LockState lockState() const;
             bool setLockState(LockState lockState);
         public: // picking
-            void pick(const vm::ray3& ray, PickResult& result);
+            void pick(const EditorContext& editorContext, const vm::ray3& ray, PickResult& result);
             void findNodesContaining(const vm::vec3& point, std::vector<Node*>& result);
         public: // file position
             size_t lineNumber() const;
@@ -443,6 +450,8 @@ namespace TrenchBroom {
             virtual const vm::bbox3& doGetLogicalBounds() const = 0;
             virtual const vm::bbox3& doGetPhysicalBounds() const = 0;
 
+            virtual FloatType doGetProjectedArea(vm::axis::type axis) const = 0;
+
             virtual Node* doClone(const vm::bbox3& worldBounds) const = 0;
             virtual Node* doCloneRecursively(const vm::bbox3& worldBounds) const;
 
@@ -478,7 +487,7 @@ namespace TrenchBroom {
 
             virtual bool doSelectable() const = 0;
 
-            virtual void doPick(const vm::ray3& ray, PickResult& pickResult) = 0;
+            virtual void doPick(const EditorContext& editorContext, const vm::ray3& ray, PickResult& pickResult) = 0;
             virtual void doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) = 0;
 
             virtual void doGenerateIssues(const IssueGenerator* generator, std::vector<Issue*>& issues) = 0;

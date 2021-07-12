@@ -118,6 +118,8 @@ namespace TrenchBroom {
             const std::string& doGetName() const override;
             const vm::bbox3& doGetLogicalBounds() const override;
             const vm::bbox3& doGetPhysicalBounds() const override;
+            
+            FloatType doGetProjectedArea(vm::axis::type axis) const override;
 
             Node* doClone(const vm::bbox3& worldBounds) const override;
 
@@ -135,7 +137,7 @@ namespace TrenchBroom {
 
             bool doSelectable() const override;
 
-            void doPick(const vm::ray3& ray, PickResult& pickResult) override;
+            void doPick(const EditorContext& editorContext, const vm::ray3& ray, PickResult& pickResult) override;
             void doFindNodesContaining(const vm::vec3& point, std::vector<Node*>& result) override;
 
             void doGenerateIssues(const IssueGenerator* generator, std::vector<Issue*>& issues) override;
@@ -145,9 +147,6 @@ namespace TrenchBroom {
             Node* doGetContainer() override;
             LayerNode* doGetContainingLayer() override;
             GroupNode* doGetContainingGroup() override;
-
-            bool doContains(const Node* node) const override;
-            bool doIntersects(const Node* node) const override;
         private:
             void invalidateBounds();
             void validateBounds() const;

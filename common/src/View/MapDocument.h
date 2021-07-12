@@ -21,6 +21,7 @@
 
 #include "FloatType.h"
 #include "Notifier.h"
+#include "NotifierConnection.h"
 #include "IO/Path.h"
 #include "Model/Game.h"
 #include "Model/MapFacade.h"
@@ -187,6 +188,8 @@ namespace TrenchBroom {
 
             Notifier<> portalFileWasLoadedNotifier;
             Notifier<> portalFileWasUnloadedNotifier;
+        private:
+            NotifierConnection m_notifierConnection;
         protected:
             MapDocument();
         public:
@@ -351,8 +354,6 @@ namespace TrenchBroom {
         public: // group management
             Model::GroupNode* groupSelection(const std::string& name);
             void mergeSelectedGroupsWithGroup(Model::GroupNode* group);
-        private:
-            std::vector<Model::Node*> collectGroupableNodes(const std::vector<Model::Node*>& selectedNodes) const;
         public:
             void ungroupSelection();
             void renameGroups(const std::string& name);
@@ -425,6 +426,7 @@ namespace TrenchBroom {
             void downgradeUnlockedToInherit(const std::vector<Model::Node*>& nodes);
         public: // modifying objects, declared in MapFacade interface
             bool swapNodeContents(const std::string& commandName, std::vector<std::pair<Model::Node*, Model::NodeContents>> nodesToSwap, std::vector<std::pair<const Model::GroupNode*, std::vector<Model::GroupNode*>>> linkedGroupsToUpdate);
+            bool swapNodeContents(const std::string& commandName, std::vector<std::pair<Model::Node*, Model::NodeContents>> nodesToSwap);
             bool transformObjects(const std::string& commandName, const vm::mat4x4& transformation);
 
             bool translateObjects(const vm::vec3& delta) override;
@@ -586,7 +588,7 @@ namespace TrenchBroom {
             bool isRegisteredSmartTag(size_t index) const;
             const Model::SmartTag& smartTag(size_t index) const;
         private:
-            void initializeNodeTags(MapDocument* document);
+            void initializeAllNodeTags(MapDocument* document);
             void initializeNodeTags(const std::vector<Model::Node*>& nodes);
             void clearNodeTags(const std::vector<Model::Node*>& nodes);
             void updateNodeTags(const std::vector<Model::Node*>& nodes);
@@ -606,8 +608,7 @@ namespace TrenchBroom {
             void setLastSaveModificationCount();
             void clearModificationCount();
         private: // observers
-            void bindObservers();
-            void unbindObservers();
+            void connectObservers();
             void textureCollectionsWillChange();
             void textureCollectionsDidChange();
             void entityDefinitionsWillChange();

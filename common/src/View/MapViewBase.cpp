@@ -26,6 +26,7 @@
 #include "Assets/EntityDefinition.h"
 #include "Assets/EntityDefinitionGroup.h"
 #include "Assets/EntityDefinitionManager.h"
+#include "Model/BezierPatch.h"
 #include "Model/BrushNode.h"
 #include "Model/BrushFace.h"
 #include "Model/ChangeBrushFaceAttributesRequest.h"
@@ -35,9 +36,10 @@
 #include "Model/GroupNode.h"
 #include "Model/Hit.h"
 #include "Model/HitAdapter.h"
-#include "Model/HitQuery.h"
+#include "Model/HitFilter.h"
 #include "Model/LayerNode.h"
 #include "Model/ModelUtils.h"
+#include "Model/PatchNode.h"
 #include "Model/PointFile.h"
 #include "Model/PortalFile.h"
 #include "Model/WorldNode.h"
@@ -96,7 +98,7 @@ namespace TrenchBroom {
         m_portalFileRenderer(nullptr),
         m_isCurrent(false) {
             setToolBox(toolBox);
-            bindObservers();
+            connectObservers();
 
             setAcceptDrops(true);
         }
@@ -110,8 +112,6 @@ namespace TrenchBroom {
         }
 
         MapViewBase::~MapViewBase() {
-            unbindObservers();
-
             // Deleting m_compass will access the VBO so we need to be current
             // see: http://doc.qt.io/qt-5/qopenglwidget.html#resource-initialization-and-cleanup
             makeCurrent();
@@ -121,70 +121,36 @@ namespace TrenchBroom {
             m_isCurrent = isCurrent;
         }
 
-        void MapViewBase::bindObservers() {
+        void MapViewBase::connectObservers() {
             auto document = kdl::mem_lock(m_document);
-            document->nodesWereAddedNotifier.addObserver(this, &MapViewBase::nodesDidChange);
-            document->nodesWereRemovedNotifier.addObserver(this, &MapViewBase::nodesDidChange);
-            document->nodesDidChangeNotifier.addObserver(this, &MapViewBase::nodesDidChange);
-            document->nodeVisibilityDidChangeNotifier.addObserver(this, &MapViewBase::nodesDidChange);
-            document->nodeLockingDidChangeNotifier.addObserver(this, &MapViewBase::nodesDidChange);
-            document->commandDoneNotifier.addObserver(this, &MapViewBase::commandDone);
-            document->commandUndoneNotifier.addObserver(this, &MapViewBase::commandUndone);
-            document->selectionDidChangeNotifier.addObserver(this, &MapViewBase::selectionDidChange);
-            document->textureCollectionsDidChangeNotifier.addObserver(this, &MapViewBase::textureCollectionsDidChange);
-            document->entityDefinitionsDidChangeNotifier.addObserver(this, &MapViewBase::entityDefinitionsDidChange);
-            document->modsDidChangeNotifier.addObserver(this, &MapViewBase::modsDidChange);
-            document->editorContextDidChangeNotifier.addObserver(this, &MapViewBase::editorContextDidChange);
-            document->documentWasNewedNotifier.addObserver(this, &MapViewBase::documentDidChange);
-            document->documentWasClearedNotifier.addObserver(this, &MapViewBase::documentDidChange);
-            document->documentWasLoadedNotifier.addObserver(this, &MapViewBase::documentDidChange);
-            document->pointFileWasLoadedNotifier.addObserver(this, &MapViewBase::pointFileDidChange);
-            document->pointFileWasUnloadedNotifier.addObserver(this, &MapViewBase::pointFileDidChange);
-            document->portalFileWasLoadedNotifier.addObserver(this, &MapViewBase::portalFileDidChange);
-            document->portalFileWasUnloadedNotifier.addObserver(this, &MapViewBase::portalFileDidChange);
+            m_notifierConnection += document->nodesWereAddedNotifier.connect(this, &MapViewBase::nodesDidChange);
+            m_notifierConnection += document->nodesWereRemovedNotifier.connect(this, &MapViewBase::nodesDidChange);
+            m_notifierConnection += document->nodesDidChangeNotifier.connect(this, &MapViewBase::nodesDidChange);
+            m_notifierConnection += document->nodeVisibilityDidChangeNotifier.connect(this, &MapViewBase::nodesDidChange);
+            m_notifierConnection += document->nodeLockingDidChangeNotifier.connect(this, &MapViewBase::nodesDidChange);
+            m_notifierConnection += document->commandDoneNotifier.connect(this, &MapViewBase::commandDone);
+            m_notifierConnection += document->commandUndoneNotifier.connect(this, &MapViewBase::commandUndone);
+            m_notifierConnection += document->selectionDidChangeNotifier.connect(this, &MapViewBase::selectionDidChange);
+            m_notifierConnection += document->textureCollectionsDidChangeNotifier.connect(this, &MapViewBase::textureCollectionsDidChange);
+            m_notifierConnection += document->entityDefinitionsDidChangeNotifier.connect(this, &MapViewBase::entityDefinitionsDidChange);
+            m_notifierConnection += document->modsDidChangeNotifier.connect(this, &MapViewBase::modsDidChange);
+            m_notifierConnection += document->editorContextDidChangeNotifier.connect(this, &MapViewBase::editorContextDidChange);
+            m_notifierConnection += document->documentWasNewedNotifier.connect(this, &MapViewBase::documentDidChange);
+            m_notifierConnection += document->documentWasClearedNotifier.connect(this, &MapViewBase::documentDidChange);
+            m_notifierConnection += document->documentWasLoadedNotifier.connect(this, &MapViewBase::documentDidChange);
+            m_notifierConnection += document->pointFileWasLoadedNotifier.connect(this, &MapViewBase::pointFileDidChange);
+            m_notifierConnection += document->pointFileWasUnloadedNotifier.connect(this, &MapViewBase::pointFileDidChange);
+            m_notifierConnection += document->portalFileWasLoadedNotifier.connect(this, &MapViewBase::portalFileDidChange);
+            m_notifierConnection += document->portalFileWasUnloadedNotifier.connect(this, &MapViewBase::portalFileDidChange);
 
             Grid& grid = document->grid();
-            grid.gridDidChangeNotifier.addObserver(this, &MapViewBase::gridDidChange);
+            m_notifierConnection += grid.gridDidChangeNotifier.connect(this, &MapViewBase::gridDidChange);
 
-            m_toolBox.toolActivatedNotifier.addObserver(this, &MapViewBase::toolChanged);
-            m_toolBox.toolDeactivatedNotifier.addObserver(this, &MapViewBase::toolChanged);
-
-            PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.addObserver(this, &MapViewBase::preferenceDidChange);
-        }
-
-        void MapViewBase::unbindObservers() {
-            if (!kdl::mem_expired(m_document)) {
-                auto document = kdl::mem_lock(m_document);
-                document->nodesWereAddedNotifier.removeObserver(this, &MapViewBase::nodesDidChange);
-                document->nodesWereRemovedNotifier.removeObserver(this, &MapViewBase::nodesDidChange);
-                document->nodesDidChangeNotifier.removeObserver(this, &MapViewBase::nodesDidChange);
-                document->nodeVisibilityDidChangeNotifier.removeObserver(this, &MapViewBase::nodesDidChange);
-                document->nodeLockingDidChangeNotifier.removeObserver(this, &MapViewBase::nodesDidChange);
-                document->commandDoneNotifier.removeObserver(this, &MapViewBase::commandDone);
-                document->commandUndoneNotifier.removeObserver(this, &MapViewBase::commandUndone);
-                document->selectionDidChangeNotifier.removeObserver(this, &MapViewBase::selectionDidChange);
-                document->textureCollectionsDidChangeNotifier.removeObserver(this, &MapViewBase::textureCollectionsDidChange);
-                document->entityDefinitionsDidChangeNotifier.removeObserver(this, &MapViewBase::entityDefinitionsDidChange);
-                document->modsDidChangeNotifier.removeObserver(this, &MapViewBase::modsDidChange);
-                document->editorContextDidChangeNotifier.removeObserver(this, &MapViewBase::editorContextDidChange);
-                document->documentWasNewedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
-                document->documentWasClearedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
-                document->documentWasLoadedNotifier.removeObserver(this, &MapViewBase::documentDidChange);
-                document->pointFileWasLoadedNotifier.removeObserver(this, &MapViewBase::pointFileDidChange);
-                document->pointFileWasUnloadedNotifier.removeObserver(this, &MapViewBase::pointFileDidChange);
-                document->portalFileWasLoadedNotifier.removeObserver(this, &MapViewBase::portalFileDidChange);
-                document->portalFileWasUnloadedNotifier.removeObserver(this, &MapViewBase::portalFileDidChange);
-
-                Grid& grid = document->grid();
-                grid.gridDidChangeNotifier.removeObserver(this, &MapViewBase::gridDidChange);
-            }
-
-            m_toolBox.toolActivatedNotifier.removeObserver(this, &MapViewBase::toolChanged);
-            m_toolBox.toolDeactivatedNotifier.removeObserver(this, &MapViewBase::toolChanged);
+            m_notifierConnection += m_toolBox.toolActivatedNotifier.connect(this, &MapViewBase::toolChanged);
+            m_notifierConnection += m_toolBox.toolDeactivatedNotifier.connect(this, &MapViewBase::toolChanged);
 
             PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.removeObserver(this, &MapViewBase::preferenceDidChange);
+            m_notifierConnection += prefs.preferenceDidChangeNotifier.connect(this, &MapViewBase::preferenceDidChange);
         }
 
         /**
@@ -201,7 +167,7 @@ namespace TrenchBroom {
             update();
         }
 
-        void MapViewBase::toolChanged(Tool*) {
+        void MapViewBase::toolChanged(Tool&) {
             updatePickResult();
             updateActionStates();
             update();
@@ -1097,7 +1063,8 @@ namespace TrenchBroom {
                     [](const Model::LayerNode*)  { return false; },
                     [](const Model::GroupNode*)  { return false; },
                     [](const Model::EntityNode*) { return true; },
-                    [](const Model::BrushNode*)  { return false; }
+                    [](const Model::BrushNode*)  { return false; },
+                    [](const Model::PatchNode*)  { return false; }
                 ));
 
                 if (isEntity) {
@@ -1108,7 +1075,8 @@ namespace TrenchBroom {
 
             menu.addSeparator();
 
-            const Model::Hit& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            using namespace Model::HitFilters;
+            const Model::Hit& hit = pickResult().first(type(Model::BrushNode::BrushHitType));
             const auto faceHandle = Model::hitToFaceHandle(hit);
             if (faceHandle) {
                 const Assets::Texture* texture = faceHandle->face().texture();
@@ -1241,13 +1209,15 @@ namespace TrenchBroom {
         }
 
         Model::Node* MapViewBase::findNewGroupForObjects(const std::vector<Model::Node*>& nodes) const {
+            using namespace Model::HitFilters;
+
             Model::Node* newGroup = nullptr;
 
             auto document = kdl::mem_lock(m_document);
-            const Model::Hit& hit = pickResult().query().pickable().first();
-            if (hit.isMatch())
-                newGroup = Model::findOutermostClosedGroup(Model::hitToNode(hit));
-
+            const auto hits = pickResult().all(type(Model::nodeHitType()));
+            if (!hits.empty()) {
+                newGroup = Model::findOutermostClosedGroup(Model::hitToNode(hits.front()));
+            }
             if (newGroup != nullptr && canReparentNodes(nodes, newGroup))
                 return newGroup;
             return nullptr;
@@ -1263,6 +1233,8 @@ namespace TrenchBroom {
         }
 
         Model::GroupNode* MapViewBase::findGroupToMergeGroupsInto(const Model::NodeCollection& selectedNodes) const {
+            using namespace Model::HitFilters;
+
             if (!(selectedNodes.hasOnlyGroups() && selectedNodes.groupCount() >= 2)) {
                 return nullptr;
             }
@@ -1270,9 +1242,9 @@ namespace TrenchBroom {
             Model::GroupNode* mergeTarget = nullptr;
 
             auto document = kdl::mem_lock(m_document);
-            const Model::Hit& hit = pickResult().query().pickable().first();
-            if (hit.isMatch()) {
-                mergeTarget = findOutermostClosedGroup(Model::hitToNode(hit));
+            const auto hits = pickResult().all(type(Model::nodeHitType()));
+            if (!hits.empty()) {
+                mergeTarget = findOutermostClosedGroup(Model::hitToNode(hits.front()));
             }
             if (mergeTarget == nullptr) {
                 return nullptr;
@@ -1311,10 +1283,12 @@ namespace TrenchBroom {
         }
 
         Model::Node* MapViewBase::findNewParentEntityForBrushes(const std::vector<Model::Node*>& nodes) const {
+            using namespace Model::HitFilters;
+
             Model::Node* newParent = nullptr;
 
             auto document = kdl::mem_lock(m_document);
-            const Model::Hit& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            const Model::Hit& hit = pickResult().first(type(Model::BrushNode::BrushHitType));
             if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
                 Model::BrushNode* brush = faceHandle->node();
                 newParent = brush->entity();
@@ -1353,19 +1327,25 @@ namespace TrenchBroom {
         /**
          * Return the given nodes, but replace all entity brushes with the parent entity (with duplicates removed).
          */
-        static std::vector<Model::Node*> collectEntitiesForBrushes(const std::vector<Model::Node*>& selectedNodes, const Model::WorldNode* world) {
+        static std::vector<Model::Node*> collectEntitiesForNodes(const std::vector<Model::Node*>& selectedNodes, const Model::WorldNode* world) {
             std::vector<Model::Node*> result;
+            const auto addNode = [&](auto&& thisLambda, auto* node) {
+                if (node->entity() == world) {
+                    result.push_back(node);
+                } else {
+                    node->visitParent(thisLambda);
+                }
+            };
             Model::Node::visitAll(selectedNodes, kdl::overload(
                 [] (Model::WorldNode*)         {},
                 [] (Model::LayerNode*)         {},
                 [&](Model::GroupNode* group)   { result.push_back(group); },
                 [&](Model::EntityNode* entity) { result.push_back(entity); },
                 [&](auto&& thisLambda, Model::BrushNode* brush) {
-                    if (brush->entity() == world) {
-                        result.push_back(brush);
-                    } else {
-                        brush->visitParent(thisLambda);
-                    }
+                    addNode(thisLambda, brush);
+                },
+                [&](auto&& thisLambda, Model::PatchNode* patch) {
+                    addNode(thisLambda, patch);
                 }
             ));
             return kdl::vec_sort_and_remove_duplicates(std::move(result));
@@ -1377,7 +1357,7 @@ namespace TrenchBroom {
             auto document = kdl::mem_lock(m_document);
             std::vector<Model::Node*> inputNodes;
             if (preserveEntities) {
-                inputNodes = collectEntitiesForBrushes(nodes, document->world());
+                inputNodes = collectEntitiesForNodes(nodes, document->world());
             } else {
                 inputNodes = nodes;
             }

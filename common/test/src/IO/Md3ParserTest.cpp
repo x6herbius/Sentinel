@@ -79,32 +79,5 @@ namespace TrenchBroom {
             const auto* skin2 = surface2->skin("models/weapons2/bfg/LDAbfg_z");
             CHECK(skin2 != nullptr);
         }
-
-        TEST_CASE("Md3ParserTest.loadFailure_2659", "[Md3ParserTest]") {
-            // see https://github.com/TrenchBroom/TrenchBroom/issues/2659
-
-            NullLogger logger;
-            const auto shaderSearchPath = Path("scripts");
-            const auto textureSearchPaths = std::vector<Path> { Path("models") };
-            std::shared_ptr<FileSystem> fs = std::make_shared<DiskFileSystem>(IO::Disk::getCurrentWorkingDir() + Path("fixture/test/IO/Md3/armor"));
-            fs = std::make_shared<Quake3ShaderFileSystem>(fs, shaderSearchPath, textureSearchPaths, logger);
-
-            const auto md3Path = IO::Path("models/armor_red.md3");
-            const auto md3File = fs->openFile(md3Path);
-            REQUIRE(md3File != nullptr);
-
-            auto reader = md3File->reader().buffer();
-            auto parser = Md3Parser("armor_red", std::begin(reader), std::end(reader), *fs);
-            auto model = std::unique_ptr<Assets::EntityModel>(parser.initializeModel(logger));
-
-            CHECK(model != nullptr);
-
-            CHECK(model->frameCount() == 30u);
-            CHECK(model->surfaceCount() == 2u);
-
-            for (size_t i = 0; i < model->frameCount(); ++i) {
-                CHECK_NOTHROW(parser.loadFrame(i, *model, logger));
-            }
-        }
     }
 }

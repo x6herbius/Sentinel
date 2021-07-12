@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "NotifierConnection.h"
 #include "Model/MapFormat.h"
 #include "View/Selection.h"
 
@@ -103,6 +104,8 @@ namespace TrenchBroom {
             QLabel* m_statusBarLabel;
 
             QPointer<QDialog> m_compilationDialog;
+
+            NotifierConnection m_notifierConnection;
         private: // shortcuts
             using ActionMap = std::map<const Action*, QAction*>;
             ActionMap m_actionMap;
@@ -140,8 +143,7 @@ namespace TrenchBroom {
         private: // gui creation
             void createGui();
         private: // notification handlers
-            void bindObservers();
-            void unbindObservers();
+            void connectObservers();
 
             void documentWasCleared(View::MapDocument* document);
             void documentDidChange(View::MapDocument* document);
@@ -152,9 +154,9 @@ namespace TrenchBroom {
 
             void preferenceDidChange(const IO::Path& path);
             void gridDidChange();
-            void toolActivated(Tool* tool);
-            void toolDeactivated(Tool* tool);
-            void toolHandleSelectionChanged(Tool* tool);
+            void toolActivated(Tool& tool);
+            void toolDeactivated(Tool& tool);
+            void toolHandleSelectionChanged(Tool& tool);
             void selectionDidChange(const Selection& selection);
             void currentLayerDidChange(const TrenchBroom::Model::LayerNode* layer);
             void groupWasOpened(Model::GroupNode* group);
@@ -346,6 +348,7 @@ namespace TrenchBroom {
             bool currentViewMaximized();
 
             void showCompileDialog();
+            bool closeCompileDialog();
 
             void showLaunchEngineDialog();
 

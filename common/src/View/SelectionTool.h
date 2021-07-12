@@ -36,15 +36,8 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class DragTracker;
         class MapDocument;
-
-        /**
-         * Implements the Group picking logic: if `node` is inside a (possibly nested chain of)
-         * closed group(s), the outermost closed group is returned. Otherwise, `node` itself is returned.
-         *
-         * This is used to implement the UI where clicking on a brush inside a group selects the group.
-         */
-        Model::Node* findOutermostClosedGroupOrNode(Model::Node* node);
 
         /**
          * Applies the group picking logic of findOutermostClosedGroupOrNode() to a list of hits.
@@ -53,38 +46,24 @@ namespace TrenchBroom {
          */
         std::vector<Model::Node*> hitsToNodesWithGroupPicking(const std::vector<Model::Hit>& hits);
 
-        class SelectionTool : public ToolControllerBase<NoPickingPolicy, NoKeyPolicy, MousePolicy, MouseDragPolicy, RenderPolicy, NoDropPolicy>, public Tool {
+        class SelectionTool : public ToolController, public Tool {
         private:
             std::weak_ptr<MapDocument> m_document;
         public:
             explicit SelectionTool(std::weak_ptr<MapDocument> document);
         private:
-            Tool* doGetTool() override;
-            const Tool* doGetTool() const override;
+            Tool& tool() override;
+            const Tool& tool() const override;
 
-            bool doMouseClick(const InputState& inputState) override;
-            bool doMouseDoubleClick(const InputState& inputState) override;
+            bool mouseClick(const InputState& inputState) override;
+            bool mouseDoubleClick(const InputState& inputState) override;
+            void mouseScroll(const InputState& inputState) override;
 
-            bool handleClick(const InputState& inputState) const;
-            bool isFaceClick(const InputState& inputState) const;
-            bool isMultiClick(const InputState& inputState) const;
+            std::unique_ptr<DragTracker> acceptMouseDrag(const InputState& inputState) override;
 
-            const Model::Hit& firstHit(const InputState& inputState, Model::HitType::Type type) const;
+            void setRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const override;
 
-            std::vector<Model::Node*> collectSelectableChildren(const Model::EditorContext& editorContext, const Model::Node* node) const;
-
-            void doMouseScroll(const InputState& inputState) override;
-            void adjustGrid(const InputState& inputState);
-            void drillSelection(const InputState& inputState);
-
-            bool doStartMouseDrag(const InputState& inputState) override;
-            bool doMouseDrag(const InputState& inputState) override;
-            void doEndMouseDrag(const InputState& inputState) override;
-            void doCancelMouseDrag() override;
-
-            void doSetRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const override;
-
-            bool doCancel() override;
+            bool cancel() override;
         };
     }
 }

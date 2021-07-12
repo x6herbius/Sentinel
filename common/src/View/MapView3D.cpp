@@ -24,13 +24,16 @@
 #include "Preferences.h"
 #include "FloatType.h"
 #include "Assets/EntityDefinitionManager.h"
+#include "Model/BezierPatch.h"
 #include "Model/BrushNode.h"
 #include "Model/BrushGeometry.h"
 #include "Model/EntityNode.h"
 #include "Model/GroupNode.h"
 #include "Model/LayerNode.h"
+#include "Model/Hit.h"
 #include "Model/HitAdapter.h"
-#include "Model/HitQuery.h"
+#include "Model/HitFilter.h"
+#include "Model/PatchNode.h"
 #include "Model/PickResult.h"
 #include "Model/PointFile.h"
 #include "Renderer/BoundsGuideRenderer.h"
@@ -69,6 +72,8 @@
 
 #include <vecmath/util.h>
 
+#include <memory>
+
 namespace TrenchBroom {
     namespace View {
         MapView3D::MapView3D(std::weak_ptr<MapDocument> document, MapViewToolBox& toolBox, Renderer::MapRenderer& renderer,
@@ -78,7 +83,7 @@ namespace TrenchBroom {
         m_flyModeHelper(std::make_unique<FlyModeHelper>(*m_camera)),
         m_ignoreCameraChangeEvents(false) {
             bindEvents();
-            bindObservers();
+            connectObservers();
             initializeCamera();
             initializeToolChain(toolBox);
 
@@ -87,9 +92,7 @@ namespace TrenchBroom {
             mapViewBaseVirtualInit();
         }
 
-        MapView3D::~MapView3D() {
-            unbindObservers();
-        }
+        MapView3D::~MapView3D() = default;
 
         void MapView3D::initializeCamera() {
             m_camera->moveTo(vm::vec3f(-80.0f, -128.0f, 96.0f));
@@ -97,35 +100,28 @@ namespace TrenchBroom {
         }
 
         void MapView3D::initializeToolChain(MapViewToolBox& toolBox) {
-            addTool(new CameraTool3D(m_document, *m_camera));
-            addTool(new MoveObjectsToolController(toolBox.moveObjectsTool()));
-            addTool(new RotateObjectsToolController3D(toolBox.rotateObjectsTool()));
-            addTool(new ScaleObjectsToolController3D(toolBox.scaleObjectsTool(), m_document));
-            addTool(new ShearObjectsToolController3D(toolBox.shearObjectsTool(), m_document));
-            addTool(new ResizeBrushesToolController3D(toolBox.resizeBrushesTool()));
-            addTool(new CreateComplexBrushToolController3D(toolBox.createComplexBrushTool()));
-            addTool(new ClipToolController3D(toolBox.clipTool()));
-            addTool(new VertexToolController(toolBox.vertexTool()));
-            addTool(new EdgeToolController(toolBox.edgeTool()));
-            addTool(new FaceToolController(toolBox.faceTool()));
-            addTool(new CreateEntityToolController3D(toolBox.createEntityTool()));
-            addTool(new SetBrushFaceAttributesTool(m_document));
-            addTool(new SelectionTool(m_document));
-            addTool(new CreateSimpleBrushToolController3D(toolBox.createSimpleBrushTool(), m_document));
+            addTool(std::make_unique<CameraTool3D>(*m_camera));
+            addTool(std::make_unique<MoveObjectsToolController>(toolBox.moveObjectsTool()));
+            addTool(std::make_unique<RotateObjectsToolController3D>(toolBox.rotateObjectsTool()));
+            addTool(std::make_unique<ScaleObjectsToolController3D>(toolBox.scaleObjectsTool(), m_document));
+            addTool(std::make_unique<ShearObjectsToolController3D>(toolBox.shearObjectsTool(), m_document));
+            addTool(std::make_unique<ResizeBrushesToolController3D>(toolBox.resizeBrushesTool()));
+            addTool(std::make_unique<CreateComplexBrushToolController3D>(toolBox.createComplexBrushTool()));
+            addTool(std::make_unique<ClipToolController3D>(toolBox.clipTool()));
+            addTool(std::make_unique<VertexToolController>(toolBox.vertexTool()));
+            addTool(std::make_unique<EdgeToolController>(toolBox.edgeTool()));
+            addTool(std::make_unique<FaceToolController>(toolBox.faceTool()));
+            addTool(std::make_unique<CreateEntityToolController3D>(toolBox.createEntityTool()));
+            addTool(std::make_unique<SetBrushFaceAttributesTool>(m_document));
+            addTool(std::make_unique<SelectionTool>(m_document));
+            addTool(std::make_unique<CreateSimpleBrushToolController3D>(toolBox.createSimpleBrushTool(), m_document));
         }
 
-        void MapView3D::bindObservers() {
-            m_camera->cameraDidChangeNotifier.addObserver(this, &MapView3D::cameraDidChange);
+        void MapView3D::connectObservers() {
+            m_notifierConnection += m_camera->cameraDidChangeNotifier.connect(this, &MapView3D::cameraDidChange);
 
             PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.addObserver(this, &MapView3D::preferenceDidChange);
-        }
-
-        void MapView3D::unbindObservers() {
-            m_camera->cameraDidChangeNotifier.removeObserver(this, &MapView3D::cameraDidChange);
-
-            PreferenceManager& prefs = PreferenceManager::instance();
-            prefs.preferenceDidChangeNotifier.removeObserver(this, &MapView3D::preferenceDidChange);
+            m_notifierConnection += prefs.preferenceDidChangeNotifier.connect(this, &MapView3D::preferenceDidChange);
         }
 
         void MapView3D::cameraDidChange(const Renderer::Camera* /* camera */) {
@@ -192,8 +188,7 @@ namespace TrenchBroom {
 
         Model::PickResult MapView3D::doPick(const vm::ray3& pickRay) const {
             auto document = kdl::mem_lock(m_document);
-            const Model::EditorContext& editorContext = document->editorContext();
-            Model::PickResult pickResult = Model::PickResult::byDistance(editorContext);
+            Model::PickResult pickResult = Model::PickResult::byDistance();
 
             document->pick(pickRay, pickResult);
             return pickResult;
@@ -212,12 +207,12 @@ namespace TrenchBroom {
 
             if (QRect(0, 0, width(), height()).contains(clientCoords)) {
                 const auto pickRay = vm::ray3(m_camera->pickRay(static_cast<float>(clientCoords.x()), static_cast<float>(clientCoords.y())));
-
-                const auto& editorContext = document->editorContext();
-                auto pickResult = Model::PickResult::byDistance(editorContext);
+                auto pickResult = Model::PickResult::byDistance();
 
                 document->pick(pickRay, pickResult);
-                const auto& hit = pickResult.query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+
+                using namespace Model::HitFilters;
+                const auto& hit = pickResult.first(type(Model::BrushNode::BrushHitType));
                 if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
                     const auto& face = faceHandle->face();
                     return grid.moveDeltaForBounds(face.boundary(), bounds, document->worldBounds(), pickRay);
@@ -274,6 +269,11 @@ namespace TrenchBroom {
                     for (const auto* vertex : brush->brush().vertices()) {
                         handlePoint(vertex->position());
                     }
+                },
+                [&](Model::PatchNode* patchNode) {
+                    for (const auto& controlPoint : patchNode->patch().controlPoints()) {
+                        handlePoint(controlPoint.xyz());
+                    }
                 }
             ));
 
@@ -311,6 +311,13 @@ namespace TrenchBroom {
                     for (const auto* vertex : brush->brush().vertices()) {
                         for (size_t i = 0u; i < 4u; ++i) {
                             handlePoint(vertex->position(), frustumPlanes[i]);
+                        }
+                    }
+                },
+                [&](Model::PatchNode* patchNode) {
+                    for (const auto& controlPoint : patchNode->patch().controlPoints()) {
+                        for (size_t i = 0u; i < 4u; ++i) {
+                            handlePoint(controlPoint.xyz(), frustumPlanes[i]);
                         }
                     }
                 }
@@ -402,7 +409,8 @@ namespace TrenchBroom {
             auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().first();
+            using namespace Model::HitFilters;
+            const auto& hit = pickResult().first(type(Model::BrushNode::BrushHitType));
             if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
                 const auto& face = faceHandle->face();
                 return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());

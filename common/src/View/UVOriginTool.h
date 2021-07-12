@@ -24,8 +24,6 @@
 #include "View/Tool.h"
 #include "View/ToolController.h"
 
-#include <vector>
-
 namespace TrenchBroom {
     namespace Model {
         class PickResult;
@@ -37,51 +35,31 @@ namespace TrenchBroom {
     }
 
     namespace View {
+        class DragTracker;
         class UVViewHelper;
 
-        class UVOriginTool : public ToolControllerBase<PickingPolicy, NoKeyPolicy, NoMousePolicy, MouseDragPolicy, RenderPolicy, NoDropPolicy>, public Tool {
+        class UVOriginTool : public ToolController, public Tool {
         public:
             static const Model::HitType::Type XHandleHitType;
             static const Model::HitType::Type YHandleHitType;
-        private:
+
             static const FloatType MaxPickDistance;
             static const float OriginHandleRadius;
-
-            using EdgeVertex = Renderer::GLVertexTypes::P3C4::Vertex;
-
+        private:
             UVViewHelper& m_helper;
-
-            vm::vec2f m_lastPoint;
-            vm::vec2f m_selector;
         public:
             explicit UVOriginTool(UVViewHelper& helper);
         private:
-            Tool* doGetTool() override;
-            const Tool* doGetTool() const override;
+            Tool& tool() override;
+            const Tool& tool() const override;
 
-            void doPick(const InputState& inputState, Model::PickResult& pickResult) override;
+            void pick(const InputState& inputState, Model::PickResult& pickResult) override;
 
-            void computeOriginHandles(vm::line3& xHandle, vm::line3& yHandle) const;
+            std::unique_ptr<DragTracker> acceptMouseDrag(const InputState& inputState) override;
 
-            bool doStartMouseDrag(const InputState& inputState) override;
-            bool doMouseDrag(const InputState& inputState) override;
+            void render(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
 
-            vm::vec2f computeHitPoint(const vm::ray3& ray) const;
-            vm::vec2f snapDelta(const vm::vec2f& delta) const;
-
-            void doEndMouseDrag(const InputState& inputState) override;
-            void doCancelMouseDrag() override;
-
-            void doRender(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override;
-
-            void renderLineHandles(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
-            std::vector<EdgeVertex> getHandleVertices(const InputState& inputState) const;
-
-            class RenderOrigin;
-            void renderOriginHandle(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch);
-            bool renderHighlight(const InputState& inputState) const;
-
-            bool doCancel() override;
+            bool cancel() override;
         };
     }
 }

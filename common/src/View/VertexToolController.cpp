@@ -19,10 +19,14 @@
 
 #include "VertexToolController.h"
 
+#include "Model/Hit.h"
+#include "Model/HitFilter.h"
 #include "View/Grid.h"
 #include "View/VertexTool.h"
 
 #include <vecmath/polygon.h>
+
+#include <memory>
 
 namespace TrenchBroom {
     namespace View {
@@ -32,30 +36,34 @@ namespace TrenchBroom {
          * to contain this method due to the call to the inherited findDraggableHandle method.
          */
         Model::Hit VertexToolController::findHandleHit(const InputState& inputState, const VertexToolController::PartBase& base) {
+            using namespace Model::HitFilters;
+
             const auto vertexHit = base.findDraggableHandle(inputState, VertexHandleManager::HandleHitType);
             if (vertexHit.isMatch())
                 return vertexHit;
-            if (inputState.modifierKeysDown(ModifierKeys::MKShift)) {
-                const auto &firstHit = inputState.pickResult().query().first();
-                if (firstHit.hasType(EdgeHandleManager::HandleHitType | FaceHandleManager::HandleHitType))
-                    return firstHit;
+            if (inputState.modifierKeysDown(ModifierKeys::MKShift) && !inputState.pickResult().empty()) {
+                const auto& anyHit = inputState.pickResult().all().front();
+                if (anyHit.hasType(EdgeHandleManager::HandleHitType | FaceHandleManager::HandleHitType))
+                    return anyHit;
             }
             return Model::Hit::NoHit;
         }
 
 
         std::vector<Model::Hit> VertexToolController::findHandleHits(const InputState& inputState, const VertexToolController::PartBase& base) {
+            using namespace Model::HitFilters;
+
             const auto vertexHits = base.findDraggableHandles(inputState, VertexHandleManager::HandleHitType);
             if (!vertexHits.empty())
                 return vertexHits;
-            if (inputState.modifierKeysDown(ModifierKeys::MKShift)) {
-                const auto& firstHit = inputState.pickResult().query().first();
-                if (firstHit.hasType(EdgeHandleManager::HandleHitType)) {
-                    const std::vector<Model::Hit> edgeHits = inputState.pickResult().query().type(EdgeHandleManager::HandleHitType).all();
+            if (inputState.modifierKeysDown(ModifierKeys::MKShift) && !inputState.pickResult().empty()) {
+                const auto& anyHit = inputState.pickResult().all().front();
+                if (anyHit.hasType(EdgeHandleManager::HandleHitType)) {
+                    const auto edgeHits = inputState.pickResult().all(type(EdgeHandleManager::HandleHitType));
                     if (!edgeHits.empty())
                         return edgeHits;
-                } else if (firstHit.hasType(FaceHandleManager::HandleHitType)) {
-                    const std::vector<Model::Hit> faceHits = inputState.pickResult().query().type(FaceHandleManager::HandleHitType).all();
+                } else if (anyHit.hasType(FaceHandleManager::HandleHitType)) {
+                    const auto faceHits = inputState.pickResult().all(type(FaceHandleManager::HandleHitType));
                     if (!faceHits.empty())
                         return faceHits;
                 }
@@ -65,7 +73,7 @@ namespace TrenchBroom {
 
         class VertexToolController::SelectVertexPart : public SelectPartBase<vm::vec3> {
         public:
-            explicit SelectVertexPart(VertexTool* tool) :
+            explicit SelectVertexPart(VertexTool& tool) :
             SelectPartBase(tool, VertexHandleManager::HandleHitType) {}
         private:
             Model::Hit doFindDraggableHandle(const InputState& inputState) const override {
@@ -82,58 +90,26 @@ namespace TrenchBroom {
         };
 
         class VertexToolController::MoveVertexPart : public MovePartBase {
-        private:
-            enum class SnapType {
-                Relative,
-                Absolute
-            };
-
-            SnapType m_lastSnapType;
-            vm::vec3 m_handleOffset;
         public:
-            explicit MoveVertexPart(VertexTool* tool) :
-            MovePartBase(tool, VertexHandleManager::HandleHitType),
-            m_lastSnapType(SnapType::Relative) {}
+            explicit MoveVertexPart(VertexTool& tool) :
+            MovePartBase(tool, VertexHandleManager::HandleHitType) {}
         private:
-            void doModifierKeyChange(const InputState& inputState) override {
-                MoveToolController::doModifierKeyChange(inputState);
-
-                if (Super::thisToolDragging()) {
-                    const SnapType currentSnapType = snapType(inputState);
-                    if (currentSnapType != m_lastSnapType) {
-                        setSnapper(inputState, doCreateDragSnapper(inputState), false);
-                        m_lastSnapType = currentSnapType;
-                    }
-                }
-            }
-
-            bool doMouseClick(const InputState& inputState) override {
+            bool mouseClick(const InputState& inputState) override {
                 if (inputState.mouseButtonsPressed(MouseButtons::MBLeft) &&
                     inputState.modifierKeysPressed(ModifierKeys::MKAlt | ModifierKeys::MKShift) &&
-                    m_tool->handleManager().selectedHandleCount() == 1) {
+                    m_tool.handleManager().selectedHandleCount() == 1) {
 
                     const Model::Hit hit = VertexToolController::findHandleHit(inputState, *this);
                     if (hit.hasType(VertexHandleManager::HandleHitType)) {
-                        const vm::vec3 sourcePos = m_tool->handleManager().selectedHandles().front();
+                        const vm::vec3 sourcePos = m_tool.handleManager().selectedHandles().front();
                         const vm::vec3 targetPos = hit.target<vm::vec3>();
                         const vm::vec3 delta = targetPos - sourcePos;
-                        m_tool->moveSelection(delta);
+                        m_tool.moveSelection(delta);
                         return true;
                     }
                 }
 
                 return false;
-            }
-
-            MoveInfo doStartMove(const InputState& inputState) override {
-                const MoveInfo info = MovePartBase::doStartMove(inputState);
-                if (info.move) {
-                    m_lastSnapType = snapType(inputState);
-                    const Model::Hit hit = findDraggableHandle(inputState);
-                    const vm::vec3 handlePos = m_tool->getHandlePosition(hit);
-                    m_handleOffset = handlePos - hit.hitPoint();
-                }
-                return info;
             }
 
             bool shouldStartMove(const InputState& inputState) const override {
@@ -149,37 +125,19 @@ namespace TrenchBroom {
                         ));
             }
 
-            DragSnapper* doCreateDragSnapper(const InputState& inputState) const override {
-                switch (snapType(inputState)) {
-                    case SnapType::Absolute:
-                        return new AbsoluteDragSnapper(m_tool->grid(), m_handleOffset);
-                    case SnapType::Relative:
-                        return new DeltaDragSnapper(m_tool->grid());
-                    switchDefault();
-                }
-            }
+            void render(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override {
+                MovePartBase::render(inputState, renderContext, renderBatch);
 
-            void doRender(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) override {
-                MovePartBase::doRender(inputState, renderContext, renderBatch);
-
-                if (!thisToolDragging()) {
+                if (!anyToolDragging(inputState)) {
                     const Model::Hit hit = findDraggableHandle(inputState);
                     if (hit.hasType(EdgeHandleManager::HandleHitType | FaceHandleManager::HandleHitType)) {
-                        const vm::vec3 handle = m_tool->getHandlePosition(hit);
+                        const vm::vec3 handle = m_tool.getHandlePosition(hit);
                         if (inputState.mouseButtonsPressed(MouseButtons::MBLeft))
-                            m_tool->renderHandle(renderContext, renderBatch, handle, pref(Preferences::SelectedHandleColor));
+                            m_tool.renderHandle(renderContext, renderBatch, handle, pref(Preferences::SelectedHandleColor));
                         else
-                            m_tool->renderHandle(renderContext, renderBatch, handle);
-                        m_tool->renderHighlight(renderContext, renderBatch, handle);
+                            m_tool.renderHandle(renderContext, renderBatch, handle);
+                        m_tool.renderHighlight(renderContext, renderBatch, handle);
                     }
-                }
-            }
-        private:
-            SnapType snapType(const InputState& inputState) const {
-                if (inputState.modifierKeysDown(ModifierKeys::MKCtrlCmd)) {
-                    return SnapType::Absolute;
-                } else {
-                    return SnapType::Relative;
                 }
             }
         private:
@@ -192,10 +150,10 @@ namespace TrenchBroom {
             }
         };
 
-        VertexToolController::VertexToolController(VertexTool* tool) :
+        VertexToolController::VertexToolController(VertexTool& tool) :
         VertexToolControllerBase(tool) {
-            addController(new MoveVertexPart(tool));
-            addController(new SelectVertexPart(tool));
+            addController(std::make_unique<MoveVertexPart>(tool));
+            addController(std::make_unique<SelectVertexPart>(tool));
         }
     }
 }

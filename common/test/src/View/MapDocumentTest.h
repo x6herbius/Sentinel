@@ -34,6 +34,7 @@ namespace TrenchBroom {
 
     namespace Model {
         class Brush;
+        class PatchNode;
         class TestGame;
     }
 
@@ -54,14 +55,21 @@ namespace TrenchBroom {
             void SetUp();
         protected:
             virtual ~MapDocumentTest();
-
-            Model::BrushNode* createBrushNode(const std::string& textureName = "texture", const std::function<void(Model::Brush&)>& brushFunc = [](Model::Brush&) {});
+        public:
+            Model::BrushNode* createBrushNode(const std::string& textureName = "texture", const std::function<void(Model::Brush&)>& brushFunc = [](Model::Brush&) {}) const;
+            Model::PatchNode* createPatchNode(const std::string& textureName = "texture") const;
         };
 
         class ValveMapDocumentTest : public MapDocumentTest {
         protected:
             ValveMapDocumentTest();
         };
+
+        class Quake3MapDocumentTest : public MapDocumentTest {
+        public:
+            Quake3MapDocumentTest();
+        };
+
     }
 }
 

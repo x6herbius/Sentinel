@@ -19,81 +19,95 @@
 
 #include "MoveObjectsToolController.h"
 
-#include "Model/BrushNode.h"
-#include "Model/EntityNode.h"
-#include "Model/HitQuery.h"
+#include "Model/Hit.h"
+#include "Model/HitFilter.h"
+#include "Model/ModelUtils.h"
 #include "Renderer/RenderContext.h"
+#include "View/DragTracker.h"
+#include "View/MoveHandleDragTracker.h"
 #include "View/MoveObjectsTool.h"
-#include "View/SelectionTool.h"
 
 #include <cassert>
 
 namespace TrenchBroom {
     namespace View {
-        MoveObjectsToolController::MoveObjectsToolController(MoveObjectsTool* tool) :
-        MoveToolController(tool->grid()),
-        m_tool(tool) {
-            ensure(m_tool != nullptr, "tool is null");
-        }
+        MoveObjectsToolController::MoveObjectsToolController(MoveObjectsTool& tool) :
+        m_tool(tool) {}
 
         MoveObjectsToolController::~MoveObjectsToolController() {}
 
-        Tool* MoveObjectsToolController::doGetTool() {
+        Tool& MoveObjectsToolController::tool() {
             return m_tool;
         }
 
-        const Tool* MoveObjectsToolController::doGetTool() const {
+        const Tool& MoveObjectsToolController::tool() const {
             return m_tool;
         }
 
-        MoveObjectsToolController::MoveInfo MoveObjectsToolController::doStartMove(const InputState& inputState) {
+        namespace {
+            class MoveObjectsDragDelegate : public MoveHandleDragTrackerDelegate {
+            private:
+                MoveObjectsTool& m_tool;
+            public:
+                MoveObjectsDragDelegate(MoveObjectsTool& tool) :
+                m_tool{tool} {}
+
+                DragStatus move(const InputState& inputState, const DragState& dragState, const vm::vec3& proposedHandlePosition) override {
+                    switch (m_tool.move(inputState, proposedHandlePosition - dragState.currentHandlePosition)) {
+                        case MoveObjectsTool::MR_Continue:
+                            return DragStatus::Continue;
+                        case MoveObjectsTool::MR_Deny:
+                            return DragStatus::Deny;
+                        case MoveObjectsTool::MR_Cancel:
+                            return DragStatus::End;
+                        switchDefault();
+                    }
+                }
+
+                void end(const InputState& inputState, const DragState&) override {
+                    m_tool.endMove(inputState);
+                }
+
+                void cancel(const DragState&) override {
+                    m_tool.cancelMove();
+                }
+
+                void setRenderOptions(const InputState& , Renderer::RenderContext& renderContext) const override {
+                    renderContext.setForceShowSelectionGuide();
+                }
+
+                DragHandleSnapper makeDragHandleSnapper(const InputState&, const SnapMode) const override {
+                    return makeRelativeHandleSnapper(m_tool.grid());
+                }
+            };
+        }
+
+        std::unique_ptr<DragTracker> MoveObjectsToolController::acceptMouseDrag(const InputState& inputState) {
+            using namespace Model::HitFilters;
+
             if (!inputState.modifierKeysPressed(ModifierKeys::MKNone) &&
                 !inputState.modifierKeysPressed(ModifierKeys::MKAlt) &&
                 !inputState.modifierKeysPressed(ModifierKeys::MKCtrlCmd) &&
-                !inputState.modifierKeysPressed(ModifierKeys::MKCtrlCmd | ModifierKeys::MKAlt))
-                return MoveInfo();
+                !inputState.modifierKeysPressed(ModifierKeys::MKCtrlCmd | ModifierKeys::MKAlt)) {
+                return nullptr;
+            }
 
             // The transitivelySelected() lets the hit query match entities/brushes inside a
             // selected group, even though the entities/brushes aren't selected themselves.
 
-            const Model::PickResult& pickResult = inputState.pickResult();
-            const Model::Hit& hit = pickResult.query().pickable().type(Model::EntityNode::EntityHitType | Model::BrushNode::BrushHitType).transitivelySelected().occluded().first();
-
-            if (!hit.isMatch())
-                return MoveInfo();
-
-            if (!m_tool->startMove(inputState))
-                return MoveInfo();
-
-            return MoveInfo(hit.hitPoint());
-        }
-
-        RestrictedDragPolicy::DragResult MoveObjectsToolController::doMove(const InputState& inputState, const vm::vec3& lastHandlePosition, const vm::vec3& nextHandlePosition) {
-            switch (m_tool->move(inputState, nextHandlePosition - lastHandlePosition)) {
-                case MoveObjectsTool::MR_Continue:
-                    return DR_Continue;
-                case MoveObjectsTool::MR_Deny:
-                    return DR_Deny;
-                case MoveObjectsTool::MR_Cancel:
-                    return DR_Cancel;
-                switchDefault();
+            const Model::Hit& hit = inputState.pickResult().first(type(Model::nodeHitType()) && transitivelySelected());
+            if (!hit.isMatch()) {
+                return nullptr;
             }
+
+            if (!m_tool.startMove(inputState)) {
+                return nullptr;
+            }
+
+            return createMoveHandleDragTracker(MoveObjectsDragDelegate{m_tool}, inputState, hit.hitPoint(), vm::vec3::zero());
         }
 
-        void MoveObjectsToolController::doEndMove(const InputState& inputState) {
-            m_tool->endMove(inputState);
-        }
-
-        void MoveObjectsToolController::doCancelMove() {
-            m_tool->cancelMove();
-        }
-
-        void MoveObjectsToolController::doSetRenderOptions(const InputState&, Renderer::RenderContext& renderContext) const {
-            if (thisToolDragging())
-                renderContext.setForceShowSelectionGuide();
-        }
-
-        bool MoveObjectsToolController::doCancel() {
+        bool MoveObjectsToolController::cancel() {
             return false;
         }
     }

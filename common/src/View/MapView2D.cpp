@@ -27,7 +27,9 @@
 #include "Model/BrushError.h"
 #include "Model/BrushNode.h"
 #include "Model/EditorContext.h"
+#include "Model/Hit.h"
 #include "Model/HitAdapter.h"
+#include "Model/HitFilter.h"
 #include "Model/ModelUtils.h"
 #include "Model/PickResult.h"
 #include "Model/PointFile.h"
@@ -65,6 +67,7 @@
 
 #include <vecmath/util.h>
 
+#include <memory>
 #include <vector>
 
 namespace TrenchBroom {
@@ -73,7 +76,7 @@ namespace TrenchBroom {
                              GLContextManager& contextManager, ViewPlane viewPlane, Logger* logger) :
         MapViewBase(logger, document, toolBox, renderer, contextManager),
         m_camera(std::make_unique<Renderer::OrthographicCamera>()) {
-            bindObservers();
+            connectObservers();
             initializeCamera(viewPlane);
             initializeToolChain(toolBox);
 
@@ -91,10 +94,6 @@ namespace TrenchBroom {
             }
 
             mapViewBaseVirtualInit();
-        }
-
-        MapView2D::~MapView2D() {
-            unbindObservers();
         }
 
         void MapView2D::initializeCamera(const ViewPlane viewPlane) {
@@ -122,27 +121,23 @@ namespace TrenchBroom {
         }
 
         void MapView2D::initializeToolChain(MapViewToolBox& toolBox) {
-            addTool(new CameraTool2D(*m_camera));
-            addTool(new MoveObjectsToolController(toolBox.moveObjectsTool()));
-            addTool(new RotateObjectsToolController2D(toolBox.rotateObjectsTool()));
-            addTool(new ScaleObjectsToolController2D(toolBox.scaleObjectsTool(), m_document));
-            addTool(new ShearObjectsToolController2D(toolBox.shearObjectsTool(), m_document));
-            addTool(new ResizeBrushesToolController2D(toolBox.resizeBrushesTool()));
-            addTool(new ClipToolController2D(toolBox.clipTool()));
-            addTool(new VertexToolController(toolBox.vertexTool()));
-            addTool(new EdgeToolController(toolBox.edgeTool()));
-            addTool(new FaceToolController(toolBox.faceTool()));
-            addTool(new CreateEntityToolController2D(toolBox.createEntityTool()));
-            addTool(new SelectionTool(m_document));
-            addTool(new CreateSimpleBrushToolController2D(toolBox.createSimpleBrushTool(), m_document));
+            addTool(std::make_unique<CameraTool2D>(*m_camera));
+            addTool(std::make_unique<MoveObjectsToolController>(toolBox.moveObjectsTool()));
+            addTool(std::make_unique<RotateObjectsToolController2D>(toolBox.rotateObjectsTool()));
+            addTool(std::make_unique<ScaleObjectsToolController2D>(toolBox.scaleObjectsTool(), m_document));
+            addTool(std::make_unique<ShearObjectsToolController2D>(toolBox.shearObjectsTool(), m_document));
+            addTool(std::make_unique<ResizeBrushesToolController2D>(toolBox.resizeBrushesTool()));
+            addTool(std::make_unique<ClipToolController2D>(toolBox.clipTool()));
+            addTool(std::make_unique<VertexToolController>(toolBox.vertexTool()));
+            addTool(std::make_unique<EdgeToolController>(toolBox.edgeTool()));
+            addTool(std::make_unique<FaceToolController>(toolBox.faceTool()));
+            addTool(std::make_unique<CreateEntityToolController2D>(toolBox.createEntityTool()));
+            addTool(std::make_unique<SelectionTool>(m_document));
+            addTool(std::make_unique<CreateSimpleBrushToolController2D>(toolBox.createSimpleBrushTool(), m_document));
         }
 
-        void MapView2D::bindObservers() {
-            m_camera->cameraDidChangeNotifier.addObserver(this, &MapView2D::cameraDidChange);
-        }
-
-        void MapView2D::unbindObservers() {
-            m_camera->cameraDidChangeNotifier.removeObserver(this, &MapView2D::cameraDidChange);
+        void MapView2D::connectObservers() {
+            m_notifierConnection += m_camera->cameraDidChangeNotifier.connect(this, &MapView2D::cameraDidChange);
         }
 
         void MapView2D::cameraDidChange(const Renderer::Camera*) {
@@ -155,10 +150,9 @@ namespace TrenchBroom {
 
         Model::PickResult MapView2D::doPick(const vm::ray3& pickRay) const {
             auto document = kdl::mem_lock(m_document);
-            const auto& editorContext = document->editorContext();
             const auto axis = vm::find_abs_max_component(pickRay.direction);
 
-            auto pickResult = Model::PickResult::bySize(editorContext, axis);
+            auto pickResult = Model::PickResult::bySize(axis);
             document->pick(pickRay, pickResult);
 
             return pickResult;
@@ -280,7 +274,8 @@ namespace TrenchBroom {
             const auto& grid = document->grid();
             const auto& worldBounds = document->worldBounds();
 
-            const auto& hit = pickResult().query().pickable().type(Model::BrushNode::BrushHitType).occluded().selected().first();
+            using namespace Model::HitFilters;
+            const auto& hit = pickResult().first(type(Model::BrushNode::BrushHitType) && selected());
             if (const auto faceHandle = Model::hitToFaceHandle(hit)) {
                 const auto& face = faceHandle->face();
                 return grid.moveDeltaForBounds(face.boundary(), bounds, worldBounds, pickRay());

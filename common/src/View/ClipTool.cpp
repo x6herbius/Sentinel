@@ -27,7 +27,8 @@
 #include "Model/BrushError.h"
 #include "Model/BrushFace.h"
 #include "Model/BrushGeometry.h"
-#include "Model/HitQuery.h"
+#include "Model/Hit.h"
+#include "Model/HitFilter.h"
 #include "Model/PickResult.h"
 #include "Model/Polyhedron.h"
 #include "Model/WorldNode.h"
@@ -100,8 +101,8 @@ namespace TrenchBroom {
             doRemoveLastPoint();
         }
 
-        bool ClipTool::ClipStrategy::canDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition) const {
-            return doCanDragPoint(pickResult, initialPosition);
+        std::optional<std::tuple<vm::vec3, vm::vec3>> ClipTool::ClipStrategy::canDragPoint(const Model::PickResult& pickResult) const {
+            return doCanDragPoint(pickResult);
         }
 
         void ClipTool::ClipStrategy::beginDragPoint(const Model::PickResult& pickResult) {
@@ -273,19 +274,22 @@ namespace TrenchBroom {
                 --m_numPoints;
             }
 
-            bool doCanDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition) const override {
-                const auto& hit = pickResult.query().type(PointHitType).occluded().first();
+            std::optional<std::tuple<vm::vec3, vm::vec3>> doCanDragPoint(const Model::PickResult& pickResult) const override {
+                using namespace Model::HitFilters;
+
+                const auto& hit = pickResult.first(type(PointHitType));
                 if (!hit.isMatch()) {
-                    return false;
-                } else {
-                    const auto index = hit.target<size_t>();
-                    initialPosition = m_points[index].point;
-                    return true;
+                    return std::nullopt;
                 }
+
+                const auto index = hit.target<size_t>();
+                const auto position = m_points[index].point;
+                return {{position, hit.hitPoint() - position}};
             }
 
             void doBeginDragPoint(const Model::PickResult& pickResult) override {
-                const auto& hit = pickResult.query().type(PointHitType).occluded().first();
+                using namespace Model::HitFilters;
+                const auto& hit = pickResult.first(type(PointHitType));
                 assert(hit.isMatch());
                 m_dragIndex = hit.target<size_t>();
                 m_originalPoint = m_points[m_dragIndex];
@@ -407,7 +411,8 @@ namespace TrenchBroom {
                 if (m_dragIndex < m_numPoints) {
                     renderHighlight(renderContext, renderBatch, m_dragIndex);
                 } else {
-                    const auto& hit = pickResult.query().type(PointHitType).occluded().first();
+                    using namespace Model::HitFilters;
+                    const auto& hit = pickResult.first(type(PointHitType));
                     if (hit.isMatch()) {
                         const auto index = hit.target<size_t>();
                         renderHighlight(renderContext, renderBatch, index);
@@ -462,7 +467,7 @@ namespace TrenchBroom {
             bool doCanRemoveLastPoint() const override { return false; }
             void doRemoveLastPoint() override {}
 
-            bool doCanDragPoint(const Model::PickResult&, vm::vec3& /* initialPosition */) const override { return false; }
+            std::optional<std::tuple<vm::vec3, vm::vec3>> doCanDragPoint(const Model::PickResult&) const override { return std::nullopt; }
             void doBeginDragPoint(const Model::PickResult&) override {}
             void doBeginDragLastPoint() override {}
             bool doDragPoint(const vm::vec3& /* newPosition */, const std::vector<vm::vec3>& /* helpVectors */) override { return false; }
@@ -660,17 +665,20 @@ namespace TrenchBroom {
             return false;
         }
 
-        bool ClipTool::beginDragPoint(const Model::PickResult& pickResult, vm::vec3& initialPosition) {
+        std::optional<std::tuple<vm::vec3, vm::vec3>> ClipTool::beginDragPoint(const Model::PickResult& pickResult) {
             assert(!m_dragging);
             if (m_strategy == nullptr) {
-                return false;
-            } else if (!m_strategy->canDragPoint(pickResult, initialPosition)) {
-                return false;
-            } else {
-                m_strategy->beginDragPoint(pickResult);
-                m_dragging = true;
-                return true;
+                return std::nullopt;
             }
+            
+            const auto pointAndOffset = m_strategy->canDragPoint(pickResult);
+            if (!pointAndOffset) {
+                return std::nullopt;
+            }
+
+            m_strategy->beginDragPoint(pickResult);
+            m_dragging = true;
+            return pointAndOffset;
         }
 
         void ClipTool::beginDragLastPoint() {
@@ -834,7 +842,8 @@ namespace TrenchBroom {
                         [] (const Model::LayerNode*)  {},
                         [] (const Model::GroupNode*)  {},
                         [] (const Model::EntityNode*) {},
-                        [&](Model::BrushNode* brush) { brushes.push_back(brush); }
+                        [&](Model::BrushNode* brush)  { brushes.push_back(brush); },
+                        [] (Model::PatchNode*)        {}
                     ));
                 }
             }
@@ -855,14 +864,14 @@ namespace TrenchBroom {
             if (!document->selectedNodes().hasOnlyBrushes()) {
                 return false;
             } else {
-                bindObservers();
+                connectObservers();
                 resetStrategy();
                 return true;
             }
         }
 
         bool ClipTool::doDeactivate() {
-            unbindObservers();
+            m_notifierConnection.disconnect();
 
             m_strategy.reset();
             clearRenderers();
@@ -875,22 +884,12 @@ namespace TrenchBroom {
             return removeLastPoint();
         }
 
-        void ClipTool::bindObservers() {
+        void ClipTool::connectObservers() {
             auto document = kdl::mem_lock(m_document);
-            document->selectionDidChangeNotifier.addObserver(this, &ClipTool::selectionDidChange);
-            document->nodesWillChangeNotifier.addObserver(this, &ClipTool::nodesWillChange);
-            document->nodesDidChangeNotifier.addObserver(this, &ClipTool::nodesDidChange);
-            document->brushFacesDidChangeNotifier.addObserver(this, &ClipTool::brushFacesDidChange);
-        }
-
-        void ClipTool::unbindObservers() {
-            if (!kdl::mem_expired(m_document)) {
-                auto document = kdl::mem_lock(m_document);
-                document->selectionDidChangeNotifier.removeObserver(this, &ClipTool::selectionDidChange);
-                document->nodesWillChangeNotifier.removeObserver(this, &ClipTool::nodesWillChange);
-                document->nodesDidChangeNotifier.removeObserver(this, &ClipTool::nodesDidChange);
-                document->brushFacesDidChangeNotifier.removeObserver(this, &ClipTool::brushFacesDidChange);
-            }
+            m_notifierConnection += document->selectionDidChangeNotifier.connect(this, &ClipTool::selectionDidChange);
+            m_notifierConnection += document->nodesWillChangeNotifier.connect(this, &ClipTool::nodesWillChange);
+            m_notifierConnection += document->nodesDidChangeNotifier.connect(this, &ClipTool::nodesDidChange);
+            m_notifierConnection += document->brushFacesDidChangeNotifier.connect(this, &ClipTool::brushFacesDidChange);
         }
 
         void ClipTool::selectionDidChange(const Selection&) {

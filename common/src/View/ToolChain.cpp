@@ -20,6 +20,8 @@
 #include "ToolChain.h"
 
 #include "Ensure.h"
+#include "View/DragTracker.h"
+#include "View/DropTracker.h"
 #include "View/ToolController.h"
 
 #include <cassert>
@@ -27,24 +29,19 @@
 
 namespace TrenchBroom {
     namespace View {
-        ToolChain::ToolChain() :
-        m_tool(nullptr),
-        m_suffix(nullptr) {}
+        ToolChain::ToolChain() = default;
 
-        ToolChain::~ToolChain() {
-            delete m_suffix;
-            delete m_tool;
-        }
-
-        void ToolChain::append(ToolController* tool) {
+        ToolChain::~ToolChain() = default;
+    
+        void ToolChain::append(std::unique_ptr<ToolController> tool) {
             assert(checkInvariant());
             if (chainEndsHere()) {
                 assert(m_suffix == nullptr);
-                m_tool = tool;
-                m_suffix = new ToolChain();
+                m_tool = std::move(tool);
+                m_suffix = std::make_unique<ToolChain>();
             } else {
                 ensure(m_suffix != nullptr, "suffix is null");
-                m_suffix->append(tool);
+                m_suffix->append(std::move(tool));
             }
             assert(checkInvariant());
         }
@@ -52,7 +49,9 @@ namespace TrenchBroom {
         void ToolChain::pick(const InputState& inputState, Model::PickResult& pickResult) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->pick(inputState, pickResult);
+                if (m_tool->toolActive()) {
+                    m_tool->pick(inputState, pickResult);
+                }
                 m_suffix->pick(inputState, pickResult);
             }
         }
@@ -60,7 +59,9 @@ namespace TrenchBroom {
         void ToolChain::modifierKeyChange(const InputState& inputState) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->modifierKeyChange(inputState);
+                if (m_tool->toolActive()) {
+                    m_tool->modifierKeyChange(inputState);
+                }
                 m_suffix->modifierKeyChange(inputState);
             }
         }
@@ -68,7 +69,9 @@ namespace TrenchBroom {
         void ToolChain::mouseDown(const InputState& inputState) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->mouseDown(inputState);
+                if (m_tool->toolActive()) {
+                    m_tool->mouseDown(inputState);
+                }
                 m_suffix->mouseDown(inputState);
             }
         }
@@ -76,33 +79,41 @@ namespace TrenchBroom {
         void ToolChain::mouseUp(const InputState& inputState) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->mouseUp(inputState);
+                if (m_tool->toolActive()) {
+                    m_tool->mouseUp(inputState);
+                }
                 m_suffix->mouseUp(inputState);
             }
         }
 
         bool ToolChain::mouseClick(const InputState& inputState) {
             assert(checkInvariant());
-            if (chainEndsHere())
+            if (chainEndsHere()) {
                 return false;
-            if (m_tool->mouseClick(inputState))
+            }
+            if (m_tool->toolActive() && m_tool->mouseClick(inputState)) {
                 return true;
+            }
             return m_suffix->mouseClick(inputState);
         }
 
         bool ToolChain::mouseDoubleClick(const InputState& inputState) {
             assert(checkInvariant());
-            if (chainEndsHere())
+            if (chainEndsHere()) {
                 return false;
-            if (m_tool->mouseDoubleClick(inputState))
+            }
+            if (m_tool->toolActive() && m_tool->mouseDoubleClick(inputState)) {
                 return true;
+            }
             return m_suffix->mouseDoubleClick(inputState);
         }
 
         void ToolChain::mouseScroll(const InputState& inputState) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->mouseScroll(inputState);
+                if (m_tool->toolActive()) {
+                    m_tool->mouseScroll(inputState);
+                }
                 m_suffix->mouseScroll(inputState);
             }
         }
@@ -110,33 +121,45 @@ namespace TrenchBroom {
         void ToolChain::mouseMove(const InputState& inputState) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->mouseMove(inputState);
+                if (m_tool->toolActive()) {
+                    m_tool->mouseMove(inputState);
+                }
                 m_suffix->mouseMove(inputState);
             }
         }
 
-        ToolController* ToolChain::startMouseDrag(const InputState& inputState) {
+        std::unique_ptr<DragTracker> ToolChain::startMouseDrag(const InputState& inputState) {
             assert(checkInvariant());
-            if (chainEndsHere())
+            if (chainEndsHere()) {
                 return nullptr;
-            if (m_tool->startMouseDrag(inputState))
-                return m_tool;
+            }
+            if (m_tool->toolActive()) {
+                if (auto dragTracker = m_tool->acceptMouseDrag(inputState)) {
+                    return dragTracker;
+                }
+            }
             return m_suffix->startMouseDrag(inputState);
         }
 
-        ToolController* ToolChain::dragEnter(const InputState& inputState, const std::string& payload) {
+        std::unique_ptr<DropTracker> ToolChain::dragEnter(const InputState& inputState, const std::string& payload) {
             assert(checkInvariant());
-            if (chainEndsHere())
+            if (chainEndsHere()) {
                 return nullptr;
-            if (m_tool->dragEnter(inputState, payload))
-                return m_tool;
+            }
+            if (m_tool->toolActive()) {
+                if (auto dropTracker = m_tool->acceptDrop(inputState, payload)) {
+                    return dropTracker;
+                }
+            }
             return m_suffix->dragEnter(inputState, payload);
         }
 
         void ToolChain::setRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->setRenderOptions(inputState, renderContext);
+                if (m_tool->toolActive()) {
+                    m_tool->setRenderOptions(inputState, renderContext);
+                }
                 m_suffix->setRenderOptions(inputState, renderContext);
             }
         }
@@ -144,17 +167,21 @@ namespace TrenchBroom {
         void ToolChain::render(const InputState& inputState, Renderer::RenderContext& renderContext, Renderer::RenderBatch& renderBatch) {
             assert(checkInvariant());
             if (!chainEndsHere()) {
-                m_tool->render(inputState, renderContext, renderBatch);
+                if (m_tool->toolActive()) {
+                    m_tool->render(inputState, renderContext, renderBatch);
+                }
                 m_suffix->render(inputState, renderContext, renderBatch);
             }
         }
 
         bool ToolChain::cancel() {
             assert(checkInvariant());
-            if (chainEndsHere())
+            if (chainEndsHere()) {
                 return false;
-            if (m_tool->cancel())
+            }
+            if (m_tool->cancel()) {
                 return true;
+            }
             return m_suffix->cancel();
         }
 

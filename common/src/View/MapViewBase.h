@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "NotifierConnection.h"
 #include "View/ActionContext.h"
 #include "View/CameraLinkHelper.h"
 #include "View/MapView.h"
@@ -85,6 +86,7 @@ namespace TrenchBroom {
             MapViewToolBox& m_toolBox;
 
             std::unique_ptr<AnimationManager> m_animationManager;
+
         private:
             Renderer::MapRenderer& m_renderer;
             std::unique_ptr<Renderer::Compass> m_compass;
@@ -95,6 +97,8 @@ namespace TrenchBroom {
              * MapViewActivationTracker instance.
              */
             bool m_isCurrent;
+
+            NotifierConnection m_notifierConnection;
         private: // shortcuts
             std::vector<std::pair<QShortcut*, const Action*>> m_shortcuts;
         protected:
@@ -118,13 +122,12 @@ namespace TrenchBroom {
         public:
             void setIsCurrent(bool isCurrent);
         private:
-            void bindObservers();
-            void unbindObservers();
+            void connectObservers();
 
             void createActionsAndUpdatePicking();
 
             void nodesDidChange(const std::vector<Model::Node*>& nodes);
-            void toolChanged(Tool* tool);
+            void toolChanged(Tool& tool);
             void commandDone(Command* command);
             void commandUndone(UndoableCommand* command);
             void selectionDidChange(const Selection& selection);

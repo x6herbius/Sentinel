@@ -19,30 +19,26 @@
 
 #pragma once
 
-#include "View/MoveToolController.h"
+#include "View/ToolController.h"
 
 namespace TrenchBroom {
     namespace View {
+        class DragTracker;
         class MoveObjectsTool;
 
-        class MoveObjectsToolController : public MoveToolController<NoPickingPolicy, NoMousePolicy> {
+        class MoveObjectsToolController : public ToolController {
         private:
-            MoveObjectsTool* m_tool;
+            MoveObjectsTool& m_tool;
         public:
-            MoveObjectsToolController(MoveObjectsTool* tool);
+            MoveObjectsToolController(MoveObjectsTool& tool);
             virtual ~MoveObjectsToolController() override;
         private:
-            Tool* doGetTool() override;
-            const Tool* doGetTool() const override;
+            Tool& tool() override;
+            const Tool& tool() const override;
 
-            MoveInfo doStartMove(const InputState& inputState) override;
-            DragResult doMove(const InputState& inputState, const vm::vec3& lastHandlePosition, const vm::vec3& nextHandlePosition) override;
-            void doEndMove(const InputState& inputState) override;
-            void doCancelMove() override;
+            std::unique_ptr<DragTracker> acceptMouseDrag(const InputState& inputState) override;
 
-            void doSetRenderOptions(const InputState& inputState, Renderer::RenderContext& renderContext) const override;
-
-            bool doCancel() override;
+            bool cancel() override;
         };
     }
 }
