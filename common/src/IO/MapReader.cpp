@@ -131,7 +131,13 @@ namespace TrenchBroom {
         }
 
         void MapReader::onPatch(const size_t startLine, const size_t lineCount, Model::MapFormat, const size_t rowCount, const size_t columnCount, std::vector<vm::vec<FloatType, 5>> controlPoints, std::string textureName, ParserStatus&) {
-            m_objectInfos.push_back(PatchInfo{rowCount, columnCount, std::move(controlPoints), std::move(textureName), startLine, lineCount, m_currentEntityInfo});
+            std::optional<size_t> parentEnt;
+
+            if (m_currentEntityInfo.size() > 0) {
+                parentEnt = m_currentEntityInfo.back();
+            }
+
+            m_objectInfos.push_back(PatchInfo{rowCount, columnCount, std::move(controlPoints), std::move(textureName), startLine, lineCount, parentEnt});
         }
 
         // helper methods
